@@ -1,0 +1,20 @@
+distinctipy==1.3.4
+igraph==0.11.8
+ipywidgets==8.1.5
+jupyter==1.1.1
+leidenalg==0.10.2
+loguru==0.7.3
+matplotlib==3.10.0
+networkx==3.4.2
+numpy==2.2.2
+python-dotenv==1.0.1
+rasterio==1.4.3
+scikit-learn==1.5.2
+scipy==1.15.1
+seaborn==0.13.2
+sgtsnepi
+shapely==2.0.7
+tqdm==4.67.1
+typeguard==4.4.1
+typer==0.15.1
+-e .
