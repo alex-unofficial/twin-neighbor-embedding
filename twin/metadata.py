@@ -1,3 +1,5 @@
+from sklearn.datasets import load_digits
+
 football_2023 = {
     "conference": [
         "Conference USA football standings",
@@ -267,4 +269,10 @@ football_2023 = {
         "Conference USA football standings",
         "Mid-American (East)"
     ]
+}
+
+_digits = load_digits()
+mnist = {
+    'digit': _digits.target,
+    'image': _digits.images
 }

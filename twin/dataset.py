@@ -6,9 +6,12 @@ from tqdm import tqdm
 
 from twin.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, REAL_WORLD_DIR, SYNTHETIC_NET_DIR
 
+import sklearn.datasets as skdata
+
 import numpy as np
 import scipy.io as sio
 import scipy.sparse as sp
+from sklearn.neighbors import NearestNeighbors
 import networkx as nx
 from math import ceil
 
@@ -131,6 +134,14 @@ def lfr():
     return relabeled_subgraph
 
 
+def mnist(n_neighbors=100):
+    digits = skdata.load_digits()
+
+    G = construct_knn_graph(digits.data, n_neighbors)
+
+    return G
+
+
 # ---------------------------------------------------------------------------- #
 #                               Utility functions                              #
 # ---------------------------------------------------------------------------- #
@@ -147,6 +158,15 @@ def load_spmatfile(filename: Path):
     A = sp.csc_matrix(A)
 
     return A
+
+
+def construct_knn_graph(point_cloud: np.array, n_neighbours: int):
+    knn = NearestNeighbors(n_neighbors=n_neighbours).fit(point_cloud)
+    knn_distance_matrix = knn.kneighbors_graph(mode='distance')
+    knn_graph = nx.from_numpy_array(knn_distance_matrix)
+
+    return knn_graph
+
 
 
 def stick_sculpture(n):
