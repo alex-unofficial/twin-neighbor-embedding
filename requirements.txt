@@ -15,4 +15,5 @@ Shapely==2.1.2
 tqdm==4.67.1
 typeguard==4.4.4
 typer==0.21.1
+jupyter==1.1.1
 -e .
