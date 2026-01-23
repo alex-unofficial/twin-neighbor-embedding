@@ -361,7 +361,7 @@ def tree_of_cliques_curves(
 
     frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
 
-    logger.info(f"Creating Tree of Cliques curves figures")
+    logger.info(f"Creating Tree of Cliques curves figure")
 
     G = dataset.tree_of_cliques( h=h, k=k, n=n )
 
@@ -381,27 +381,10 @@ def tree_of_cliques_curves(
     alpha = 0.3
     linewidth = 4
 
-    figures = []
+    fig, axes = plt.subplots(1, 3, figsize=(3*6, 6))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
-        # Straight edges
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
-        drawedges(G, dim_embedding, experiment[method]["V"], ax, alpha, linewidth)
-
-        ax.set_box_aspect(1)
-
-        ax.set_xticks([])
-        ax.set_yticks([])
-
-        for spine in ax.spines.values():
-            spine.set_linewidth(8)
-            spine.set_color(frame_colors[i])
-
-        fig.tight_layout()
-        figures.append(fig)
-
-        # Curved edges
-        fig, ax = plt.subplots(figsize=(6, 6))
+        ax = axes[i]
+        
         ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
 
         draw_curved_edges(
@@ -413,6 +396,7 @@ def tree_of_cliques_curves(
             color="b"
         )
 
+        ax.set_box_aspect(1)
         ax.set_xticks([])
         ax.set_yticks([])
 
@@ -420,10 +404,9 @@ def tree_of_cliques_curves(
             spine.set_linewidth(8)
             spine.set_color(frame_colors[i])
 
-        fig.tight_layout()
-        figures.append(fig)
+    fig.tight_layout()
 
-    return figures
+    return fig
 
 
 def small_world(
@@ -501,7 +484,7 @@ def small_world_curves(
 
     frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
 
-    logger.info(f"Creating Small World curves figures")
+    logger.info(f"Creating Small World curves figure")
 
     G = dataset.small_world(n, k, p)
 
@@ -521,9 +504,10 @@ def small_world_curves(
     alpha = 0.3
     linewidth = 1
 
-    figures = []
+    fig, axes = plt.subplots(1, 3, figsize=(3*4, 4))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
-        fig, ax = plt.subplots(figsize=(6, 6))
+        ax = axes[i]
+        
         ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
         draw_curved_edges(G, dim_embedding, experiment[method]["V"], experiment[method]["E"], ax, 64, alpha, linewidth)
 
@@ -536,10 +520,9 @@ def small_world_curves(
             spine.set_linewidth(8)
             spine.set_color(frame_colors[i])
 
-        fig.tight_layout()
-        figures.append(fig)
+    fig.tight_layout()
 
-    return figures
+    return fig
 
 
 def football_figure(
@@ -694,7 +677,7 @@ def football_curves(
 ):
     frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
 
-    logger.info(f"Creating Football curves figures")
+    logger.info(f"Creating Football curves figure")
 
     football = dataset.football_2023()
 
@@ -789,10 +772,9 @@ def football_curves(
         for l, s in zip(edge_labels, edge_standing)
     ])
 
-    figures = []
+    fig, axes = plt.subplots(1, 3, figsize=(3*4, 4))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
-        # Plot Vertex and Edge positions from twin embedding
-        fig, ax = plt.subplots(figsize=(6, 6))
+        ax = axes[i]
 
         ax.scatter(*experiment[method]["V"], c=vertex_colors, s=15, zorder=3)
 
@@ -813,10 +795,9 @@ def football_curves(
             spine.set_linewidth(8)
             spine.set_color(frame_colors[i])
 
-        fig.tight_layout()
-        figures.append(fig)
+    fig.tight_layout()
 
-    return figures
+    return fig
 
 
 '''
