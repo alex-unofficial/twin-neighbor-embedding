@@ -1,13 +1,17 @@
 from pathlib import Path
+import os
+import typer
 
 from loguru import logger
 
-from twin.config import REAL_WORLD_DIR
+from twin.config import FIGURES_DIR, REAL_WORLD_DIR
+from twin import embedding as emb
 from twin.pipelines import graph_embedding_all
 from twin.plots import (
     plot_all_embeddings,
     draw_metrics,
     drawedges,
+    draw_curved_edges,
     drawsegments,
     cumdeg,
     plot_single_metric,
@@ -35,6 +39,8 @@ from itertools import count
 from timeit import default_timer as timer
 
 import scipy.io as sio
+
+app = typer.Typer()
 
 def tabula_sapiens_blockadj(ax, experiment, partition, vertex_labels, label2id, label_colors, b = 7):
     # Create a random sparse adjacency matrix in CSR format
@@ -350,6 +356,88 @@ def tree_of_cliques(
     return fig
 
 
+@app.command()
+def tree_of_cliques_curves(
+    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
+    output_path: Path = FIGURES_DIR / "tree-of-cliques-curves",
+    output_name: str = "tree-of-cliques-h{h}-k{k}-n{n}-{j}-{i}.pdf",
+    h: int = 3,
+    k: int = 2,
+    n: int = 4,
+    dim_embedding: int = 2,
+    lambda_par: int = 5,
+    run_exact: bool = False
+):
+
+    frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
+
+    logger.info(f"Exporting Tree of Cliques plot at: {output_path}")
+
+    G = dataset.tree_of_cliques( h=h, k=k, n=n )
+
+    experiment = graph_embedding_all(
+        G, # input graph
+        twinmatrix_kw={"alpha": 0.85, "k": 2}, # twin matrix parameters
+        #
+        # --- select one of the following embedding methods ---
+        embedding=emb.SGtSNELayout,
+        embedding_kw={"lambda_par": lambda_par, "run_exact": run_exact},
+        seed=0,
+        d=dim_embedding,
+        normalize=False,
+        common_init=True,
+    )
+
+    alpha = 0.3
+    linewidth = 4
+
+    for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
+        drawedges(G, dim_embedding, experiment[method]["V"], ax, alpha, linewidth)
+
+        ax.set_box_aspect(1)
+
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        for spine in ax.spines.values():
+            spine.set_linewidth(8)
+            spine.set_color(frame_colors[i])
+
+        fig.tight_layout()
+        filename = output_path / output_name.format(h=h, k=k, n=n, i=i, j=0)
+        fig.savefig(filename, bbox_inches="tight")
+
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
+
+        draw_curved_edges(
+            G, dim_embedding,
+            experiment[method]["V"],
+            experiment[method]["E"],
+            ax, 64,
+            alpha, linewidth,
+            color="b"
+        )
+
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        for spine in ax.spines.values():
+            spine.set_linewidth(8)
+            spine.set_color(frame_colors[i])
+
+
+        fig.tight_layout()
+        filename = output_path / output_name.format(h=h, k=k, n=n, i=i, j=1)
+        fig.savefig(filename, bbox_inches="tight")
+
+    logger.success("Exported files")
+
+    return None
+
+
 def small_world(
     n : int = 150,
     k : int = 12,
@@ -412,6 +500,65 @@ def small_world(
     fig.tight_layout()
 
     return fig
+
+
+@app.command()
+def small_world_curves(
+    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
+    output_path: Path = FIGURES_DIR / "small-world-curves",
+    output_name: str = "small-world-n{n}-k{k}-p{p}-{i}.pdf",
+    n : int = 150,
+    k : int = 12,
+    p : float = 0.00,
+    dim_embedding: int = 2,
+    lambda_par: int = 10,
+    run_exact: bool = False
+):
+
+    frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
+
+    logger.info(f"Exporting Small World plot at: {output_path}")
+
+    G = dataset.small_world(n, k, p)
+
+    experiment = graph_embedding_all(
+        G, # input graph
+        twinmatrix_kw={"alpha": 0.85, "k": 2}, # twin matrix parameters
+        #
+        # --- select one of the following embedding methods ---
+        embedding=emb.SGtSNELayout,
+        embedding_kw={"lambda_par": lambda_par, "run_exact": run_exact},
+        seed=0,
+        d=dim_embedding,
+        normalize=True,
+        common_init=True,
+    )
+
+    alpha = 0.3
+    linewidth = 1
+
+    for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
+        draw_curved_edges(G, dim_embedding, experiment[method]["V"], experiment[method]["E"], ax, 64, alpha, linewidth)
+
+        ax.set_box_aspect(1)
+
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        for spine in ax.spines.values():
+            spine.set_linewidth(8)
+            spine.set_color(frame_colors[i])
+
+        fig.tight_layout()
+        filename = output_path / output_name.format(n=n, k=k, p=int(p*100), i=i)
+        fig.savefig(filename, bbox_inches="tight")
+
+    logger.success("Exported files")
+
+
+    return None
 
 
 def football_figure(
@@ -538,6 +685,143 @@ def football_figure(
 
         ax.scatter(*experiment[method]["V"], c=vertex_colors, s=15, zorder=3)
 
+        draw_curved_edges(
+            football,
+            dim_embedding,
+            experiment[method]["V"],
+            experiment[method]["E"],
+            ax, 64,
+            edge_alpha, 1, edge_colors
+        )
+
+        ax.set_box_aspect(1)
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+
+        for spine in ax.spines.values():
+            spine.set_linewidth(4)
+            spine.set_color(frame_colors[i])
+
+    fig.tight_layout()
+
+    return None
+
+
+@app.command()
+def football_curves(
+    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
+    output_path: Path = FIGURES_DIR / "football-curves",
+    output_name: str = "football-{i}.pdf",
+    dim_embedding: int = 2,
+    lambda_par: int = 5,
+    run_exact: bool = False
+    # -----------------------------------------
+):
+    frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
+
+    logger.info(f"Exporting Football plot at: {output_path}")
+
+    football = dataset.football_2023()
+
+    # Extract embedding from Graph
+    experiment = graph_embedding_all(
+        football, # input graph
+        twinmatrix_kw={"alpha": 0.85, "k": 2}, # twin matrix parameters
+        # -- embedding method --
+        embedding=emb.SGtSNELayout,
+        embedding_kw={"lambda_par": lambda_par, "run_exact": run_exact},
+        # --- the rest are common parameters ---
+        seed=10,
+        d=dim_embedding,
+        normalize=True,
+        common_init=True,
+    )
+
+    # Get Ground-Truth labels from metadata
+    conference = metadata.football_2023["conference"]
+    conference_standing = metadata.football_2023["conference_standing"]
+
+    counter = count(0)
+    conf_labels = {
+        conf: (-1 if conf == "NCAA Division I FBS independents" else next(counter))
+        for conf in dict.fromkeys(conference)
+    }
+
+    stand_labels = []
+    for stand in conference_standing:
+        if stand[-5:-1] == "East":
+            stand_labels.append(1)
+        elif stand[-5:-1] == "West":
+            stand_labels.append(-1)
+        else:
+            stand_labels.append(0)
+
+    vertex_labels = [conf_labels[conf] for conf in conference]
+    unique_labels = conf_labels.keys()
+
+    # Generate labels for edges based on the edge labels
+
+    intra_cluster_alpha = 0.6
+    inter_cluster_alpha = 0.1
+
+    edge_labels = []
+    edge_standing = []
+    edge_alpha = []
+    for u, v in football.edges():
+        if (
+            vertex_labels[u] == vertex_labels[v] and
+            stand_labels[u] == stand_labels[v] and
+            vertex_labels[u] != conf_labels["NCAA Division I FBS independents"]
+        ):
+            edge_labels.append(vertex_labels[u])
+            edge_standing.append(stand_labels[u])
+            edge_alpha.append(intra_cluster_alpha)
+        else:
+            edge_labels.append(-1)
+            edge_standing.append(0)
+            edge_alpha.append(inter_cluster_alpha)
+
+    # Convert vertex, edge labels to unique colors
+    n_labels = len(unique_labels)
+
+    color_base = sns.color_palette("husl", n_labels, desat=1)
+
+    rng = np.random.default_rng(seed=1)
+    color_base = rng.permutation(color_base)
+
+    # Generate light and dark variations
+    factor_light = 1.3  # Brighten factor
+    factor_dark = 0.7   # Darken factor
+
+    def adjust_brightness(color, factor):
+        return np.clip(np.array(color) * factor, 0, 1)
+
+    colors = np.array([
+        adjust_brightness(color, {-1: factor_dark, 0: 1.0, 1: factor_light}[i]) 
+        for color in color_base for i in [-1, 0, 1]
+    ])
+
+    black = np.array([0.0, 0.0, 0.0])
+    colors = np.vstack([colors] + 3 * [black])
+
+    vertex_colors = np.array([
+        colors[3*l + 1 + s, :]
+        for l, s in zip(vertex_labels, stand_labels)
+    ])
+
+    edge_colors = np.array([
+        colors[3*l + 1 + s, :]
+        for l, s in zip(edge_labels, edge_standing)
+    ])
+
+    os.makedirs(output_path, exist_ok=True)
+
+    for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
+        # Plot Vertex and Edge positions from twin embedding
+        fig, ax = plt.subplots(figsize=(6, 6))
+
+        ax.scatter(*experiment[method]["V"], c=vertex_colors, s=15, zorder=3)
+
         drawedges(
             football,
             dim_embedding,
@@ -551,10 +835,15 @@ def football_figure(
         ax.set_yticklabels([])
 
         for spine in ax.spines.values():
-            spine.set_linewidth(4)
+            spine.set_linewidth(8)
             spine.set_color(frame_colors[i])
 
-    fig.tight_layout()
+        fig.tight_layout()
+    
+        filename = output_path / output_name.format(i=i)
+        fig.savefig(filename, bbox_inches="tight")
+    
+        logger.success(f"Exported files {filename}")
 
     return None
 

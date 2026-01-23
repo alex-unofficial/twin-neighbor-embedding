@@ -5,6 +5,7 @@ from tqdm import tqdm
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import to_rgba_array
 import networkx as nx
 import distinctipy
 
@@ -112,6 +113,65 @@ def drawedges(G, dim_emb, pos, ax, alpha, linewidth, color='b'):
             ax.plot(x_edge, y_edge, z_edge, c=color, alpha=alpha, linewidth=linewidth, zorder=1)
     else:
         raise ValueError("Embedding dimension must be 2 or 3")
+
+
+def draw_curved_edges(G, dim_emb, v_pos, e_pos, ax, n_samples, alpha, linewidth, color='b'):
+    num_edges = len(G.edges())
+
+    color = to_rgba_array(color)
+    if color.shape[0] == 1:
+        color = np.repeat(color, num_edges, axis=0)
+    elif color.shape[0] != num_edges:
+        raise ValueError("color must be a single color or an iterable of length num_edges")
+
+    if alpha is None:
+        alpha = None
+    else:
+        alpha = np.asarray(alpha, dtype=float)
+        if alpha.ndim == 0:
+            alpha = np.repeat(alpha, num_edges)
+        elif alpha.size == 1:
+            alpha = np.repeat(alpha.ravel(), num_edges)
+        elif alpha.size != num_edges:
+            raise ValueError("alpha must be a single value or an iterable of length num_edges")
+
+    if linewidth is None:
+        linewidth = None
+    else:
+        linewidth = np.asarray(linewidth, dtype=float)
+        if linewidth.ndim == 0:
+            linewidth = np.repeat(linewidth, num_edges)
+        elif linewidth.size == 1:
+            linewidth = np.repeat(linewidth.ravel(), num_edges)
+        elif linewidth.size != num_edges:
+            raise ValueError("linewidth must be a single value or an iterable of length num_edges")
+
+    # The curve kernel defines a parametric curve P(t) for 3 control points P0,P1,P2
+    # such that P(0) = P0, P(1/2) = P1, P(1) = P2. Meaning that it is an interpolating
+    # curve of all points.
+    curve_kernel = np.array([[1,0,0],[-3,4,-1],[2,-4,2]])
+
+    # Parameter t ranges from 0 to 1 and is the parametric input to the curve
+    t = np.linspace(0, 1, n_samples)
+    # T is the matrix [1 t t^2] where each column corresponds to the relevant operation on t
+    T = np.vander(t, 3, increasing=True)
+
+    for e, (u, v) in enumerate(G.edges()):
+        # For each edge in the graph define the control points such that
+        # P0,P2 are the embedded positions of the vertices of the edge
+        # and P1 is the embedded position of the edge itself
+        control_points = np.array([v_pos.T[u], e_pos.T[e], v_pos.T[v]])
+
+        # The polynomial coefficients are derived from multiplying
+        # the kernel matrix with the control points for each dimension
+        poly_coeffs = np.matmul(curve_kernel, control_points)
+
+        # Then the curve is the Vandermonde matrix multiplied by the Coefficient
+        # Matrix and produces an array with shape (dim_emb, n_samples)
+        curve_points = np.matmul(T, poly_coeffs).T
+
+        ax.plot(*curve_points, c=color[e], alpha=alpha[e], linewidth=linewidth[e], zorder=1)
+
 
 def plot_all_embeddings(
     experiment,
