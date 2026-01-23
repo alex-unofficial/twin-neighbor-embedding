@@ -1,6 +1,7 @@
 import numpy as np
 import networkx as nx
 from sklearn.neighbors import NearestNeighbors, KNeighborsClassifier
+from sklearn.metrics.pairwise import euclidean_distances
 
 
 def knn_classification_accuracy(X: np.ndarray, target: np.ndarray, n_neighbors):
@@ -69,3 +70,20 @@ def knn_neighbor_preservation_accuracy(X: np.ndarray, G: nx.Graph, n_neighbors):
     mean_accuracy = np.nanmean(neighbor_accuracy)
 
     return mean_accuracy
+
+
+def point_distance_metric(X: np.ndarray, dim=2, return_histogram=False, bins='auto'):
+
+    # Ensure X has shape (n_points, d)
+    if X.shape[1] != dim and X.shape[1] == dim:
+        X = X.T
+
+    all_point_distances = euclidean_distances(X)
+
+    if return_histogram:
+        point_distance_histogram, bin_edges = np.histogram(all_point_distances, bins=bins)
+        return point_distance_histogram, bin_edges
+    else:
+        average_point_distance = np.mean(all_point_distances)
+        return average_point_distance
+
