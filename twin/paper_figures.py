@@ -684,7 +684,7 @@ def football_figure(
 
     fig.tight_layout()
 
-    return None
+    return fig
 
 
 def football_curves(
