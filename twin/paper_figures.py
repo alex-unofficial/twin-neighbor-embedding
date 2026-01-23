@@ -666,12 +666,11 @@ def football_figure(
 
         ax.scatter(*experiment[method]["V"], c=vertex_colors, s=15, zorder=3)
 
-        draw_curved_edges(
+        drawedges(
             football,
             dim_embedding,
             experiment[method]["V"],
-            experiment[method]["E"],
-            ax, 64,
+            ax,
             edge_alpha, 1, edge_colors
         )
 
@@ -797,11 +796,12 @@ def football_curves(
 
         ax.scatter(*experiment[method]["V"], c=vertex_colors, s=15, zorder=3)
 
-        drawedges(
+        draw_curved_edges(
             football,
             dim_embedding,
             experiment[method]["V"],
-            ax,
+            experiment[method]["E"],
+            ax, 64,
             edge_alpha, 1, edge_colors
         )
 
