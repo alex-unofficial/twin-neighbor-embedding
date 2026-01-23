@@ -146,10 +146,14 @@ def draw_curved_edges(G, dim_emb, v_pos, e_pos, ax, n_samples, alpha, linewidth,
         elif linewidth.size != num_edges:
             raise ValueError("linewidth must be a single value or an iterable of length num_edges")
 
-    # The curve kernel defines a parametric curve P(t) for 3 control points P0,P1,P2
+    # This is the classic Bezier curve kernel for a curve that interpolates points
+    # P(0) = P0 and P(1) = P2 but is a lerp of the points for values 0 < t < 1
+    curve_kernel = np.array([[1,0,0],[-2,2,0],[1,-2,1]])
+
+    # This curve kernel defines a parametric curve P(t) for 3 control points P0,P1,P2
     # such that P(0) = P0, P(1/2) = P1, P(1) = P2. Meaning that it is an interpolating
     # curve of all points.
-    curve_kernel = np.array([[1,0,0],[-3,4,-1],[2,-4,2]])
+    #curve_kernel = np.array([[1,0,0],[-3,4,-1],[2,-4,2]])
 
     # Parameter t ranges from 0 to 1 and is the parametric input to the curve
     t = np.linspace(0, 1, n_samples)
@@ -273,6 +277,7 @@ def application_plot(
     linewidth=2,
     alpha=0.1,
     show_edges_original=True,
+    show_curved_edges=False,
     show_edges_segments=False,
     segment_alpha=0.9,
     segment_width=2,
@@ -308,10 +313,13 @@ def application_plot(
         ax = axes[i*2] if horizontal else axes[0,i]
         ax.scatter(*experiment[method]["V"][:,perm], c=colors_vertices[perm,:], s=markersize_vertex, zorder=3)
         if show_edges_original:
-            drawedges(G, dim_emb, experiment[method]["V"], ax, alpha, linewidth, color = colors_edges)
-        
+            if show_curved_edges:
+                draw_curved_edges(G, dim_emb, experiment[method]["V"], experiment[method]["E"], ax, 64, alpha, linewidth, color = colors_edges)
+            else:
+                drawedges(G, dim_emb, experiment[method]["V"], ax, alpha, linewidth, color = colors_edges)
+
         ax.set_box_aspect(1)
-        
+
         ax.set_xticks([])
         ax.set_yticks([])
 
@@ -322,8 +330,8 @@ def application_plot(
 
         ax = axes[i*2+1] if horizontal else axes[1,i]
         if not hidevertexpoints:
-            ax.scatter(*experiment[method]["V"], c=colors_vertices, s=markersize_vertex, zorder=1)
-        ax.scatter(*experiment[method]["E"], c=colors_edges, s=markersize_edge, zorder=2)
+            ax.scatter(*experiment[method]["V"], c=colors_vertices, s=markersize_vertex, zorder=2)
+        ax.scatter(*experiment[method]["E"], c=colors_edges, s=markersize_edge, zorder=1)
         if show_edges_segments:
             drawsegments(
                 experiment[method]["E"],
@@ -335,7 +343,7 @@ def application_plot(
                 color = "b",
                 zorder = -1
             )
-        
+
         ax.set_box_aspect(1)
 
         ax.set_xticks([])
@@ -360,7 +368,7 @@ def compute_metric(experiment, method, space, adjacency = False):
     elif space == "E":
         G = experiment["LineGraph"]
         adj = nx.to_scipy_sparse_array(G,format='csc')
-            
+
     V = experiment[method][space]
     # Compute the distance matrix
     distance_matrix = pairwise_distances(V.T);
@@ -419,7 +427,7 @@ def plot_single_metric(experiment, space, ax, adjacency=False, legend=False, lab
 
     colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
     ax.set_prop_cycle(color=colors)
-    
+
     # # depending on method, pick color
     # color = colors[["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"].index(method)]
 
@@ -475,7 +483,7 @@ def draw_metrics(experiment, figsize=(12 * 2/3, 8 * 2/3)):
     for method in ["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]:
 
         for i, space in enumerate(["V", "E"]):
-            
+
             distances = compute_metric(experiment, method, space)
 
             # Create equi-weight vector

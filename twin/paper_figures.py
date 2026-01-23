@@ -60,7 +60,7 @@ def tabula_sapiens_blockadj(ax, experiment, partition, vertex_labels, label2id, 
     base_cmap = plt.get_cmap('gray_r', 6)
 
     cmap = colors.LinearSegmentedColormap.from_list(
-        "truncated_cmap", 
+        "truncated_cmap",
         base_cmap(np.linspace(1/4, 1, 256))  # Extract upper 1/3 of colormap
     )
     cmap.set_bad('white')
@@ -77,11 +77,11 @@ def tabula_sapiens_blockadj(ax, experiment, partition, vertex_labels, label2id, 
     for i in range(len(cluster_boundaries) - 1):
         start = cluster_boundaries[i]
         end = cluster_boundaries[i+1]
-        
+
         # Define square corners for the diagonal blocks
         square_x = [start, end, end, start, start]
         square_y = [start, start, end, end, start]
-        
+
         # Plot the block
         blocks_lines.append( ax.plot(square_x, square_y, color=label_colors[i,:], linewidth=1.0)[0] )
 
@@ -225,7 +225,7 @@ def tabula_sapiens_teaser(
         ax.tick_params(axis='both', which='both', length=0)
         ax.grid()
         for spine in ax.spines.values():
-            spine.set_linewidth(8)
+            spine.set_linewidth(4)
             spine.set_color(frame_colors[i])
 
 
@@ -301,7 +301,7 @@ def tree_of_cliques(
         ax.set_yticks([])
 
         for spine in ax.spines.values():
-            spine.set_linewidth(8)
+            spine.set_linewidth(4)
             spine.set_color(frame_colors[2*i])
 
     # Suplot 2
@@ -323,7 +323,7 @@ def tree_of_cliques(
     axes[1].set_yticks([])
 
     for spine in axes[1].spines.values():
-        spine.set_linewidth(8)
+        spine.set_linewidth(4)
         spine.set_color(frame_colors[0])
 
     # Subplot 4
@@ -384,7 +384,7 @@ def tree_of_cliques_curves(
     fig, axes = plt.subplots(1, 3, figsize=(3*6, 6))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
         ax = axes[i]
-        
+
         ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
 
         draw_curved_edges(
@@ -401,7 +401,7 @@ def tree_of_cliques_curves(
         ax.set_yticks([])
 
         for spine in ax.spines.values():
-            spine.set_linewidth(8)
+            spine.set_linewidth(4)
             spine.set_color(frame_colors[i])
 
     fig.tight_layout()
@@ -414,7 +414,7 @@ def small_world(
     k : int = 12,
     p : float = 0.01,
     dim_embedding: int = 2,
-    lambda_par: int = 1,
+    lambda_par: int = 10,
     run_exact: bool = False
 ):
 
@@ -452,7 +452,7 @@ def small_world(
 
     logger.info("Creating Small World plots...")
 
-    fig, axes = plt.subplots(1, 3, figsize=(3*4, 4))
+    fig, axes = plt.subplots(1, 3, figsize=(3*6, 6))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
         ax = axes[i]
 
@@ -504,10 +504,10 @@ def small_world_curves(
     alpha = 0.3
     linewidth = 1
 
-    fig, axes = plt.subplots(1, 3, figsize=(3*4, 4))
+    fig, axes = plt.subplots(1, 3, figsize=(3*6, 6))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
         ax = axes[i]
-        
+
         ax.scatter(*experiment[method]["V"], c="r", s=15, zorder=3)
         draw_curved_edges(G, dim_embedding, experiment[method]["V"], experiment[method]["E"], ax, 64, alpha, linewidth)
 
@@ -517,7 +517,7 @@ def small_world_curves(
         ax.set_yticks([])
 
         for spine in ax.spines.values():
-            spine.set_linewidth(8)
+            spine.set_linewidth(4)
             spine.set_color(frame_colors[i])
 
     fig.tight_layout()
@@ -642,7 +642,7 @@ def football_figure(
 
     logger.info("Creating Football plots...")
     # Plot Vertex and Edge positions from twin embedding
-    fig, axes = plt.subplots(1, 3, figsize=(3*4, 4))
+    fig, axes = plt.subplots(1, 3, figsize=(3*6, 6))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
 
         ax = axes[i]
@@ -772,7 +772,7 @@ def football_curves(
         for l, s in zip(edge_labels, edge_standing)
     ])
 
-    fig, axes = plt.subplots(1, 3, figsize=(3*4, 4))
+    fig, axes = plt.subplots(1, 3, figsize=(3*6, 6))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
         ax = axes[i]
 
@@ -792,7 +792,7 @@ def football_curves(
         ax.set_yticklabels([])
 
         for spine in ax.spines.values():
-            spine.set_linewidth(8)
+            spine.set_linewidth(4)
             spine.set_color(frame_colors[i])
 
     fig.tight_layout()
