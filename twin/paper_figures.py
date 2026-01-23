@@ -1,10 +1,6 @@
-from pathlib import Path
-import os
-import typer
-
 from loguru import logger
 
-from twin.config import FIGURES_DIR, REAL_WORLD_DIR
+from twin.config import REAL_WORLD_DIR
 from twin import embedding as emb
 from twin.pipelines import graph_embedding_all
 from twin.plots import (
@@ -39,8 +35,6 @@ from itertools import count
 from timeit import default_timer as timer
 
 import scipy.io as sio
-
-app = typer.Typer()
 
 def tabula_sapiens_blockadj(ax, experiment, partition, vertex_labels, label2id, label_colors, b = 7):
     # Create a random sparse adjacency matrix in CSR format
@@ -356,11 +350,7 @@ def tree_of_cliques(
     return fig
 
 
-@app.command()
 def tree_of_cliques_curves(
-    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
-    output_path: Path = FIGURES_DIR / "tree-of-cliques-curves",
-    output_name: str = "tree-of-cliques-h{h}-k{k}-n{n}-{j}-{i}.pdf",
     h: int = 3,
     k: int = 2,
     n: int = 4,
@@ -371,7 +361,7 @@ def tree_of_cliques_curves(
 
     frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
 
-    logger.info(f"Exporting Tree of Cliques plot at: {output_path}")
+    logger.info(f"Creating Tree of Cliques curves figures")
 
     G = dataset.tree_of_cliques( h=h, k=k, n=n )
 
@@ -391,7 +381,9 @@ def tree_of_cliques_curves(
     alpha = 0.3
     linewidth = 4
 
+    figures = []
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
+        # Straight edges
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
         drawedges(G, dim_embedding, experiment[method]["V"], ax, alpha, linewidth)
@@ -406,9 +398,9 @@ def tree_of_cliques_curves(
             spine.set_color(frame_colors[i])
 
         fig.tight_layout()
-        filename = output_path / output_name.format(h=h, k=k, n=n, i=i, j=0)
-        fig.savefig(filename, bbox_inches="tight")
+        figures.append(fig)
 
+        # Curved edges
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
 
@@ -428,14 +420,10 @@ def tree_of_cliques_curves(
             spine.set_linewidth(8)
             spine.set_color(frame_colors[i])
 
-
         fig.tight_layout()
-        filename = output_path / output_name.format(h=h, k=k, n=n, i=i, j=1)
-        fig.savefig(filename, bbox_inches="tight")
+        figures.append(fig)
 
-    logger.success("Exported files")
-
-    return None
+    return figures
 
 
 def small_world(
@@ -502,11 +490,7 @@ def small_world(
     return fig
 
 
-@app.command()
 def small_world_curves(
-    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
-    output_path: Path = FIGURES_DIR / "small-world-curves",
-    output_name: str = "small-world-n{n}-k{k}-p{p}-{i}.pdf",
     n : int = 150,
     k : int = 12,
     p : float = 0.00,
@@ -517,7 +501,7 @@ def small_world_curves(
 
     frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
 
-    logger.info(f"Exporting Small World plot at: {output_path}")
+    logger.info(f"Creating Small World curves figures")
 
     G = dataset.small_world(n, k, p)
 
@@ -537,6 +521,7 @@ def small_world_curves(
     alpha = 0.3
     linewidth = 1
 
+    figures = []
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
@@ -552,13 +537,9 @@ def small_world_curves(
             spine.set_color(frame_colors[i])
 
         fig.tight_layout()
-        filename = output_path / output_name.format(n=n, k=k, p=int(p*100), i=i)
-        fig.savefig(filename, bbox_inches="tight")
+        figures.append(fig)
 
-    logger.success("Exported files")
-
-
-    return None
+    return figures
 
 
 def football_figure(
@@ -707,19 +688,14 @@ def football_figure(
     return None
 
 
-@app.command()
 def football_curves(
-    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
-    output_path: Path = FIGURES_DIR / "football-curves",
-    output_name: str = "football-{i}.pdf",
     dim_embedding: int = 2,
     lambda_par: int = 5,
     run_exact: bool = False
-    # -----------------------------------------
 ):
     frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
 
-    logger.info(f"Exporting Football plot at: {output_path}")
+    logger.info(f"Creating Football curves figures")
 
     football = dataset.football_2023()
 
@@ -814,8 +790,7 @@ def football_curves(
         for l, s in zip(edge_labels, edge_standing)
     ])
 
-    os.makedirs(output_path, exist_ok=True)
-
+    figures = []
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
         # Plot Vertex and Edge positions from twin embedding
         fig, ax = plt.subplots(figsize=(6, 6))
@@ -839,13 +814,9 @@ def football_curves(
             spine.set_color(frame_colors[i])
 
         fig.tight_layout()
-    
-        filename = output_path / output_name.format(i=i)
-        fig.savefig(filename, bbox_inches="tight")
-    
-        logger.success(f"Exported files {filename}")
+        figures.append(fig)
 
-    return None
+    return figures
 
 
 '''
