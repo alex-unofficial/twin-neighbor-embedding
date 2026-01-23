@@ -476,7 +476,7 @@ def small_world(
 def small_world_curves(
     n : int = 150,
     k : int = 12,
-    p : float = 0.00,
+    p : float = 0.01,
     dim_embedding: int = 2,
     lambda_par: int = 10,
     run_exact: bool = False
@@ -508,7 +508,7 @@ def small_world_curves(
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
         ax = axes[i]
         
-        ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
+        ax.scatter(*experiment[method]["V"], c="r", s=15, zorder=3)
         draw_curved_edges(G, dim_embedding, experiment[method]["V"], experiment[method]["E"], ax, 64, alpha, linewidth)
 
         ax.set_box_aspect(1)
