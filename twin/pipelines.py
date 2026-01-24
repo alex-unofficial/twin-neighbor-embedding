@@ -2,6 +2,7 @@
 import networkx as nx
 import scipy.sparse as sp
 import numpy as np
+import pandas as pd
 
 from twin import graphmatrix as gm
 from twin import embedding as emb
@@ -192,4 +193,85 @@ def embedding_metrics_all(
         }
 
     return metrics_dict
+
+
+def metrics_to_df(metrics: dict, graph_label: str = None):
+    """
+    Convert embedding metrics to structured pandas DataFrames.
+
+    Parameters
+    ----------
+    metrics : dict
+        Output from embedding_metrics_all function
+    graph_label : str, optional
+        Label for the graph (e.g., 'Football 2023', 'Tabula Sapiens')
+        Used as index level for stacking multiple graphs
+
+    Returns
+    -------
+    dict
+        Dictionary with keys:
+        - 'PointDistance': DataFrame with rows for VertexPointDistance and EdgePointDistance
+        - 'KNeighborsPreservation': DataFrame with rows for k values
+        - 'KNeighborsClassifier': DataFrame with rows for k values (if present)
+    """
+    embedding_types = ['Vertex', 'Edge', 'Twin']
+
+    # 1. Point Distance DataFrame
+    point_dist_data = {
+        emb_type: [
+            metrics['VertexPointDistance'][emb_type],
+            metrics['EdgePointDistance'][emb_type]
+        ]
+        for emb_type in embedding_types
+    }
+
+    df_point_dist = pd.DataFrame(
+        point_dist_data,
+        index=['Vertex', 'Edge']
+    )
+    df_point_dist.index.name = 'Point type'
+
+    # 2. KNeighbors Preservation DataFrame
+    knn_pres_data = {
+        emb_type: metrics['KNeighborsPreservation'][emb_type]
+        for emb_type in embedding_types
+    }
+
+    df_knn_preservation = pd.DataFrame(
+        knn_pres_data,
+        index=metrics['n_neighbors']
+    )
+    df_knn_preservation.index.name = 'k'
+
+    result = {
+        'PointDistance': df_point_dist,
+        'KNeighborsPreservation': df_knn_preservation
+    }
+
+    # 3. KNeighbors Classifier DataFrame (if present)
+    if 'KNeighborsClassifier' in metrics:
+        knn_class_data = {
+            emb_type: metrics['KNeighborsClassifier'][emb_type]
+            for emb_type in embedding_types
+        }
+
+        df_knn_classifier = pd.DataFrame(
+            knn_class_data,
+            index=metrics['n_neighbors']
+        )
+
+        df_knn_classifier.index.name = 'k'
+        result['KNeighborsClassifier'] = df_knn_classifier
+
+    # Add graph label as MultiIndex if provided
+    if graph_label is not None:
+        for key in result:
+            df = result[key]
+            df.index = pd.MultiIndex.from_product(
+                [[graph_label], df.index],
+                names=['Graph', df.index.name or 'Metric']
+            )
+
+    return result
 
