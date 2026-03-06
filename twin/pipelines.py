@@ -9,7 +9,7 @@ from twin import embedding as emb
 from twin.metrics import *
 
 from typeguard import typechecked
-
+import textwrap
 
 def graph_embedding_all(
     G: nx.Graph, embedding = emb.SpringLayout,
@@ -193,6 +193,104 @@ def embedding_metrics_all(
         }
 
     return metrics_dict
+
+
+def metrics_to_typ(metrics):
+
+    point_dist_tab = textwrap.dedent(
+        """
+        #table(
+        \tcolumns: 5,
+        \ttable.header(
+        \t\ttable.cell(colspan: 2)[],
+        \t\ttable.cell(colspan:3)[Embedding Type],
+        \t\t[Dataset], table.vline(stroke: thinstroke, start: 2),
+        \t\t[Dist. Type], table.vline(stroke: thinstroke, start: 2),
+        \t\t[Vertex], [Edge], [Twin]
+        \t),
+        \t{content}
+        )
+        """
+    ).format(
+        content = "\ntable.hline(stroke: 1pt),\n".join([
+            f"graph(rowspan: 2)[{graph_label}],\n{
+                "\n".join([
+                    f"\t[{point_type}], ..hlmin({vert:.6f}, {edge:.6f}, {twin:.6f}),"
+                    for point_type, vert, edge, twin in zip(
+                        ['Vertex', 'Edge'],
+                        [vdist['Vertex'], edist['Vertex']],
+                        [vdist['Edge'], edist['Edge']],
+                        [vdist['Twin'], edist['Twin']]
+                    )
+                ])
+            }" if (vdist := metric['VertexPointDistance']) and (edist := metric['EdgePointDistance']) else ""
+            for graph_label, metric in metrics.items()
+        ])
+    ).expandtabs(2)
+
+
+
+    knn_adj_tab = textwrap.dedent(
+        """
+        #table(
+        \tcolumns: 5,
+        \ttable.header(
+        \t\ttable.cell(colspan: 2)[],
+        \t\ttable.cell(colspan:3)[Embedding Type],
+        \t\t[Dataset], table.vline(stroke: thinstroke, start: 2),
+        \t\t[$k$], table.vline(stroke: thinstroke, start: 2),
+        \t\t[Vertex], [Edge], [Twin]
+        \t),
+        \t{content}
+        )
+        """
+    ).format(
+        content = "\ntable.hline(stroke: 1pt),\n".join([
+            f"graph(rowspan: {len(metric['n_neighbors'])})[{graph_label}],\n{
+                "\n".join([
+                    f"\t[{k}], ..hlmax({vert:.6f}, {edge:.6f}, {twin:.6f}),"
+                    for k, vert, edge, twin in zip(metric['n_neighbors'], knn_adj['Vertex'], knn_adj['Edge'], knn_adj['Twin'])
+                ])
+            }" if (knn_adj := metric['KNeighborsPreservation']) else ""
+            for graph_label, metric in metrics.items()
+        ])
+    ).expandtabs(2)
+
+
+    for m in metrics.values():
+        if 'KNeighborsClassifier' in m:
+            knn_class_tab = textwrap.dedent(
+                """
+                #table(
+                \tcolumns: 5,
+                \ttable.header(
+                \t\ttable.cell(colspan: 2)[],
+                \t\ttable.cell(colspan:3)[Embedding Type],
+                \t\t[Dataset], table.vline(stroke: thinstroke, start: 2),
+                \t\t[$k$], table.vline(stroke: thinstroke, start: 2),
+                \t\t[Vertex], [Edge], [Twin]
+                \t),
+                \t{content}
+                )
+                """
+            ).format(
+                content = "\ntable.hline(stroke: 1pt),\n".join([
+                    f"graph(rowspan: {len(metric['n_neighbors'])})[{graph_label}],\n{
+                        "\n".join([
+                            f"\t[{k}], ..hlmax({vert:.6f}, {edge:.6f}, {twin:.6f}),"
+                            for k, vert, edge, twin in zip(metric['n_neighbors'], knn_class['Vertex'], knn_class['Edge'], knn_class['Twin'])
+                        ])
+                    }" if ('KNeighborsClassifier' in metric) and (knn_class := metric['KNeighborsClassifier']) else ""
+                    for graph_label, metric in metrics.items()
+                ])
+            ).expandtabs(2)
+            break
+    else:
+        knn_class_tab = None
+
+    print(point_dist_tab)
+    print(knn_adj_tab)
+    print(knn_class_tab)
 
 
 def metrics_to_df(metrics: dict, graph_label: str = None):
