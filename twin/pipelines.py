@@ -208,12 +208,12 @@ def metrics_to_typ(metrics):
         \t\t[Dist. Type], table.vline(stroke: thinstroke, start: 2),
         \t\t[Vertex], [Edge], [Twin]
         \t),
-        \t{content}
+        {content}
         )
         """
     ).format(
-        content = "\ntable.hline(stroke: 1pt),\n".join([
-            f"graph(rowspan: 2)[{graph_label}],\n{
+        content = "\n\ttable.hline(stroke: 1pt),\n".join([
+            f"\tgraph(rowspan: 2)[{graph_label}],\n{
                 "\n".join([
                     f"\t[{point_type}], ..hlmin({vert:.6f}, {edge:.6f}, {twin:.6f}),"
                     for point_type, vert, edge, twin in zip(
@@ -241,12 +241,12 @@ def metrics_to_typ(metrics):
         \t\t[$k$], table.vline(stroke: thinstroke, start: 2),
         \t\t[Vertex], [Edge], [Twin]
         \t),
-        \t{content}
+        {content}
         )
         """
     ).format(
-        content = "\ntable.hline(stroke: 1pt),\n".join([
-            f"graph(rowspan: {len(metric['n_neighbors'])})[{graph_label}],\n{
+        content = "\n\ttable.hline(stroke: 1pt),\n".join([
+            f"\tgraph(rowspan: {len(metric['n_neighbors'])})[{graph_label}],\n{
                 "\n".join([
                     f"\t[{k}], ..hlmax({vert:.6f}, {edge:.6f}, {twin:.6f}),"
                     for k, vert, edge, twin in zip(metric['n_neighbors'], knn_adj['Vertex'], knn_adj['Edge'], knn_adj['Twin'])
@@ -270,12 +270,12 @@ def metrics_to_typ(metrics):
                 \t\t[$k$], table.vline(stroke: thinstroke, start: 2),
                 \t\t[Vertex], [Edge], [Twin]
                 \t),
-                \t{content}
+                {content}
                 )
                 """
             ).format(
-                content = "\ntable.hline(stroke: 1pt),\n".join([
-                    f"graph(rowspan: {len(metric['n_neighbors'])})[{graph_label}],\n{
+                content = "\n\ttable.hline(stroke: 1pt),\n".join([
+                    f"\tgraph(rowspan: {len(metric['n_neighbors'])})[{graph_label}],\n{
                         "\n".join([
                             f"\t[{k}], ..hlmax({vert:.6f}, {edge:.6f}, {twin:.6f}),"
                             for k, vert, edge, twin in zip(metric['n_neighbors'], knn_class['Vertex'], knn_class['Edge'], knn_class['Twin'])
