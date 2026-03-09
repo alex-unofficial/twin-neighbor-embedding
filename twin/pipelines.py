@@ -9,6 +9,8 @@ from twin import embedding as emb
 from twin.metrics import *
 
 from typeguard import typechecked
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 import textwrap
 
 def graph_embedding_all(
@@ -72,6 +74,51 @@ def graph_embedding_all(
     return dict_result
 
 
+def _embedding_metrics_single_seed(
+    seed, G, embedding, d, embedding_kw, twinmatrix_kw,
+    common_init, normalize, n_neighbors, target
+):
+    """Run embedding and compute metrics for a single seed."""
+    Gv_in = gm.VertexMatrix(G, normalize=False)
+    Ge_in = gm.EdgeMatrix(G, normalize=False)
+    Gtw_in = gm.TwinEmbeddingMatrix(G, normalize=normalize, **twinmatrix_kw)
+
+    nv = Gtw_in.incidence.shape[0]
+    ne = Gtw_in.incidence.shape[1]
+
+    E_in = embedding(seed=seed, d=d, **embedding_kw)
+    y0 = E_in.init_embedding(nv+ne, d)
+
+    y0e  = y0[:, :ne] if common_init else None
+    y0v  = y0[:, ne:] if common_init else None
+    y0tw = y0 if common_init else None
+
+    X = E_in.embed(Gv_in, y0=y0v)
+    Y = E_in.embed(Ge_in, y0=y0e)
+    Z = E_in.embed(Gtw_in, y0=y0tw)
+
+    X_v, X_e, _ = Gv_in.vertex_and_edge_embeddings(X)
+    Y_v, Y_e, _ = Ge_in.vertex_and_edge_embeddings(Y)
+    Z_v, Z_e, _ = Gtw_in.vertex_and_edge_embeddings(Z)
+
+    result = {
+        'vpd': (point_distance_metric(X_v, d), point_distance_metric(Y_v, d), point_distance_metric(Z_v, d)),
+        'epd': (point_distance_metric(X_e, d), point_distance_metric(Y_e, d), point_distance_metric(Z_e, d)),
+        'np':  (knn_neighbor_preservation_accuracy(X_v, G, n_neighbors),
+                knn_neighbor_preservation_accuracy(Y_v, G, n_neighbors),
+                knn_neighbor_preservation_accuracy(Z_v, G, n_neighbors)),
+    }
+
+    if target is not None:
+        result['cl'] = (
+            knn_classification_accuracy(X_v, target, n_neighbors),
+            knn_classification_accuracy(Y_v, target, n_neighbors),
+            knn_classification_accuracy(Z_v, target, n_neighbors),
+        )
+
+    return result
+
+
 def embedding_metrics_all(
     G: nx.Graph, embedding = emb.SpringLayout,
     d: int = 2,
@@ -81,86 +128,37 @@ def embedding_metrics_all(
     embedding_kw: dict = {},
     twinmatrix_kw: dict = {},
     common_init: bool = True,
-    normalize: bool = False
+    normalize: bool = False,
+    n_threads: int = 1
 ):
 
-    Gv_in = gm.VertexMatrix(G, normalize=False)
-    Ge_in = gm.EdgeMatrix(G, normalize=False)
-    Gtw_in = gm.TwinEmbeddingMatrix(G, normalize=normalize, **twinmatrix_kw)
+    worker = partial(
+        _embedding_metrics_single_seed,
+        G=G, embedding=embedding, d=d,
+        embedding_kw=embedding_kw, twinmatrix_kw=twinmatrix_kw,
+        common_init=common_init, normalize=normalize,
+        n_neighbors=n_neighbors, target=target
+    )
 
-    # number of nodes + edges
-    nv = Gtw_in.incidence.shape[0]
-    ne = Gtw_in.incidence.shape[1]
+    with ProcessPoolExecutor(max_workers=n_threads) as executor:
+        results = list(executor.map(worker, range(n_samples)))
 
-    vertex_point_dist_metric_v = np.float64(0)
-    vertex_point_dist_metric_e = np.float64(0)
-    vertex_point_dist_metric_tw = np.float64(0)
+    vertex_point_dist_metric_v  = sum(r['vpd'][0] for r in results) / n_samples
+    vertex_point_dist_metric_e  = sum(r['vpd'][1] for r in results) / n_samples
+    vertex_point_dist_metric_tw = sum(r['vpd'][2] for r in results) / n_samples
 
-    edge_point_dist_metric_v = np.float64(0)
-    edge_point_dist_metric_e = np.float64(0)
-    edge_point_dist_metric_tw = np.float64(0)
+    edge_point_dist_metric_v  = sum(r['epd'][0] for r in results) / n_samples
+    edge_point_dist_metric_e  = sum(r['epd'][1] for r in results) / n_samples
+    edge_point_dist_metric_tw = sum(r['epd'][2] for r in results) / n_samples
 
-    neighbor_preservation_metric_v = np.zeros_like(n_neighbors, dtype=np.float64)
-    neighbor_preservation_metric_e = np.zeros_like(n_neighbors, dtype=np.float64)
-    neighbor_preservation_metric_tw = np.zeros_like(n_neighbors, dtype=np.float64)
-
-    classification_metric_v = np.zeros_like(n_neighbors, dtype=np.float64)
-    classification_metric_e = np.zeros_like(n_neighbors, dtype=np.float64)
-    classification_metric_tw = np.zeros_like(n_neighbors, dtype=np.float64)
-
-    for seed in range(n_samples):
-        E_in = embedding(seed=seed, d=d, **embedding_kw)
-
-        # Step 1: Create initial positions for the embeddings
-        y0 = E_in.init_embedding(nv+ne, d)
-
-        y0e  = y0[:, :ne] if common_init else None
-        y0v  = y0[:, ne:] if common_init else None
-        y0tw = y0 if common_init else None
-
-        # Step 2: Embed using all three approaches
-        X = E_in.embed(Gv_in, y0 = y0v)
-        Y = E_in.embed(Ge_in, y0 = y0e)
-        Z = E_in.embed(Gtw_in, y0 = y0tw)
-
-        # Step 3: Extract vertex and edge embeddings for each approach
-        X_v, X_e, _ = Gv_in.vertex_and_edge_embeddings(X)
-        Y_v, Y_e, _ = Ge_in.vertex_and_edge_embeddings(Y)
-        Z_v, Z_e, _ = Gtw_in.vertex_and_edge_embeddings(Z)
-
-        vertex_point_dist_metric_v += point_distance_metric(X_v, d)
-        vertex_point_dist_metric_e += point_distance_metric(Y_v, d)
-        vertex_point_dist_metric_tw += point_distance_metric(Z_v, d)
-
-        edge_point_dist_metric_v += point_distance_metric(X_e, d)
-        edge_point_dist_metric_e += point_distance_metric(Y_e, d)
-        edge_point_dist_metric_tw += point_distance_metric(Z_e, d)
-
-        neighbor_preservation_metric_v += knn_neighbor_preservation_accuracy(X_v, G, n_neighbors)
-        neighbor_preservation_metric_e += knn_neighbor_preservation_accuracy(Y_v, G, n_neighbors)
-        neighbor_preservation_metric_tw += knn_neighbor_preservation_accuracy(Z_v, G, n_neighbors)
-
-        if target is not None:
-            classification_metric_v += knn_classification_accuracy(X_v, target, n_neighbors)
-            classification_metric_e += knn_classification_accuracy(Y_v, target, n_neighbors)
-            classification_metric_tw += knn_classification_accuracy(Z_v, target, n_neighbors)
-
-    vertex_point_dist_metric_v = vertex_point_dist_metric_v / n_samples
-    vertex_point_dist_metric_e = vertex_point_dist_metric_e / n_samples
-    vertex_point_dist_metric_tw = vertex_point_dist_metric_tw / n_samples
-
-    edge_point_dist_metric_v = edge_point_dist_metric_v / n_samples
-    edge_point_dist_metric_e = edge_point_dist_metric_e / n_samples
-    edge_point_dist_metric_tw = edge_point_dist_metric_tw / n_samples
-
-    neighbor_preservation_metric_v = neighbor_preservation_metric_v / n_samples
-    neighbor_preservation_metric_e = neighbor_preservation_metric_e / n_samples
-    neighbor_preservation_metric_tw = neighbor_preservation_metric_tw / n_samples
+    neighbor_preservation_metric_v  = sum(r['np'][0] for r in results) / n_samples
+    neighbor_preservation_metric_e  = sum(r['np'][1] for r in results) / n_samples
+    neighbor_preservation_metric_tw = sum(r['np'][2] for r in results) / n_samples
 
     if target is not None:
-        classification_metric_v = classification_metric_v / n_samples
-        classification_metric_e = classification_metric_e / n_samples
-        classification_metric_tw = classification_metric_tw / n_samples
+        classification_metric_v  = sum(r['cl'][0] for r in results) / n_samples
+        classification_metric_e  = sum(r['cl'][1] for r in results) / n_samples
+        classification_metric_tw = sum(r['cl'][2] for r in results) / n_samples
 
     metrics_dict = {
         'n_neighbors': n_neighbors,
