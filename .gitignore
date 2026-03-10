@@ -175,3 +175,6 @@ cython_debug/
 *.asv
 paper/manuscript-twin-embedding/.vscode/ltex.dictionary.en-US.txt
 paper/manuscript-twin-embedding/.vscode/settings.json
+
+# nbstripout settings
+.git-nbconfig.yaml
