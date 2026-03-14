@@ -115,7 +115,7 @@ def drawedges(G, dim_emb, pos, ax, alpha, linewidth, color='b'):
         raise ValueError("Embedding dimension must be 2 or 3")
 
 
-def draw_curved_edges(G, dim_emb, v_pos, e_pos, ax, n_samples, alpha, linewidth, color='b'):
+def draw_curved_edges(G, dim_emb, v_pos, e_pos, ax, n_samples, alpha, linewidth, color='b', gamma=0.5):
     num_edges = len(G.edges())
 
     color = to_rgba_array(color)
@@ -146,14 +146,12 @@ def draw_curved_edges(G, dim_emb, v_pos, e_pos, ax, n_samples, alpha, linewidth,
         elif linewidth.size != num_edges:
             raise ValueError("linewidth must be a single value or an iterable of length num_edges")
 
-    # This is the classic Bezier curve kernel for a curve that interpolates points
-    # P(0) = P0 and P(1) = P2 but is a lerp of the points for values 0 < t < 1
-    curve_kernel = np.array([[1,0,0],[-2,2,0],[1,-2,1]])
-
-    # This curve kernel defines a parametric curve P(t) for 3 control points P0,P1,P2
-    # such that P(0) = P0, P(1/2) = P1, P(1) = P2. Meaning that it is an interpolating
-    # curve of all points.
-    #curve_kernel = np.array([[1,0,0],[-3,4,-1],[2,-4,2]])
+    # The curve kernel describes the type of curve that will be drawn. It has been derived such
+    # that for points in space P0, P1 and P2: P(0) = P0 and P(1) = P(2). 
+    # The parameter gamma controls the curvature of the line. 
+    # gamma = 0 is a straight line. gamma = 0.5 is a classic bezier (lerp).
+    # gamma = 1 is a 3-point interpolating line such that P(1/2) = P1.
+    curve_kernel = np.array([[1,0,0],[-1-2*gamma,4*gamma,1-2*gamma],[2*gamma,-4*gamma,2*gamma]])
 
     # Parameter t ranges from 0 to 1 and is the parametric input to the curve
     t = np.linspace(0, 1, n_samples)
@@ -276,8 +274,8 @@ def application_plot(
     markersize_edge=18,
     linewidth=2,
     alpha=0.1,
+    curvature=0,
     show_edges_original=True,
-    show_curved_edges=False,
     show_edges_segments=False,
     segment_alpha=0.9,
     segment_width=2,
@@ -313,10 +311,7 @@ def application_plot(
         ax = axes[i*2] if horizontal else axes[0,i]
         ax.scatter(*experiment[method]["V"][:,perm], c=colors_vertices[perm,:], s=markersize_vertex, zorder=3)
         if show_edges_original:
-            if show_curved_edges:
-                draw_curved_edges(G, dim_emb, experiment[method]["V"], experiment[method]["E"], ax, 64, alpha, linewidth, color = colors_edges)
-            else:
-                drawedges(G, dim_emb, experiment[method]["V"], ax, alpha, linewidth, color = colors_edges)
+            draw_curved_edges(G, dim_emb, experiment[method]["V"], experiment[method]["E"], ax, 64, alpha, linewidth, color = colors_edges, gamma=curvature)
 
         ax.set_box_aspect(1)
 
