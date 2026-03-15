@@ -356,6 +356,7 @@ def tree_of_cliques_curves(
     n: int = 4,
     dim_embedding: int = 2,
     lambda_par: int = 5,
+    curvature: float = 0.5,
     run_exact: bool = False
 ):
 
@@ -393,7 +394,8 @@ def tree_of_cliques_curves(
             experiment[method]["E"],
             ax, 64,
             alpha, linewidth,
-            color="b"
+            color="b",
+            gamma=curvature
         )
 
         ax.set_box_aspect(1)
@@ -479,6 +481,7 @@ def small_world_curves(
     p : float = 0.01,
     dim_embedding: int = 2,
     lambda_par: int = 10,
+    curvature: float = 0.5,
     run_exact: bool = False
 ):
 
@@ -509,7 +512,7 @@ def small_world_curves(
         ax = axes[i]
 
         ax.scatter(*experiment[method]["V"], c="r", s=15, zorder=3)
-        draw_curved_edges(G, dim_embedding, experiment[method]["V"], experiment[method]["E"], ax, 64, alpha, linewidth)
+        draw_curved_edges(G, dim_embedding, experiment[method]["V"], experiment[method]["E"], ax, 64, alpha, linewidth, "b", curvature)
 
         ax.set_box_aspect(1)
 
@@ -673,6 +676,7 @@ def football_figure(
 def football_curves(
     dim_embedding: int = 2,
     lambda_par: int = 5,
+    curvature: float = 0.5,
     run_exact: bool = False
 ):
     frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
@@ -784,7 +788,8 @@ def football_curves(
             experiment[method]["V"],
             experiment[method]["E"],
             ax, 64,
-            edge_alpha, 1, edge_colors
+            edge_alpha, 1, edge_colors,
+            curvature
         )
 
         ax.set_box_aspect(1)
