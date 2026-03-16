@@ -12,6 +12,7 @@ from sgtsnepi import sgtsnepi
 
 import twin.graphmatrix as gm
 
+
 @dataclass
 class GraphEmbeddingMethod:
     """Base class for graph embedding methods.
@@ -19,9 +20,10 @@ class GraphEmbeddingMethod:
     Attributes:
         method_name (str): The name of the embedding method.
     """
+
     method_name: str
 
-    def embed(self, graph, y0 = None):
+    def embed(self, graph, y0=None):
         """Placeholder method for embedding. Subclasses should override this.
 
         Args:
@@ -44,6 +46,7 @@ class GraphEmbeddingMethod:
         """
         return np.zeros((d, n))
 
+
 @dataclass
 class SpringLayout(GraphEmbeddingMethod):
     """Spring layout embedding.
@@ -52,9 +55,10 @@ class SpringLayout(GraphEmbeddingMethod):
         method_name (str): The name of the embedding method.
         seed (int): Seed for the random number generator.
     """
-    method_name: str = "Spring Layout" # Override the method name
-    seed: int = 0 # Seed for the random number generator
-    d: int = 2 # Dimensionality of the embedding
+
+    method_name: str = "Spring Layout"  # Override the method name
+    seed: int = 0  # Seed for the random number generator
+    d: int = 2  # Dimensionality of the embedding
     # --- add any additional parameters here ---
 
     def init_embedding(self, n, d):
@@ -68,9 +72,9 @@ class SpringLayout(GraphEmbeddingMethod):
             np.ndarray: The initial embedding.
         """
         rng = np.random.default_rng(self.seed)
-        return rng.uniform(size=(d, n)) 
+        return rng.uniform(size=(d, n))
 
-    def embed(self, G: gm.GraphMatrixMethod, y0 = None):
+    def embed(self, G: gm.GraphMatrixMethod, y0=None):
         """Embed the graph using a spring layout.
 
         Args:
@@ -82,19 +86,20 @@ class SpringLayout(GraphEmbeddingMethod):
         # form graph from adjacency matrix sp
         adj = G.get_adj()
         graph = nx.from_scipy_sparse_array(adj)
-        
+
         if y0 is None:
             pos = None
         else:
             pos = {i: y0[:, i] for i in range(adj.shape[0])}
 
-        Y_spring = nx.spring_layout(graph, seed=self.seed, pos=pos, dim = self.d)
+        Y_spring = nx.spring_layout(graph, seed=self.seed, pos=pos, dim=self.d)
 
-        Y = np.zeros( (self.d, adj.shape[0]) )
+        Y = np.zeros((self.d, adj.shape[0]))
         for node, pos in Y_spring.items():
             Y[:, node] = pos
 
         return Y
+
 
 @dataclass
 class SGtSNELayout(GraphEmbeddingMethod):
@@ -106,12 +111,13 @@ class SGtSNELayout(GraphEmbeddingMethod):
         seed (int): Seed for the random number generator.
         d (int): Dimensionality of the embedding.
     """
-    method_name: str = "SGtSNE Layout" # Override the method name
-    lambda_par: float = 1.0 # Lambda parameter for SGtSNE
-    seed: int = 0 # Seed for the random number generator
-    d: int = 2 # Dimensionality of the embedding
-    silent: bool = True # Whether to suppress output from SGtSNE
-    run_exact: bool = False # Whether to run the exact version of SGtSNE
+
+    method_name: str = "SGtSNE Layout"  # Override the method name
+    lambda_par: float = 1.0  # Lambda parameter for SGtSNE
+    seed: int = 0  # Seed for the random number generator
+    d: int = 2  # Dimensionality of the embedding
+    silent: bool = True  # Whether to suppress output from SGtSNE
+    run_exact: bool = False  # Whether to run the exact version of SGtSNE
 
     def init_embedding(self, n, d):
         """Initialize the embedding with random values.
@@ -126,7 +132,7 @@ class SGtSNELayout(GraphEmbeddingMethod):
         rng = np.random.default_rng(self.seed)
         return rng.normal(size=(d, n), loc=0, scale=1e-4)
 
-    def embed(self, G: gm.GraphMatrixMethod, y0 = None):
+    def embed(self, G: gm.GraphMatrixMethod, y0=None):
         """Embed the graph using SGtSNE.
 
         Args:
@@ -158,12 +164,13 @@ class SpectralLayout(GraphEmbeddingMethod):
         method_name (str): The name of the embedding method.
         d (int): Dimensionality of the embedding.
     """
+
     method_name: str = "Spectral Layout"
     d: int = 2
     normed: bool = True
     seed: int = 0
 
-    def embed(self, G: gm.GraphMatrixMethod, y0 = None):
+    def embed(self, G: gm.GraphMatrixMethod, y0=None):
         """Embed the graph using spectral layout.
 
         Args:
@@ -174,7 +181,7 @@ class SpectralLayout(GraphEmbeddingMethod):
         """
         adj = G.get_adj()
         L = sp.csgraph.laplacian(adj, normed=self.normed)
-        eigvals, eigvecs = sp.linalg.eigsh(L, k=self.d+1, which='SM')
+        eigvals, eigvecs = sp.linalg.eigsh(L, k=self.d + 1, which="SM")
         eigvecs = eigvecs[:, 1:].T
 
         return eigvecs

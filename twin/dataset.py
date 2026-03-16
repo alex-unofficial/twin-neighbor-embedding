@@ -18,12 +18,13 @@ from math import ceil
 #                                 Sets of data                                 #
 # ---------------------------------------------------------------------------- #
 
+
 def ring_of_cliques(n, k):
     return nx.ring_of_cliques(n, k)
 
 
 def tree_of_cliques(h, k, n, root_cluster=False):
-    '''Generate Tree of Cliques graph
+    """Generate Tree of Cliques graph
 
     Args:
         h (int) : height of the tree structure
@@ -32,8 +33,8 @@ def tree_of_cliques(h, k, n, root_cluster=False):
 
     Returns:
         networkx.Graph: The Tree of Cliques graph.
-    '''
-    
+    """
+
     # Construct root clique
     if root_cluster:
         tok = nx.complete_graph(n)
@@ -64,42 +65,43 @@ def tree_of_cliques(h, k, n, root_cluster=False):
     return tok
 
 
-def barabasi_albert(n, k, seed = 0, **kwargs):
-    return nx.barabasi_albert_graph(n, k, seed = seed, **kwargs)
+def barabasi_albert(n, k, seed=0, **kwargs):
+    return nx.barabasi_albert_graph(n, k, seed=seed, **kwargs)
 
 
-def small_world(n, k, p, seed = 0, **kwargs):
-    return nx.watts_strogatz_graph(n, k, p, seed = seed, **kwargs)
+def small_world(n, k, p, seed=0, **kwargs):
+    return nx.watts_strogatz_graph(n, k, p, seed=seed, **kwargs)
 
 
 def karate():
-    return nx.from_scipy_sparse_array(load_spmatfile(str(REAL_WORLD_DIR / 'karate.mat')))
+    return nx.from_scipy_sparse_array(load_spmatfile(str(REAL_WORLD_DIR / "karate.mat")))
+
 
 def homer():
-    return nx.from_scipy_sparse_array(load_spmatfile(str(REAL_WORLD_DIR / 'homer.mat')))
+    return nx.from_scipy_sparse_array(load_spmatfile(str(REAL_WORLD_DIR / "homer.mat")))
 
 
 def football():
-    return nx.from_scipy_sparse_array(load_spmatfile(str(REAL_WORLD_DIR / 'football.mat')))
+    return nx.from_scipy_sparse_array(load_spmatfile(str(REAL_WORLD_DIR / "football.mat")))
 
 
 def football_2023():
-    return nx.from_scipy_sparse_array(load_spmatfile(str(REAL_WORLD_DIR / 'football_2023.mat')))
+    return nx.from_scipy_sparse_array(load_spmatfile(str(REAL_WORLD_DIR / "football_2023.mat")))
 
 
 def tabula(organ="vasculature"):
-    return nx.from_scipy_sparse_array(load_spmatfile(str(REAL_WORLD_DIR / f'tabula-{organ}.mat')))
+    return nx.from_scipy_sparse_array(load_spmatfile(str(REAL_WORLD_DIR / f"tabula-{organ}.mat")))
 
 
 def polblogs():
-    return nx.from_scipy_sparse_array(load_spmatfile(str(REAL_WORLD_DIR / 'polblogs-lwcc.mat')))
+    return nx.from_scipy_sparse_array(load_spmatfile(str(REAL_WORLD_DIR / "polblogs-lwcc.mat")))
 
 
 def sbmer3modes():
-    return nx.from_scipy_sparse_array(load_spmatfile(str(SYNTHETIC_NET_DIR / 'sbm-er-3modes.mat')))
+    return nx.from_scipy_sparse_array(load_spmatfile(str(SYNTHETIC_NET_DIR / "sbm-er-3modes.mat")))
 
 
-def mycielski(n = 7):
+def mycielski(n=7):
     """Generate the Mycielski graph of order n.
 
     Args:
@@ -119,7 +121,6 @@ def lfr():
     G = nx.LFR_benchmark_graph(
         n=1000, tau1=3, tau2=1.5, mu=0.1, average_degree=10, min_community=200, seed=0
     )
-
 
     # keep only the largest connected component
     largest_cc = max(nx.connected_components(G), key=len)
@@ -159,11 +160,10 @@ def load_spmatfile(filename: Path):
 
 def construct_knn_graph(point_cloud: np.array, n_neighbours: int):
     knn = NearestNeighbors(n_neighbors=n_neighbours).fit(point_cloud)
-    knn_distance_matrix = knn.kneighbors_graph(mode='distance')
+    knn_distance_matrix = knn.kneighbors_graph(mode="distance")
     knn_graph = nx.from_numpy_array(knn_distance_matrix)
 
     return knn_graph
-
 
 
 def stick_sculpture(n):
@@ -179,23 +179,22 @@ def stick_sculpture(n):
     ident = np.eye(n)
 
     Apath = ident.copy()
-    Apath[n-1, n-1] = 0
-    Apath = Apath[:, [n-1] + list(range(n-1))]
+    Apath[n - 1, n - 1] = 0
+    Apath = Apath[:, [n - 1] + list(range(n - 1))]
 
     Astar = np.zeros((n, n))
-    Astar[0, 1:ceil(2*n/3)] = 1
+    Astar[0, 1 : ceil(2 * n / 3)] = 1
 
     Awall = Apath + Astar
     Awall = Awall + Awall.T
 
-    Astar[0, 1:ceil(3*n/4)] = 1
+    Astar[0, 1 : ceil(3 * n / 4)] = 1
     Afloor = Apath + Astar
     Afloor = Afloor + Afloor.T
 
-    twist = ident[:, [0] + list(range(n-1, 0, -1))]
+    twist = ident[:, [0] + list(range(n - 1, 0, -1))]
 
     A = np.block([[Awall, twist], [twist.T, Afloor]])
 
     G = nx.from_numpy_array(A)
     return G
-

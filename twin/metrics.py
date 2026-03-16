@@ -7,9 +7,7 @@ from sklearn.metrics.pairwise import euclidean_distances
 def knn_classification_accuracy(X: np.ndarray, target: np.ndarray, n_neighbors):
     # Handle both scalar and iterable inputs
     if isinstance(n_neighbors, (list, np.ndarray)):
-        accuracies = np.array([
-            knn_classification_accuracy(X, target, n) for n in n_neighbors
-        ])
+        accuracies = np.array([knn_classification_accuracy(X, target, n) for n in n_neighbors])
 
         return accuracies
 
@@ -18,7 +16,7 @@ def knn_classification_accuracy(X: np.ndarray, target: np.ndarray, n_neighbors):
     if X.shape[0] != n_samples and X.shape[1] == n_samples:
         X = X.T
 
-    knn_classifier = KNeighborsClassifier(n_neighbors=n_neighbors, weights='distance')
+    knn_classifier = KNeighborsClassifier(n_neighbors=n_neighbors, weights="distance")
     knn_classifier.fit(X, target)
 
     # Generate target prediction from kNN classifier
@@ -33,9 +31,7 @@ def knn_classification_accuracy(X: np.ndarray, target: np.ndarray, n_neighbors):
 def knn_neighbor_preservation_accuracy(X: np.ndarray, G: nx.Graph, n_neighbors):
     # Handle both scalar and iterable inputs
     if isinstance(n_neighbors, (list, np.ndarray)):
-        accuracies = np.array([
-            knn_neighbor_preservation_accuracy(X, G, n) for n in n_neighbors
-        ])
+        accuracies = np.array([knn_neighbor_preservation_accuracy(X, G, n) for n in n_neighbors])
 
         return accuracies
 
@@ -48,7 +44,7 @@ def knn_neighbor_preservation_accuracy(X: np.ndarray, G: nx.Graph, n_neighbors):
     knn.fit(X)
 
     # connectivity matrices (sparse)
-    knn_adjacency_matrix = knn.kneighbors_graph(mode='connectivity')
+    knn_adjacency_matrix = knn.kneighbors_graph(mode="connectivity")
     true_adjacency_matrix = nx.adjacency_matrix(G, weight=None)
 
     # ensure CSR format for elementwise operations
@@ -63,7 +59,7 @@ def knn_neighbor_preservation_accuracy(X: np.ndarray, G: nx.Graph, n_neighbors):
     true_degrees = np.asarray(true_adj.sum(axis=1)).ravel()
 
     # avoid division by zero: mark degree-0 nodes as NaN and use nanmean
-    with np.errstate(divide='ignore', invalid='ignore'):
+    with np.errstate(divide="ignore", invalid="ignore"):
         neighbor_accuracy = matching_counts / true_degrees
     neighbor_accuracy = np.where(true_degrees == 0, np.nan, neighbor_accuracy)
 
@@ -72,7 +68,7 @@ def knn_neighbor_preservation_accuracy(X: np.ndarray, G: nx.Graph, n_neighbors):
     return mean_accuracy
 
 
-def point_distance_metric(X: np.ndarray, dim=2, return_histogram=False, bins='auto'):
+def point_distance_metric(X: np.ndarray, dim=2, return_histogram=False, bins="auto"):
 
     # Ensure X has shape (n_points, d)
     if X.shape[1] != dim and X.shape[1] == dim:
@@ -86,4 +82,3 @@ def point_distance_metric(X: np.ndarray, dim=2, return_histogram=False, bins='au
     else:
         average_point_distance = np.mean(all_point_distances)
         return average_point_distance
-

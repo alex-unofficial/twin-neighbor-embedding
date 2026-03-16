@@ -133,7 +133,7 @@ football_2023 = {
         "Sun Belt",
         "American Athletic",
         "Conference USA football standings",
-        "Mid-American"
+        "Mid-American",
     ],
     "conference_standing": [
         "Conference USA football standings",
@@ -267,12 +267,9 @@ football_2023 = {
         "Sun Belt (West)",
         "American Athletic",
         "Conference USA football standings",
-        "Mid-American (East)"
-    ]
+        "Mid-American (East)",
+    ],
 }
 
 _digits = load_digits()
-mnist = {
-    'digit': _digits.target,
-    'image': _digits.images
-}
+mnist = {"digit": _digits.target, "image": _digits.images}

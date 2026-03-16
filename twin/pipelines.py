@@ -1,4 +1,3 @@
-
 import networkx as nx
 import scipy.sparse as sp
 import numpy as np
@@ -13,16 +12,18 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import textwrap
 
+
 def graph_embedding_all(
-    G: nx.Graph, embedding = emb.SpringLayout,
+    G: nx.Graph,
+    embedding=emb.SpringLayout,
     seed: int = 0,
     d: int = 2,
     embedding_kw: dict = {},
     twinmatrix_kw: dict = {},
     common_init: bool = True,
-    normalize: bool = False
+    normalize: bool = False,
 ):
-    """ Runs the full pipeline for all graph matrix methods. """
+    """Runs the full pipeline for all graph matrix methods."""
 
     E_in = embedding(seed=seed, d=d, **embedding_kw)
     Gv_in = gm.VertexMatrix(G, normalize=False)
@@ -34,16 +35,16 @@ def graph_embedding_all(
     ne = Gtw_in.incidence.shape[1]
 
     # Step 1: Create initial positions for the embeddings
-    y0 = E_in.init_embedding(nv+ne, d)
+    y0 = E_in.init_embedding(nv + ne, d)
 
-    y0e  = y0[:, :ne] if common_init else None
-    y0v  = y0[:, ne:] if common_init else None
+    y0e = y0[:, :ne] if common_init else None
+    y0v = y0[:, ne:] if common_init else None
     y0tw = y0 if common_init else None
 
     # Step 2: Embed using all three approaches
-    X = E_in.embed(Gv_in, y0 = y0v)
-    Y = E_in.embed(Ge_in, y0 = y0e)
-    Z = E_in.embed(Gtw_in, y0 = y0tw)
+    X = E_in.embed(Gv_in, y0=y0v)
+    Y = E_in.embed(Ge_in, y0=y0e)
+    Z = E_in.embed(Gtw_in, y0=y0tw)
 
     # Step 3: Extract vertex and edge embeddings for each approach
     X_v, X_e, X_s = Gv_in.vertex_and_edge_embeddings(X)
@@ -55,9 +56,9 @@ def graph_embedding_all(
     L = L - sp.diags(L.diagonal())
 
     inc_emb = sp.block_array(
-        [[None, Gv_in.incidence.T],
-         [Gv_in.incidence, None]],
-        format='csc', dtype=Gv_in.incidence.dtype
+        [[None, Gv_in.incidence.T], [Gv_in.incidence, None]],
+        format="csc",
+        dtype=Gv_in.incidence.dtype,
     )
 
     dict_result = {
@@ -69,14 +70,13 @@ def graph_embedding_all(
         "Ge_in": Ge_in,
         "Gtw_in": Gtw_in,
         "LineGraph": nx.from_scipy_sparse_array(L),
-        "IncidenceGraph": nx.from_scipy_sparse_array(inc_emb)
+        "IncidenceGraph": nx.from_scipy_sparse_array(inc_emb),
     }
     return dict_result
 
 
 def _embedding_metrics_single_seed(
-    seed, G, embedding, d, embedding_kw, twinmatrix_kw,
-    common_init, normalize, n_neighbors, target
+    seed, G, embedding, d, embedding_kw, twinmatrix_kw, common_init, normalize, n_neighbors, target
 ):
     """Run embedding and compute metrics for a single seed."""
     Gv_in = gm.VertexMatrix(G, normalize=False)
@@ -87,10 +87,10 @@ def _embedding_metrics_single_seed(
     ne = Gtw_in.incidence.shape[1]
 
     E_in = embedding(seed=seed, d=d, **embedding_kw)
-    y0 = E_in.init_embedding(nv+ne, d)
+    y0 = E_in.init_embedding(nv + ne, d)
 
-    y0e  = y0[:, :ne] if common_init else None
-    y0v  = y0[:, ne:] if common_init else None
+    y0e = y0[:, :ne] if common_init else None
+    y0v = y0[:, ne:] if common_init else None
     y0tw = y0 if common_init else None
 
     X = E_in.embed(Gv_in, y0=y0v)
@@ -102,15 +102,25 @@ def _embedding_metrics_single_seed(
     Z_v, Z_e, _ = Gtw_in.vertex_and_edge_embeddings(Z)
 
     result = {
-        'vpd': (point_distance_metric(X_v, d), point_distance_metric(Y_v, d), point_distance_metric(Z_v, d)),
-        'epd': (point_distance_metric(X_e, d), point_distance_metric(Y_e, d), point_distance_metric(Z_e, d)),
-        'np':  (knn_neighbor_preservation_accuracy(X_v, G, n_neighbors),
-                knn_neighbor_preservation_accuracy(Y_v, G, n_neighbors),
-                knn_neighbor_preservation_accuracy(Z_v, G, n_neighbors)),
+        "vpd": (
+            point_distance_metric(X_v, d),
+            point_distance_metric(Y_v, d),
+            point_distance_metric(Z_v, d),
+        ),
+        "epd": (
+            point_distance_metric(X_e, d),
+            point_distance_metric(Y_e, d),
+            point_distance_metric(Z_e, d),
+        ),
+        "np": (
+            knn_neighbor_preservation_accuracy(X_v, G, n_neighbors),
+            knn_neighbor_preservation_accuracy(Y_v, G, n_neighbors),
+            knn_neighbor_preservation_accuracy(Z_v, G, n_neighbors),
+        ),
     }
 
     if target is not None:
-        result['cl'] = (
+        result["cl"] = (
             knn_classification_accuracy(X_v, target, n_neighbors),
             knn_classification_accuracy(Y_v, target, n_neighbors),
             knn_classification_accuracy(Z_v, target, n_neighbors),
@@ -120,74 +130,77 @@ def _embedding_metrics_single_seed(
 
 
 def embedding_metrics_all(
-    G: nx.Graph, embedding = emb.SpringLayout,
+    G: nx.Graph,
+    embedding=emb.SpringLayout,
     d: int = 2,
-    n_samples : int = 1,
+    n_samples: int = 1,
     n_neighbors: int = 10,
-    target = None,
+    target=None,
     embedding_kw: dict = {},
     twinmatrix_kw: dict = {},
     common_init: bool = True,
     normalize: bool = False,
-    n_threads: int = 1
+    n_threads: int = 1,
 ):
 
     worker = partial(
         _embedding_metrics_single_seed,
-        G=G, embedding=embedding, d=d,
-        embedding_kw=embedding_kw, twinmatrix_kw=twinmatrix_kw,
-        common_init=common_init, normalize=normalize,
-        n_neighbors=n_neighbors, target=target
+        G=G,
+        embedding=embedding,
+        d=d,
+        embedding_kw=embedding_kw,
+        twinmatrix_kw=twinmatrix_kw,
+        common_init=common_init,
+        normalize=normalize,
+        n_neighbors=n_neighbors,
+        target=target,
     )
 
     with ProcessPoolExecutor(max_workers=n_threads) as executor:
         results = list(executor.map(worker, range(n_samples)))
 
-    vertex_point_dist_metric_v  = sum(r['vpd'][0] for r in results) / n_samples
-    vertex_point_dist_metric_e  = sum(r['vpd'][1] for r in results) / n_samples
-    vertex_point_dist_metric_tw = sum(r['vpd'][2] for r in results) / n_samples
+    vertex_point_dist_metric_v = sum(r["vpd"][0] for r in results) / n_samples
+    vertex_point_dist_metric_e = sum(r["vpd"][1] for r in results) / n_samples
+    vertex_point_dist_metric_tw = sum(r["vpd"][2] for r in results) / n_samples
 
-    edge_point_dist_metric_v  = sum(r['epd'][0] for r in results) / n_samples
-    edge_point_dist_metric_e  = sum(r['epd'][1] for r in results) / n_samples
-    edge_point_dist_metric_tw = sum(r['epd'][2] for r in results) / n_samples
+    edge_point_dist_metric_v = sum(r["epd"][0] for r in results) / n_samples
+    edge_point_dist_metric_e = sum(r["epd"][1] for r in results) / n_samples
+    edge_point_dist_metric_tw = sum(r["epd"][2] for r in results) / n_samples
 
-    neighbor_preservation_metric_v  = sum(r['np'][0] for r in results) / n_samples
-    neighbor_preservation_metric_e  = sum(r['np'][1] for r in results) / n_samples
-    neighbor_preservation_metric_tw = sum(r['np'][2] for r in results) / n_samples
+    neighbor_preservation_metric_v = sum(r["np"][0] for r in results) / n_samples
+    neighbor_preservation_metric_e = sum(r["np"][1] for r in results) / n_samples
+    neighbor_preservation_metric_tw = sum(r["np"][2] for r in results) / n_samples
 
     if target is not None:
-        classification_metric_v  = sum(r['cl'][0] for r in results) / n_samples
-        classification_metric_e  = sum(r['cl'][1] for r in results) / n_samples
-        classification_metric_tw = sum(r['cl'][2] for r in results) / n_samples
+        classification_metric_v = sum(r["cl"][0] for r in results) / n_samples
+        classification_metric_e = sum(r["cl"][1] for r in results) / n_samples
+        classification_metric_tw = sum(r["cl"][2] for r in results) / n_samples
 
     metrics_dict = {
-        'n_neighbors': n_neighbors,
-        'n_samples': n_samples,
-
-        'VertexPointDistance': {
-            'Vertex': vertex_point_dist_metric_v,
-            'Edge': vertex_point_dist_metric_e,
-            'Twin': vertex_point_dist_metric_tw
+        "n_neighbors": n_neighbors,
+        "n_samples": n_samples,
+        "VertexPointDistance": {
+            "Vertex": vertex_point_dist_metric_v,
+            "Edge": vertex_point_dist_metric_e,
+            "Twin": vertex_point_dist_metric_tw,
         },
-
-        'EdgePointDistance': {
-            'Vertex': edge_point_dist_metric_v,
-            'Edge': edge_point_dist_metric_e,
-            'Twin': edge_point_dist_metric_tw
+        "EdgePointDistance": {
+            "Vertex": edge_point_dist_metric_v,
+            "Edge": edge_point_dist_metric_e,
+            "Twin": edge_point_dist_metric_tw,
         },
-
-        'KNeighborsPreservation': {
-            'Vertex': neighbor_preservation_metric_v,
-            'Edge': neighbor_preservation_metric_e,
-            'Twin': neighbor_preservation_metric_tw
-        }
+        "KNeighborsPreservation": {
+            "Vertex": neighbor_preservation_metric_v,
+            "Edge": neighbor_preservation_metric_e,
+            "Twin": neighbor_preservation_metric_tw,
+        },
     }
 
     if target is not None:
-        metrics_dict['KNeighborsClassifier'] = {
-            'Vertex': classification_metric_v,
-            'Edge': classification_metric_e,
-            'Twin': classification_metric_tw
+        metrics_dict["KNeighborsClassifier"] = {
+            "Vertex": classification_metric_v,
+            "Edge": classification_metric_e,
+            "Twin": classification_metric_tw,
         }
 
     return metrics_dict
@@ -195,8 +208,8 @@ def embedding_metrics_all(
 
 def metrics_to_typ(metrics):
 
-    point_dist_tab = textwrap.dedent(
-        """
+    point_dist_tab = (
+        textwrap.dedent("""
         #table(
         \tcolumns: 5,
         \ttable.header(
@@ -208,28 +221,35 @@ def metrics_to_typ(metrics):
         \t),
         {content}
         )
-        """
-    ).format(
-        content = "\n\ttable.hline(stroke: 1pt),\n".join([
-            f"\tgraph(rowspan: 2)[{graph_label}],\n{
-                "\n".join([
-                    f"\t[{point_type}], ..hlmin({vert:.6f}, {edge:.6f}, {twin:.6f}),"
-                    for point_type, vert, edge, twin in zip(
-                        ['Vertex', 'Edge'],
-                        [vdist['Vertex'], edist['Vertex']],
-                        [vdist['Edge'], edist['Edge']],
-                        [vdist['Twin'], edist['Twin']]
+        """)
+        .format(
+            content="\n\ttable.hline(stroke: 1pt),\n".join(
+                [
+                    (
+                        f"\tgraph(rowspan: 2)[{graph_label}],\n{
+                            "\n".join([
+                                f"\t[{point_type}], ..hlmin({vert:.6f}, {edge:.6f}, {twin:.6f}),"
+                                for point_type, vert, edge, twin in zip(
+                                    ['Vertex', 'Edge'],
+                                    [vdist['Vertex'], edist['Vertex']],
+                                    [vdist['Edge'], edist['Edge']],
+                                    [vdist['Twin'], edist['Twin']]
+                                )
+                            ])
+                        }"
+                        if (vdist := metric["VertexPointDistance"])
+                        and (edist := metric["EdgePointDistance"])
+                        else ""
                     )
-                ])
-            }" if (vdist := metric['VertexPointDistance']) and (edist := metric['EdgePointDistance']) else ""
-            for graph_label, metric in metrics.items()
-        ])
-    ).expandtabs(2)
+                    for graph_label, metric in metrics.items()
+                ]
+            )
+        )
+        .expandtabs(2)
+    )
 
-
-
-    knn_adj_tab = textwrap.dedent(
-        """
+    knn_adj_tab = (
+        textwrap.dedent("""
         #table(
         \tcolumns: 5,
         \ttable.header(
@@ -241,24 +261,28 @@ def metrics_to_typ(metrics):
         \t),
         {content}
         )
-        """
-    ).format(
-        content = "\n\ttable.hline(stroke: 1pt),\n".join([
-            f"\tgraph(rowspan: {len(metric['n_neighbors'])})[{graph_label}],\n{
-                "\n".join([
-                    f"\t[{k}], ..hlmax({vert:.6f}, {edge:.6f}, {twin:.6f}),"
-                    for k, vert, edge, twin in zip(metric['n_neighbors'], knn_adj['Vertex'], knn_adj['Edge'], knn_adj['Twin'])
-                ])
-            }" if (knn_adj := metric['KNeighborsPreservation']) else ""
-            for graph_label, metric in metrics.items()
-        ])
-    ).expandtabs(2)
-
+        """)
+        .format(
+            content="\n\ttable.hline(stroke: 1pt),\n".join(
+                [
+                    f"\tgraph(rowspan: {len(metric['n_neighbors'])})[{graph_label}],\n{
+                        "\n".join([
+                            f"\t[{k}], ..hlmax({vert:.6f}, {edge:.6f}, {twin:.6f}),"
+                            for k, vert, edge, twin in zip(metric['n_neighbors'], knn_adj['Vertex'], knn_adj['Edge'], knn_adj['Twin'])
+                        ])
+                    }"
+                    if (knn_adj := metric["KNeighborsPreservation"]) else ""
+                    for graph_label, metric in metrics.items()
+                ]
+            )
+        )
+        .expandtabs(2)
+    )
 
     for m in metrics.values():
-        if 'KNeighborsClassifier' in m:
-            knn_class_tab = textwrap.dedent(
-                """
+        if "KNeighborsClassifier" in m:
+            knn_class_tab = (
+                textwrap.dedent("""
                 #table(
                 \tcolumns: 5,
                 \ttable.header(
@@ -270,25 +294,35 @@ def metrics_to_typ(metrics):
                 \t),
                 {content}
                 )
-                """
-            ).format(
-                content = "\n\ttable.hline(stroke: 1pt),\n".join([
-                    f"\tgraph(rowspan: {len(metric['n_neighbors'])})[{graph_label}],\n{
-                        "\n".join([
-                            f"\t[{k}], ..hlmax({vert:.6f}, {edge:.6f}, {twin:.6f}),"
-                            for k, vert, edge, twin in zip(metric['n_neighbors'], knn_class['Vertex'], knn_class['Edge'], knn_class['Twin'])
-                        ])
-                    }" if ('KNeighborsClassifier' in metric) and (knn_class := metric['KNeighborsClassifier']) else ""
-                    for graph_label, metric in metrics.items()
-                ])
-            ).expandtabs(2)
+                """)
+                .format(
+                    content="\n\ttable.hline(stroke: 1pt),\n".join(
+                        [
+                            (
+                                f"\tgraph(rowspan: {len(metric['n_neighbors'])})[{graph_label}],\n{
+                                    "\n".join([
+                                        f"\t[{k}], ..hlmax({vert:.6f}, {edge:.6f}, {twin:.6f}),"
+                                        for k, vert, edge, twin in zip(metric['n_neighbors'], knn_class['Vertex'], knn_class['Edge'], knn_class['Twin'])
+                                    ])
+                                }"
+                                if ("KNeighborsClassifier" in metric)
+                                and (knn_class := metric["KNeighborsClassifier"])
+                                else ""
+                            )
+                            for graph_label, metric in metrics.items()
+                        ]
+                    )
+                )
+                .expandtabs(2)
+            )
             break
     else:
         knn_class_tab = None
 
-    print(point_dist_tab)
-    print(knn_adj_tab)
-    print(knn_class_tab)
+    if knn_class_tab is not None:
+        return (point_dist_tab, knn_adj_tab, knn_class_tab)
+    else:
+        return (point_dist_tab, knn_adj_tab)
 
 
 def metrics_to_df(metrics: dict, graph_label: str = None):
@@ -311,63 +345,47 @@ def metrics_to_df(metrics: dict, graph_label: str = None):
         - 'KNeighborsPreservation': DataFrame with rows for k values
         - 'KNeighborsClassifier': DataFrame with rows for k values (if present)
     """
-    embedding_types = ['Vertex', 'Edge', 'Twin']
+    embedding_types = ["Vertex", "Edge", "Twin"]
 
     # 1. Point Distance DataFrame
     point_dist_data = {
         emb_type: [
-            metrics['VertexPointDistance'][emb_type],
-            metrics['EdgePointDistance'][emb_type]
+            metrics["VertexPointDistance"][emb_type],
+            metrics["EdgePointDistance"][emb_type],
         ]
         for emb_type in embedding_types
     }
 
-    df_point_dist = pd.DataFrame(
-        point_dist_data,
-        index=['Vertex', 'Edge']
-    )
-    df_point_dist.index.name = 'Point type'
+    df_point_dist = pd.DataFrame(point_dist_data, index=["Vertex", "Edge"])
+    df_point_dist.index.name = "Point type"
 
     # 2. KNeighbors Preservation DataFrame
     knn_pres_data = {
-        emb_type: metrics['KNeighborsPreservation'][emb_type]
-        for emb_type in embedding_types
+        emb_type: metrics["KNeighborsPreservation"][emb_type] for emb_type in embedding_types
     }
 
-    df_knn_preservation = pd.DataFrame(
-        knn_pres_data,
-        index=metrics['n_neighbors']
-    )
-    df_knn_preservation.index.name = 'k'
+    df_knn_preservation = pd.DataFrame(knn_pres_data, index=metrics["n_neighbors"])
+    df_knn_preservation.index.name = "k"
 
-    result = {
-        'PointDistance': df_point_dist,
-        'KNeighborsPreservation': df_knn_preservation
-    }
+    result = {"PointDistance": df_point_dist, "KNeighborsPreservation": df_knn_preservation}
 
     # 3. KNeighbors Classifier DataFrame (if present)
-    if 'KNeighborsClassifier' in metrics:
+    if "KNeighborsClassifier" in metrics:
         knn_class_data = {
-            emb_type: metrics['KNeighborsClassifier'][emb_type]
-            for emb_type in embedding_types
+            emb_type: metrics["KNeighborsClassifier"][emb_type] for emb_type in embedding_types
         }
 
-        df_knn_classifier = pd.DataFrame(
-            knn_class_data,
-            index=metrics['n_neighbors']
-        )
+        df_knn_classifier = pd.DataFrame(knn_class_data, index=metrics["n_neighbors"])
 
-        df_knn_classifier.index.name = 'k'
-        result['KNeighborsClassifier'] = df_knn_classifier
+        df_knn_classifier.index.name = "k"
+        result["KNeighborsClassifier"] = df_knn_classifier
 
     # Add graph label as MultiIndex if provided
     if graph_label is not None:
         for key in result:
             df = result[key]
             df.index = pd.MultiIndex.from_product(
-                [[graph_label], df.index],
-                names=['Graph', df.index.name or 'Metric']
+                [[graph_label], df.index], names=["Graph", df.index.name or "Metric"]
             )
 
     return result
-

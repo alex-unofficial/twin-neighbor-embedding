@@ -36,19 +36,22 @@ from timeit import default_timer as timer
 
 import scipy.io as sio
 
-def tabula_sapiens_blockadj(ax, experiment, partition, vertex_labels, label2id, label_colors, b = 7):
+
+def tabula_sapiens_blockadj(ax, experiment, partition, vertex_labels, label2id, label_colors, b=7):
     # Create a random sparse adjacency matrix in CSR format
     A = experiment["Gv_in"].get_adj()
 
     # permute A so that clusters from vertex_labels are contiguous
-    perm = np.lexsort( (np.array( partition.membership ).reshape(-1,1), vertex_labels.reshape(-1,1)), axis = 0 ).reshape(-1)
+    perm = np.lexsort(
+        (np.array(partition.membership).reshape(-1, 1), vertex_labels.reshape(-1, 1)), axis=0
+    ).reshape(-1)
     A_sub = A[perm, :][:, perm]
 
     unique_clusters, cluster_boundaries = np.unique(vertex_labels[perm], return_index=True)
     cluster_boundaries = cluster_boundaries // b
     cluster_boundaries = np.append(cluster_boundaries, A_sub.shape[0])
 
-    B = block_adj( A_sub, b )
+    B = block_adj(A_sub, b)
     n_blocks = B.shape[0]
 
     B_masked = np.where(B == 0, np.nan, B)
@@ -57,15 +60,14 @@ def tabula_sapiens_blockadj(ax, experiment, partition, vertex_labels, label2id, 
     # B /= (b**2)
 
     # get the colormap of gray in distinct colors (extract only 6 levels) and keep the last 3 levels
-    base_cmap = plt.get_cmap('gray_r', 6)
+    base_cmap = plt.get_cmap("gray_r", 6)
 
     cmap = colors.LinearSegmentedColormap.from_list(
-        "truncated_cmap",
-        base_cmap(np.linspace(1/4, 1, 256))  # Extract upper 1/3 of colormap
+        "truncated_cmap", base_cmap(np.linspace(1 / 4, 1, 256))  # Extract upper 1/3 of colormap
     )
-    cmap.set_bad('white')
+    cmap.set_bad("white")
 
-    ims = ax.imshow(B_masked, cmap=cmap, origin='upper', interpolation='nearest', vmin=0, vmax=3)
+    ims = ax.imshow(B_masked, cmap=cmap, origin="upper", interpolation="nearest", vmin=0, vmax=3)
     # plt.colorbar(ims, label='Sum in each b-by-b block')
     # ax.set_title('Blocked Visualization of Sparse Matrix')
     ax.set_xticks([])
@@ -76,14 +78,16 @@ def tabula_sapiens_blockadj(ax, experiment, partition, vertex_labels, label2id, 
     # Draw diagonal blocks using cluster boundaries
     for i in range(len(cluster_boundaries) - 1):
         start = cluster_boundaries[i]
-        end = cluster_boundaries[i+1]
+        end = cluster_boundaries[i + 1]
 
         # Define square corners for the diagonal blocks
         square_x = [start, end, end, start, start]
         square_y = [start, start, end, end, start]
 
         # Plot the block
-        blocks_lines.append( ax.plot(square_x, square_y, color=label_colors[i,:], linewidth=1.0)[0] )
+        blocks_lines.append(
+            ax.plot(square_x, square_y, color=label_colors[i, :], linewidth=1.0)[0]
+        )
 
         ax.set_xlim(0, n_blocks)
         ax.set_ylim(n_blocks, 0)
@@ -93,13 +97,18 @@ def tabula_sapiens_blockadj(ax, experiment, partition, vertex_labels, label2id, 
 
     legend_labels = [str(i) for i in label2id.keys()]
     # put a legend of the colors in label_colors along with the label in legend_labels
-    legend = ax.legend(blocks_lines, legend_labels, loc='upper right', title='Cell types', fontsize=6, title_fontsize=6)
+    legend = ax.legend(
+        blocks_lines,
+        legend_labels,
+        loc="upper right",
+        title="Cell types",
+        fontsize=6,
+        title_fontsize=6,
+    )
+
 
 def tabula_sapiens_teaser(
-    organ : str = "liver",
-    dim_embedding: int = 2,
-    lambda_par: float = 8,
-    run_exact: bool = False
+    organ: str = "liver", dim_embedding: int = 2, lambda_par: float = 8, run_exact: bool = False
 ):
 
     logger.info(f"Creating Tabula {organ.title()} figure")
@@ -111,19 +120,20 @@ def tabula_sapiens_teaser(
 
         # Extract embedding from Graph
         experiment = graph_embedding_all(
-            tabula, # input graph
-            twinmatrix_kw={"alpha": 0.85, "k": 2}, # twin matrix parameters
+            tabula,  # input graph
+            twinmatrix_kw={"alpha": 0.85, "k": 2},  # twin matrix parameters
             #
             # --- select one of the following embedding methods ---
-            embedding=emb.SGtSNELayout, embedding_kw={"lambda_par": lambda_par, "run_exact": run_exact},
+            embedding=emb.SGtSNELayout,
+            embedding_kw={"lambda_par": lambda_par, "run_exact": run_exact},
             # embedding=emb.SpectralLayout, embedding_kw={"normed": True},
             # embedding=emb.SpringLayout, embedding_kw={},
-            # 
+            #
             # --- the rest are common parameters ---
             seed=10,
             d=dim_embedding,
             common_init=True,
-            normalize=True
+            normalize=True,
         )
 
         end = timer()
@@ -136,17 +146,14 @@ def tabula_sapiens_teaser(
     tabula_ig = ig.Graph.from_networkx(tabula)
 
     partition = leiden.find_partition(
-        tabula_ig,
-        leiden.RBConfigurationVertexPartition,
-        resolution_parameter=1.0,
-        seed = 10
+        tabula_ig, leiden.RBConfigurationVertexPartition, resolution_parameter=1.0, seed=10
     )
 
-    s = sio.loadmat(str(REAL_WORLD_DIR / f'tabula-{organ}.mat'))
+    s = sio.loadmat(str(REAL_WORLD_DIR / f"tabula-{organ}.mat"))
 
-    Xumap_V, Xumap_E, Xumap_S = experiment['Gv_in'].vertex_and_edge_embeddings( s['X_umap'].T )
+    Xumap_V, Xumap_E, Xumap_S = experiment["Gv_in"].vertex_and_edge_embeddings(s["X_umap"].T)
 
-    orig_labels = s['cell_ontology_class'][0]
+    orig_labels = s["cell_ontology_class"][0]
     vertex_labels_leiden = partition.membership
     extracted_labels = np.array([elem[0] for elem in orig_labels])
     unique_labels = np.unique(extracted_labels)
@@ -156,12 +163,12 @@ def tabula_sapiens_teaser(
 
     vertex_labels = np.array([label2id[x] for x in extracted_labels])
 
-    n_labels = len( np.unique( vertex_labels ) )
+    n_labels = len(np.unique(vertex_labels))
 
     # Generate labels for edges based on the edge labels
-    edge_alpha        = []
-    edge_alpha_all    = []
-    edge_marker_size  = []
+    edge_alpha = []
+    edge_alpha_all = []
+    edge_marker_size = []
     alpha_edge_points = []
 
     # Generate labels for edges based on the edge labels
@@ -173,16 +180,16 @@ def tabula_sapiens_teaser(
             edge_labels.append(-1)
 
     label_colors = custom_cmap(n_labels, seed=7)
-    rgb0 = label_colors[ 0, : ].copy()
-    rgb5 = label_colors[ 5, : ].copy()
-    label_colors[ 0, : ] = rgb5
-    label_colors[ 5, : ] = rgb0
+    rgb0 = label_colors[0, :].copy()
+    rgb5 = label_colors[5, :].copy()
+    label_colors[0, :] = rgb5
+    label_colors[5, :] = rgb0
 
     vertex_colors = np.array([np.array(label_colors[l]) for l in vertex_labels])
     edge_colors = np.array([np.array(label_colors[l]) for l in edge_labels])
 
     for u, v, d in tabula.edges(data=True):
-        edge_alpha_all.append(d['weight'])
+        edge_alpha_all.append(d["weight"])
         if vertex_labels[u] == vertex_labels[v]:
             edge_alpha.append(0.4)
             edge_marker_size.append(0.5)
@@ -198,36 +205,52 @@ def tabula_sapiens_teaser(
 
     logger.info("Creating Tabula plots..")
 
-    fig, axes = plt.subplots(1, 5, figsize=(5*6, 6))
+    fig, axes = plt.subplots(1, 5, figsize=(5 * 6, 6))
     # Plot Vertex and Edge positions from twin embedding
-    frame_colors = [distinctipy.BLACK if i == -1 else plt.get_cmap('tab10')(i) for i in [-1, -1, -1, 2, 2]]
+    frame_colors = [
+        distinctipy.BLACK if i == -1 else plt.get_cmap("tab10")(i) for i in [-1, -1, -1, 2, 2]
+    ]
     for i in range(5):
 
         ax = axes[i]
 
         match i:
             case 0:
-                ax.scatter(*Xumap_V,  s=5, zorder=-1, alpha = 1, c = np.array([[.5, .5, .5]]))
+                ax.scatter(*Xumap_V, s=5, zorder=-1, alpha=1, c=np.array([[0.5, 0.5, 0.5]]))
             case 1:
-                ax.scatter(*Xumap_E, c=edge_colors, s=edge_marker_size, zorder=-1, alpha = alpha_edge_points)
+                ax.scatter(
+                    *Xumap_E, c=edge_colors, s=edge_marker_size, zorder=-1, alpha=alpha_edge_points
+                )
             case 2:
-                tabula_sapiens_blockadj(ax, experiment, partition, vertex_labels, label2id, label_colors, b = 7)
+                tabula_sapiens_blockadj(
+                    ax, experiment, partition, vertex_labels, label2id, label_colors, b=7
+                )
                 continue
             case 3:
-                ax.scatter(*experiment["TwinEmbedding"]["V"], s=8, c = np.array([[.5, .5, .5]]), zorder=-1, alpha = 1.0)
+                ax.scatter(
+                    *experiment["TwinEmbedding"]["V"],
+                    s=8,
+                    c=np.array([[0.5, 0.5, 0.5]]),
+                    zorder=-1,
+                    alpha=1.0,
+                )
             case 4:
-                ax.scatter(*experiment["TwinEmbedding"]["E"], c=edge_colors, s=edge_marker_size, zorder=-1, alpha = np.clip( 2*alpha_edge_points, max=1 ))
-
+                ax.scatter(
+                    *experiment["TwinEmbedding"]["E"],
+                    c=edge_colors,
+                    s=edge_marker_size,
+                    zorder=-1,
+                    alpha=np.clip(2 * alpha_edge_points, max=1),
+                )
 
         ax.set_box_aspect(1)
         ax.set_xticklabels([])
         ax.set_yticklabels([])
-        ax.tick_params(axis='both', which='both', length=0)
+        ax.tick_params(axis="both", which="both", length=0)
         ax.grid()
         for spine in ax.spines.values():
             spine.set_linewidth(4)
             spine.set_color(frame_colors[i])
-
 
     fig.tight_layout()
 
@@ -240,21 +263,21 @@ def tree_of_cliques(
     n: int = 4,
     dim_embedding: int = 2,
     lambda_par: int = 5,
-    run_exact: bool = False
+    run_exact: bool = False,
 ):
 
-    frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
+    frame_colors = [plt.get_cmap("tab10")(i) for i in [1, 4, 2]]
 
     logger.info(f"Creating Tree of Cliques figure")
 
-    G = dataset.tree_of_cliques( h=h, k=k, n=n )
+    G = dataset.tree_of_cliques(h=h, k=k, n=n)
 
     try:
         start = timer()
 
         experiment = graph_embedding_all(
-            G, # input graph
-            twinmatrix_kw={"alpha": 0.85, "k": 2}, # twin matrix parameters
+            G,  # input graph
+            twinmatrix_kw={"alpha": 0.85, "k": 2},  # twin matrix parameters
             #
             # --- select one of the following embedding methods ---
             embedding=emb.SGtSNELayout,
@@ -276,21 +299,20 @@ def tree_of_cliques(
     le, _, ce = count_intersections(G, experiment["EdgeEmbedding"]["V"])
     lt, _, ct = count_intersections(G, experiment["TwinEmbedding"]["V"])
 
-
     alpha = 0.3
     linewidth = 4
 
-    segment_alpha=0.9
-    segment_width=2
-    segment_length=1.0
+    segment_alpha = 0.9
+    segment_width = 2
+    segment_length = 1.0
 
     logger.info("Creating Tree of Cliques plots...")
 
-    fig, axes = plt.subplots(1, 4, figsize=(4*6, 6))
+    fig, axes = plt.subplots(1, 4, figsize=(4 * 6, 6))
 
     # Suplots 1 and 3
     for i, method in enumerate(["VertexEmbedding", "TwinEmbedding"]):
-        ax = axes[2*i]
+        ax = axes[2 * i]
 
         ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
         drawedges(G, dim_embedding, experiment[method]["V"], ax, alpha, linewidth)
@@ -302,7 +324,7 @@ def tree_of_cliques(
 
         for spine in ax.spines.values():
             spine.set_linewidth(4)
-            spine.set_color(frame_colors[2*i])
+            spine.set_color(frame_colors[2 * i])
 
     # Suplot 2
     axes[1].scatter(*experiment["VertexEmbedding"]["V"], c="r", s=64, zorder=1)
@@ -311,12 +333,12 @@ def tree_of_cliques(
     drawsegments(
         experiment["VertexEmbedding"]["E"],
         experiment["VertexEmbedding"]["S"],
-        ax = axes[1],
-        alpha = segment_alpha,
-        linewidth = segment_width,
-        segment_length = segment_length,
-        color = "b",
-        zorder = -1
+        ax=axes[1],
+        alpha=segment_alpha,
+        linewidth=segment_width,
+        segment_length=segment_length,
+        color="b",
+        zorder=-1,
     )
 
     axes[1].set_xticks([])
@@ -327,12 +349,12 @@ def tree_of_cliques(
         spine.set_color(frame_colors[0])
 
     # Subplot 4
-    axes[3].step(lv / np.max(lv), cv, c=frame_colors[0], label=r'$A_V$', linewidth=4)
+    axes[3].step(lv / np.max(lv), cv, c=frame_colors[0], label=r"$A_V$", linewidth=4)
     # axes[3].step(le / np.max(le), ce, c=frame_colors[1], label=r'$A_E$', linewidth=4)
-    axes[3].step(lt / np.max(lt), ct, c=frame_colors[2], label=r'$A_{tne}$', linewidth=4)
+    axes[3].step(lt / np.max(lt), ct, c=frame_colors[2], label=r"$A_{tne}$", linewidth=4)
 
-    axes[3].set_xlabel(r'length threshold $\tau$')
-    axes[3].set_ylabel(r'# edge crossings')
+    axes[3].set_xlabel(r"length threshold $\tau$")
+    axes[3].set_ylabel(r"# edge crossings")
 
     for spine in axes[3].spines.values():
         spine.set_linewidth(4)
@@ -357,18 +379,18 @@ def tree_of_cliques_curves(
     dim_embedding: int = 2,
     lambda_par: int = 5,
     curvature: float = 0.5,
-    run_exact: bool = False
+    run_exact: bool = False,
 ):
 
-    frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
+    frame_colors = [plt.get_cmap("tab10")(i) for i in [1, 4, 2]]
 
     logger.info(f"Creating Tree of Cliques curves figure")
 
-    G = dataset.tree_of_cliques( h=h, k=k, n=n )
+    G = dataset.tree_of_cliques(h=h, k=k, n=n)
 
     experiment = graph_embedding_all(
-        G, # input graph
-        twinmatrix_kw={"alpha": 0.85, "k": 2}, # twin matrix parameters
+        G,  # input graph
+        twinmatrix_kw={"alpha": 0.85, "k": 2},  # twin matrix parameters
         #
         # --- select one of the following embedding methods ---
         embedding=emb.SGtSNELayout,
@@ -382,20 +404,23 @@ def tree_of_cliques_curves(
     alpha = 0.3
     linewidth = 4
 
-    fig, axes = plt.subplots(1, 3, figsize=(3*6, 6))
+    fig, axes = plt.subplots(1, 3, figsize=(3 * 6, 6))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
         ax = axes[i]
 
         ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
 
         draw_curved_edges(
-            G, dim_embedding,
+            G,
+            dim_embedding,
             experiment[method]["V"],
             experiment[method]["E"],
-            ax, 64,
-            alpha, linewidth,
+            ax,
+            64,
+            alpha,
+            linewidth,
             color="b",
-            gamma=curvature
+            gamma=curvature,
         )
 
         ax.set_box_aspect(1)
@@ -412,15 +437,15 @@ def tree_of_cliques_curves(
 
 
 def small_world(
-    n : int = 150,
-    k : int = 12,
-    p : float = 0.01,
+    n: int = 150,
+    k: int = 12,
+    p: float = 0.01,
     dim_embedding: int = 2,
     lambda_par: int = 10,
-    run_exact: bool = False
+    run_exact: bool = False,
 ):
 
-    frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
+    frame_colors = [plt.get_cmap("tab10")(i) for i in [1, 4, 2]]
 
     logger.info("Creating Small World figure")
 
@@ -430,8 +455,8 @@ def small_world(
         start = timer()
 
         experiment = graph_embedding_all(
-            G, # input graph
-            twinmatrix_kw={"alpha": 0.85, "k": 2}, # twin matrix parameters
+            G,  # input graph
+            twinmatrix_kw={"alpha": 0.85, "k": 2},  # twin matrix parameters
             #
             # --- select one of the following embedding methods ---
             embedding=emb.SGtSNELayout,
@@ -454,7 +479,7 @@ def small_world(
 
     logger.info("Creating Small World plots...")
 
-    fig, axes = plt.subplots(1, 3, figsize=(3*6, 6))
+    fig, axes = plt.subplots(1, 3, figsize=(3 * 6, 6))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
         ax = axes[i]
 
@@ -476,24 +501,24 @@ def small_world(
 
 
 def small_world_curves(
-    n : int = 150,
-    k : int = 12,
-    p : float = 0.01,
+    n: int = 150,
+    k: int = 12,
+    p: float = 0.01,
     dim_embedding: int = 2,
     lambda_par: int = 10,
     curvature: float = 0.5,
-    run_exact: bool = False
+    run_exact: bool = False,
 ):
 
-    frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
+    frame_colors = [plt.get_cmap("tab10")(i) for i in [1, 4, 2]]
 
     logger.info(f"Creating Small World curves figure")
 
     G = dataset.small_world(n, k, p)
 
     experiment = graph_embedding_all(
-        G, # input graph
-        twinmatrix_kw={"alpha": 0.85, "k": 2}, # twin matrix parameters
+        G,  # input graph
+        twinmatrix_kw={"alpha": 0.85, "k": 2},  # twin matrix parameters
         #
         # --- select one of the following embedding methods ---
         embedding=emb.SGtSNELayout,
@@ -507,12 +532,23 @@ def small_world_curves(
     alpha = 0.3
     linewidth = 1
 
-    fig, axes = plt.subplots(1, 3, figsize=(3*6, 6))
+    fig, axes = plt.subplots(1, 3, figsize=(3 * 6, 6))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
         ax = axes[i]
 
         ax.scatter(*experiment[method]["V"], c="r", s=15, zorder=3)
-        draw_curved_edges(G, dim_embedding, experiment[method]["V"], experiment[method]["E"], ax, 64, alpha, linewidth, "b", curvature)
+        draw_curved_edges(
+            G,
+            dim_embedding,
+            experiment[method]["V"],
+            experiment[method]["E"],
+            ax,
+            64,
+            alpha,
+            linewidth,
+            "b",
+            curvature,
+        )
 
         ax.set_box_aspect(1)
 
@@ -531,10 +567,10 @@ def small_world_curves(
 def football_figure(
     dim_embedding: int = 2,
     lambda_par: int = 5,
-    run_exact: bool = False
+    run_exact: bool = False,
     # -----------------------------------------
 ):
-    frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
+    frame_colors = [plt.get_cmap("tab10")(i) for i in [1, 4, 2]]
 
     logger.info(f"Creating Football figure")
 
@@ -545,10 +581,11 @@ def football_figure(
 
         # Extract embedding from Graph
         experiment = graph_embedding_all(
-            football, # input graph
-            twinmatrix_kw={"alpha": 0.85, "k": 2}, # twin matrix parameters
+            football,  # input graph
+            twinmatrix_kw={"alpha": 0.85, "k": 2},  # twin matrix parameters
             # -- embedding method --
-            embedding=emb.SGtSNELayout, embedding_kw={"lambda_par": lambda_par, "run_exact": run_exact},
+            embedding=emb.SGtSNELayout,
+            embedding_kw={"lambda_par": lambda_par, "run_exact": run_exact},
             # --- the rest are common parameters ---
             seed=10,
             d=dim_embedding,
@@ -595,9 +632,9 @@ def football_figure(
     edge_alpha = []
     for u, v in football.edges():
         if (
-            vertex_labels[u] == vertex_labels[v] and
-            stand_labels[u] == stand_labels[v] and
-            vertex_labels[u] != conf_labels["NCAA Division I FBS independents"]
+            vertex_labels[u] == vertex_labels[v]
+            and stand_labels[u] == stand_labels[v]
+            and vertex_labels[u] != conf_labels["NCAA Division I FBS independents"]
         ):
             edge_labels.append(vertex_labels[u])
             edge_standing.append(stand_labels[u])
@@ -620,45 +657,38 @@ def football_figure(
 
     # Generate light and dark variations
     factor_light = 1.3  # Brighten factor
-    factor_dark = 0.7   # Darken factor
+    factor_dark = 0.7  # Darken factor
 
     def adjust_brightness(color, factor):
         return np.clip(np.array(color) * factor, 0, 1)
 
-    colors = np.array([
-        adjust_brightness(color, {-1: factor_dark, 0: 1.0, 1: factor_light}[i]) 
-        for color in color_base for i in [-1, 0, 1]
-    ])
+    colors = np.array(
+        [
+            adjust_brightness(color, {-1: factor_dark, 0: 1.0, 1: factor_light}[i])
+            for color in color_base
+            for i in [-1, 0, 1]
+        ]
+    )
 
     black = np.array([0.0, 0.0, 0.0])
     colors = np.vstack([colors] + 3 * [black])
 
-    vertex_colors = np.array([
-        colors[3*l + 1 + s, :]
-        for l, s in zip(vertex_labels, stand_labels)
-    ])
+    vertex_colors = np.array(
+        [colors[3 * l + 1 + s, :] for l, s in zip(vertex_labels, stand_labels)]
+    )
 
-    edge_colors = np.array([
-        colors[3*l + 1 + s, :]
-        for l, s in zip(edge_labels, edge_standing)
-    ])
+    edge_colors = np.array([colors[3 * l + 1 + s, :] for l, s in zip(edge_labels, edge_standing)])
 
     logger.info("Creating Football plots...")
     # Plot Vertex and Edge positions from twin embedding
-    fig, axes = plt.subplots(1, 3, figsize=(3*6, 6))
+    fig, axes = plt.subplots(1, 3, figsize=(3 * 6, 6))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
 
         ax = axes[i]
 
         ax.scatter(*experiment[method]["V"], c=vertex_colors, s=15, zorder=3)
 
-        drawedges(
-            football,
-            dim_embedding,
-            experiment[method]["V"],
-            ax,
-            edge_alpha, 1, edge_colors
-        )
+        drawedges(football, dim_embedding, experiment[method]["V"], ax, edge_alpha, 1, edge_colors)
 
         ax.set_box_aspect(1)
         ax.set_xticklabels([])
@@ -674,12 +704,9 @@ def football_figure(
 
 
 def football_curves(
-    dim_embedding: int = 2,
-    lambda_par: int = 5,
-    curvature: float = 0.5,
-    run_exact: bool = False
+    dim_embedding: int = 2, lambda_par: int = 5, curvature: float = 0.5, run_exact: bool = False
 ):
-    frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
+    frame_colors = [plt.get_cmap("tab10")(i) for i in [1, 4, 2]]
 
     logger.info(f"Creating Football curves figure")
 
@@ -687,8 +714,8 @@ def football_curves(
 
     # Extract embedding from Graph
     experiment = graph_embedding_all(
-        football, # input graph
-        twinmatrix_kw={"alpha": 0.85, "k": 2}, # twin matrix parameters
+        football,  # input graph
+        twinmatrix_kw={"alpha": 0.85, "k": 2},  # twin matrix parameters
         # -- embedding method --
         embedding=emb.SGtSNELayout,
         embedding_kw={"lambda_par": lambda_par, "run_exact": run_exact},
@@ -731,9 +758,9 @@ def football_curves(
     edge_alpha = []
     for u, v in football.edges():
         if (
-            vertex_labels[u] == vertex_labels[v] and
-            stand_labels[u] == stand_labels[v] and
-            vertex_labels[u] != conf_labels["NCAA Division I FBS independents"]
+            vertex_labels[u] == vertex_labels[v]
+            and stand_labels[u] == stand_labels[v]
+            and vertex_labels[u] != conf_labels["NCAA Division I FBS independents"]
         ):
             edge_labels.append(vertex_labels[u])
             edge_standing.append(stand_labels[u])
@@ -753,30 +780,29 @@ def football_curves(
 
     # Generate light and dark variations
     factor_light = 1.3  # Brighten factor
-    factor_dark = 0.7   # Darken factor
+    factor_dark = 0.7  # Darken factor
 
     def adjust_brightness(color, factor):
         return np.clip(np.array(color) * factor, 0, 1)
 
-    colors = np.array([
-        adjust_brightness(color, {-1: factor_dark, 0: 1.0, 1: factor_light}[i]) 
-        for color in color_base for i in [-1, 0, 1]
-    ])
+    colors = np.array(
+        [
+            adjust_brightness(color, {-1: factor_dark, 0: 1.0, 1: factor_light}[i])
+            for color in color_base
+            for i in [-1, 0, 1]
+        ]
+    )
 
     black = np.array([0.0, 0.0, 0.0])
     colors = np.vstack([colors] + 3 * [black])
 
-    vertex_colors = np.array([
-        colors[3*l + 1 + s, :]
-        for l, s in zip(vertex_labels, stand_labels)
-    ])
+    vertex_colors = np.array(
+        [colors[3 * l + 1 + s, :] for l, s in zip(vertex_labels, stand_labels)]
+    )
 
-    edge_colors = np.array([
-        colors[3*l + 1 + s, :]
-        for l, s in zip(edge_labels, edge_standing)
-    ])
+    edge_colors = np.array([colors[3 * l + 1 + s, :] for l, s in zip(edge_labels, edge_standing)])
 
-    fig, axes = plt.subplots(1, 3, figsize=(3*6, 6))
+    fig, axes = plt.subplots(1, 3, figsize=(3 * 6, 6))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
         ax = axes[i]
 
@@ -787,9 +813,12 @@ def football_curves(
             dim_embedding,
             experiment[method]["V"],
             experiment[method]["E"],
-            ax, 64,
-            edge_alpha, 1, edge_colors,
-            curvature
+            ax,
+            64,
+            edge_alpha,
+            1,
+            edge_colors,
+            curvature,
         )
 
         ax.set_box_aspect(1)
@@ -805,7 +834,7 @@ def football_curves(
     return fig
 
 
-'''
+"""
 @app.command()
 def barabasi_albert(
     # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
@@ -986,4 +1015,4 @@ def barabasi_albert(
     logger.success("Exported files")
 
     return None
-'''
+"""

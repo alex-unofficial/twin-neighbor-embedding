@@ -15,12 +15,13 @@ from sklearn.metrics import pairwise_distances
 
 from shapely.geometry import LineString
 
-def block_adj(A, b = 7):
 
-    N = A.shape[0]             # total size of the matrix (N x N)
+def block_adj(A, b=7):
+
+    N = A.shape[0]  # total size of the matrix (N x N)
 
     # Number of blocks along each dimension
-    n_blocks = int( np.ceil( N / b ) )
+    n_blocks = int(np.ceil(N / b))
 
     # Initialize the "blocked" matrix, B, where each entry is a sum over a b-by-b block
     B = np.zeros((n_blocks, n_blocks), dtype=np.float64)
@@ -29,11 +30,11 @@ def block_adj(A, b = 7):
     rows, cols = A.nonzero()
     vals = A.data
 
-    for (r, c, val) in zip(rows, cols, vals):
+    for r, c, val in zip(rows, cols, vals):
         br = r // b  # block-row index
         bc = c // b  # block-col index
 
-        # find the 
+        # find the
 
         B[br, bc] += val
 
@@ -41,7 +42,9 @@ def block_adj(A, b = 7):
 
 
 def custom_cmap(n_labels, seed=0, pastel_factor=0.0, factor_brightness=1.0):
-    color_base = distinctipy.get_colors(n_labels, pastel_factor=pastel_factor, colorblind_type='Deuteranomaly',rng=seed)
+    color_base = distinctipy.get_colors(
+        n_labels, pastel_factor=pastel_factor, colorblind_type="Deuteranomaly", rng=seed
+    )
 
     rng = np.random.default_rng(seed=seed)
     color_base = rng.permutation(color_base)
@@ -49,17 +52,15 @@ def custom_cmap(n_labels, seed=0, pastel_factor=0.0, factor_brightness=1.0):
     def adjust_brightness(color, factor):
         return np.clip(np.array(color) * factor, 0, 1)
 
-    colors = np.array([
-        adjust_brightness(color, factor_brightness) 
-        for color in color_base
-    ])
+    colors = np.array([adjust_brightness(color, factor_brightness) for color in color_base])
 
     black = np.array([0.0, 0.0, 0.0])
     colors = np.vstack([colors] + [black])
 
     return colors
 
-def drawsegments(Xe, Se, ax, alpha = 0.9, linewidth = 2, color="b", segment_length=1.0, zorder=None):
+
+def drawsegments(Xe, Se, ax, alpha=0.9, linewidth=2, color="b", segment_length=1.0, zorder=None):
 
     # make sure Xe is 2-D, otherwise throw error
     if Xe.shape[0] != 2:
@@ -68,7 +69,7 @@ def drawsegments(Xe, Se, ax, alpha = 0.9, linewidth = 2, color="b", segment_leng
     # find the diagonal of the bounding box of Xe
     min_x, min_y = np.min(Xe, axis=1)
     max_x, max_y = np.max(Xe, axis=1)
-    diag_length = np.sqrt((max_x - min_x)**2 + (max_y - min_y)**2) * 0.02
+    diag_length = np.sqrt((max_x - min_x) ** 2 + (max_y - min_y) ** 2) * 0.02
 
     segment_length = segment_length * diag_length
 
@@ -90,11 +91,11 @@ def drawsegments(Xe, Se, ax, alpha = 0.9, linewidth = 2, color="b", segment_leng
             color=color_i,
             linewidth=linewidth,
             alpha=alpha,
-            zorder=zorder
+            zorder=zorder,
         )
 
 
-def drawedges(G, dim_emb, pos, ax, alpha, linewidth, color='b'):
+def drawedges(G, dim_emb, pos, ax, alpha, linewidth, color="b"):
     if dim_emb == 2:
         nx.draw_networkx_edges(
             G,
@@ -115,7 +116,9 @@ def drawedges(G, dim_emb, pos, ax, alpha, linewidth, color='b'):
         raise ValueError("Embedding dimension must be 2 or 3")
 
 
-def draw_curved_edges(G, dim_emb, v_pos, e_pos, ax, n_samples, alpha, linewidth, color='b', gamma=0.5):
+def draw_curved_edges(
+    G, dim_emb, v_pos, e_pos, ax, n_samples, alpha, linewidth, color="b", gamma=0.5
+):
     num_edges = len(G.edges())
 
     color = to_rgba_array(color)
@@ -147,11 +150,13 @@ def draw_curved_edges(G, dim_emb, v_pos, e_pos, ax, n_samples, alpha, linewidth,
             raise ValueError("linewidth must be a single value or an iterable of length num_edges")
 
     # The curve kernel describes the type of curve that will be drawn. It has been derived such
-    # that for points in space P0, P1 and P2: P(0) = P0 and P(1) = P(2). 
-    # The parameter gamma controls the curvature of the line. 
+    # that for points in space P0, P1 and P2: P(0) = P0 and P(1) = P(2).
+    # The parameter gamma controls the curvature of the line.
     # gamma = 0 is a straight line. gamma = 0.5 is a classic bezier (lerp).
     # gamma = 1 is a 3-point interpolating line such that P(1/2) = P1.
-    curve_kernel = np.array([[1,0,0],[-1-2*gamma,4*gamma,1-2*gamma],[2*gamma,-4*gamma,2*gamma]])
+    curve_kernel = np.array(
+        [[1, 0, 0], [-1 - 2 * gamma, 4 * gamma, 1 - 2 * gamma], [2 * gamma, -4 * gamma, 2 * gamma]]
+    )
 
     # Parameter t ranges from 0 to 1 and is the parametric input to the curve
     t = np.linspace(0, 1, n_samples)
@@ -186,22 +191,25 @@ def plot_all_embeddings(
     show_edges_segments=False,
     segment_alpha=0.9,
     segment_width=2,
-    segment_length=1.0
+    segment_length=1.0,
 ):
     dim_emb = experiment["VertexEmbedding"]["V"].shape[0]
 
     if dim_emb == 2:
         fig, axes = plt.subplots(
-            3, 3, figsize=(3*6, 3*6), squeeze=False,
+            3,
+            3,
+            figsize=(3 * 6, 3 * 6),
+            squeeze=False,
         )  # 2 rows, 3 columns
     elif dim_emb == 3:
         fig, axes = plt.subplots(
-            3, 3, figsize=(3*6, 3*6), squeeze=False, subplot_kw={'projection':'3d'}
+            3, 3, figsize=(3 * 6, 3 * 6), squeeze=False, subplot_kw={"projection": "3d"}
         )  # 2 rows, 3 columns
     else:
         raise ValueError("Embedding dimension must be 2 or 3")
 
-    G  = experiment["OriginalGraph"]
+    G = experiment["OriginalGraph"]
     Ge = experiment["LineGraph"]
     Gb = experiment["IncidenceGraph"]
 
@@ -216,12 +224,12 @@ def plot_all_embeddings(
             drawsegments(
                 experiment[method]["E"],
                 experiment[method]["S"],
-                ax = ax,
-                alpha = segment_alpha,
-                linewidth = segment_width,
-                segment_length = segment_length,
-                color = "b",
-                zorder = -1
+                ax=ax,
+                alpha=segment_alpha,
+                linewidth=segment_width,
+                segment_length=segment_length,
+                color="b",
+                zorder=-1,
             )
 
         if show_edges_original:
@@ -232,20 +240,20 @@ def plot_all_embeddings(
             Xb = np.hstack((experiment[method]["E"], experiment[method]["V"]))
             drawedges(Gb, dim_emb, Xb, axes[2, i], alpha, linewidth)
 
-        for ax in axes[:,i]:
-            ax.set_box_aspect([1,1,1] if dim_emb == 3 else 1)
+        for ax in axes[:, i]:
+            ax.set_box_aspect([1, 1, 1] if dim_emb == 3 else 1)
 
-    for spine in axes[0,0].spines.values():
+    for spine in axes[0, 0].spines.values():
         spine.set_linewidth(4)
-        spine.set_color('black') 
+        spine.set_color("black")
 
-    for spine in axes[1,1].spines.values():
+    for spine in axes[1, 1].spines.values():
         spine.set_linewidth(4)
-        spine.set_color('black') 
+        spine.set_color("black")
 
-    for spine in axes[2,2].spines.values():
+    for spine in axes[2, 2].spines.values():
         spine.set_linewidth(4)
-        spine.set_color('black') 
+        spine.set_color("black")
 
     for ax in axes.flat:
         ax.set_xticks([])
@@ -255,11 +263,20 @@ def plot_all_embeddings(
     texts = []
 
     for j, label in enumerate(["$A_V$", "$A_E$", "$A_{TW}$"]):
-        axes[0,j].set_title(label, fontsize=12, fontweight='bold')
+        axes[0, j].set_title(label, fontsize=12, fontweight="bold")
 
     for i, label in enumerate(["Vertices", "Edges", "Vertex+Edge"]):
         texts.append(
-            fig.text(0.01, 1 - (i+0.5) * 1/3, label, ha='center', va='center', fontsize=12, fontweight='normal', rotation=90)
+            fig.text(
+                0.01,
+                1 - (i + 0.5) * 1 / 3,
+                label,
+                ha="center",
+                va="center",
+                fontsize=12,
+                fontweight="normal",
+                rotation=90,
+            )
         )
     fig.tight_layout()
 
@@ -280,63 +297,53 @@ def application_plot(
     segment_alpha=0.9,
     segment_width=2,
     segment_length=1.0,
-    hidevertexpoints = False,
-    horizontal = False,
-    colors_vertices = None,
-    colors_edges = None,
-    perm = None,
+    hidevertexpoints=False,
+    horizontal=False,
+    colors_vertices=None,
+    colors_edges=None,
+    perm=None,
 ):
 
     dim_emb = experiment["VertexEmbedding"]["V"].shape[0]
-    G  = experiment["OriginalGraph"]
+    G = experiment["OriginalGraph"]
 
-    frame_colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
+    frame_colors = [plt.get_cmap("tab10")(i) for i in [1, 4, 2]]
 
     if horizontal:
-        fig, axes = plt.subplots(1,6, figsize=(6*6, 1*6), squeeze=True)
+        fig, axes = plt.subplots(1, 6, figsize=(6 * 6, 1 * 6), squeeze=True)
     else:
-        fig, axes = plt.subplots(2,3, figsize=(6*3, 2*6), squeeze=False)
+        fig, axes = plt.subplots(2, 3, figsize=(6 * 3, 2 * 6), squeeze=False)
 
     # build a matrix N by 3 with color red "r"
     if colors_vertices is None:
-        colors_vertices = np.array( [ [1.0, 0.0, 0.0] ] * G.number_of_nodes())
-    if colors_edges is None:    
-        colors_edges = np.array( [ [0.0, 0.0, 1.0] ] * G.number_of_edges())
+        colors_vertices = np.array([[1.0, 0.0, 0.0]] * G.number_of_nodes())
+    if colors_edges is None:
+        colors_edges = np.array([[0.0, 0.0, 1.0]] * G.number_of_edges())
 
     # order the nodes so that the subset_background is drawn first
     if perm is None:
         perm = np.arange(G.number_of_nodes())
 
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
-        ax = axes[i*2] if horizontal else axes[0,i]
-        ax.scatter(*experiment[method]["V"][:,perm], c=colors_vertices[perm,:], s=markersize_vertex, zorder=3)
+        ax = axes[i * 2] if horizontal else axes[0, i]
+        ax.scatter(
+            *experiment[method]["V"][:, perm],
+            c=colors_vertices[perm, :],
+            s=markersize_vertex,
+            zorder=3,
+        )
         if show_edges_original:
-            draw_curved_edges(G, dim_emb, experiment[method]["V"], experiment[method]["E"], ax, 64, alpha, linewidth, color = colors_edges, gamma=curvature)
-
-        ax.set_box_aspect(1)
-
-        ax.set_xticks([])
-        ax.set_yticks([])
-
-        for spine in ax.spines.values():
-            spine.set_linewidth(8)
-            spine.set_color(frame_colors[i])
-
-
-        ax = axes[i*2+1] if horizontal else axes[1,i]
-        if not hidevertexpoints:
-            ax.scatter(*experiment[method]["V"], c=colors_vertices, s=markersize_vertex, zorder=2)
-        ax.scatter(*experiment[method]["E"], c=colors_edges, s=markersize_edge, zorder=1)
-        if show_edges_segments:
-            drawsegments(
+            draw_curved_edges(
+                G,
+                dim_emb,
+                experiment[method]["V"],
                 experiment[method]["E"],
-                experiment[method]["S"],
-                ax = ax,
-                alpha = segment_alpha,
-                linewidth = segment_width,
-                segment_length = segment_length,
-                color = "b",
-                zorder = -1
+                ax,
+                64,
+                alpha,
+                linewidth,
+                color=colors_edges,
+                gamma=curvature,
             )
 
         ax.set_box_aspect(1)
@@ -348,25 +355,48 @@ def application_plot(
             spine.set_linewidth(8)
             spine.set_color(frame_colors[i])
 
+        ax = axes[i * 2 + 1] if horizontal else axes[1, i]
+        if not hidevertexpoints:
+            ax.scatter(*experiment[method]["V"], c=colors_vertices, s=markersize_vertex, zorder=2)
+        ax.scatter(*experiment[method]["E"], c=colors_edges, s=markersize_edge, zorder=1)
+        if show_edges_segments:
+            drawsegments(
+                experiment[method]["E"],
+                experiment[method]["S"],
+                ax=ax,
+                alpha=segment_alpha,
+                linewidth=segment_width,
+                segment_length=segment_length,
+                color="b",
+                zorder=-1,
+            )
 
+        ax.set_box_aspect(1)
+
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        for spine in ax.spines.values():
+            spine.set_linewidth(8)
+            spine.set_color(frame_colors[i])
 
     fig.tight_layout()
 
     return fig
 
 
-def compute_metric(experiment, method, space, adjacency = False):
+def compute_metric(experiment, method, space, adjacency=False):
 
     if space == "V":
         G = experiment["OriginalGraph"]
-        adj = nx.to_scipy_sparse_array(G,format='csc')
+        adj = nx.to_scipy_sparse_array(G, format="csc")
     elif space == "E":
         G = experiment["LineGraph"]
-        adj = nx.to_scipy_sparse_array(G,format='csc')
+        adj = nx.to_scipy_sparse_array(G, format="csc")
 
     V = experiment[method][space]
     # Compute the distance matrix
-    distance_matrix = pairwise_distances(V.T);
+    distance_matrix = pairwise_distances(V.T)
 
     if adjacency:
         # Hadamard the distance matrix with the graph adjacency matrix
@@ -392,12 +422,12 @@ def compute_metric(experiment, method, space, adjacency = False):
 
 
 def cumdeg(G, ax):
-    degrees = [u for _,u in G.degree()]
+    degrees = [u for _, u in G.degree()]
 
     # histcounts
     # Define bin edges from 0 to n (e.g., n = 10)
     n = np.max(degrees)
-    bins = np.arange(0, n+2)  # +2 ensures last bin includes n
+    bins = np.arange(0, n + 2)  # +2 ensures last bin includes n
 
     # Compute histogram counts
     counts, bin_edges = np.histogram(degrees, bins=bins)
@@ -407,20 +437,22 @@ def cumdeg(G, ax):
     # CCDF = 1 - CDF
     ccdf = 1 - cdf
 
-    ax.loglog(bin_edges[:-1], ccdf,  label='CCDF (steps)', linewidth = 2)
+    ax.loglog(bin_edges[:-1], ccdf, label="CCDF (steps)", linewidth=2)
     # ax.set_xlabel('Degree')
     # ax.set_ylabel('P(X ≥ degree)')
     # ax.set_title('Inverse Cumulative Distribution (Degree) on Log-Log Scale')
     # ax.legend()
     ax.grid(True, which="major", ls="--", alpha=0.5)
-    ax.set_xlim( (np.min(degrees)-2, np.max(degrees)) )
+    ax.set_xlim((np.min(degrees) - 2, np.max(degrees)))
 
     return None
 
 
-def plot_single_metric(experiment, space, ax, adjacency=False, legend=False, labels=True, orientation='vertical'):
+def plot_single_metric(
+    experiment, space, ax, adjacency=False, legend=False, labels=True, orientation="vertical"
+):
 
-    colors = [plt.get_cmap('tab10')(i) for i in [1, 4, 2] ]
+    colors = [plt.get_cmap("tab10")(i) for i in [1, 4, 2]]
     ax.set_prop_cycle(color=colors)
 
     # # depending on method, pick color
@@ -430,7 +462,7 @@ def plot_single_metric(experiment, space, ax, adjacency=False, legend=False, lab
         distances = compute_metric(experiment, method, space, adjacency=adjacency)
 
         # Create equi-weight vector
-        weights = np.zeros_like(distances) + 1. / distances.size
+        weights = np.zeros_like(distances) + 1.0 / distances.size
         assert np.abs(weights.sum() - 1) < 1e-10
 
         # Plot the histogram
@@ -442,7 +474,7 @@ def plot_single_metric(experiment, space, ax, adjacency=False, legend=False, lab
             weights=weights * 100,
             histtype="step",
             linewidth=2,
-            orientation=orientation
+            orientation=orientation,
         )
 
     # add common labels
@@ -451,8 +483,8 @@ def plot_single_metric(experiment, space, ax, adjacency=False, legend=False, lab
         ax.set_xlabel("Distance in embedding space")
 
     # add major and minor grid lines
-    ax.grid(which='major', axis='y', linestyle='-', linewidth=0.5, alpha=0.8)
-    ax.grid(which='minor', axis='y', linestyle='--', linewidth=0.3, alpha=0.8)
+    ax.grid(which="major", axis="y", linestyle="-", linewidth=0.5, alpha=0.8)
+    ax.grid(which="minor", axis="y", linestyle="--", linewidth=0.3, alpha=0.8)
     # show minor grid lines
     # ax.minorticks_on()
 
@@ -460,7 +492,8 @@ def plot_single_metric(experiment, space, ax, adjacency=False, legend=False, lab
 
     return None
 
-def draw_metrics(experiment, figsize=(12 * 2/3, 8 * 2/3)):
+
+def draw_metrics(experiment, figsize=(12 * 2 / 3, 8 * 2 / 3)):
 
     # Draw a histogram of all distances in the matrix
     fig, axes = plt.subplots(2, 2, figsize=figsize, sharey=False, sharex=False)
@@ -468,11 +501,10 @@ def draw_metrics(experiment, figsize=(12 * 2/3, 8 * 2/3)):
 
     # Define a color cycle
     # colors = plt.cm.Set1(np.linspace(0, 1, 10))
-    colors = [plt.get_cmap('tab10')(i) for i in [1, 2, 4] ]
+    colors = [plt.get_cmap("tab10")(i) for i in [1, 2, 4]]
 
     for ax in fig.axes:
         ax.set_prop_cycle(color=colors)
-
 
     # for each embedding method, draw histograms, overlayed
     for method in ["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]:
@@ -482,39 +514,52 @@ def draw_metrics(experiment, figsize=(12 * 2/3, 8 * 2/3)):
             distances = compute_metric(experiment, method, space)
 
             # Create equi-weight vector
-            weights = np.zeros_like(distances) + 1. / distances.size
+            weights = np.zeros_like(distances) + 1.0 / distances.size
             assert np.abs(weights.sum() - 1) < 1e-10
 
-
             # Plot the histogram
-            axes[0,i].hist(distances, bins=100, alpha=1.0, label=method, weights=weights * 100, histtype='step', linewidth = 3)
+            axes[0, i].hist(
+                distances,
+                bins=100,
+                alpha=1.0,
+                label=method,
+                weights=weights * 100,
+                histtype="step",
+                linewidth=3,
+            )
 
             distances = compute_metric(experiment, method, space, adjacency=True)
 
             # Create equi-weight vector
-            weights = np.zeros_like(distances) + 1. / distances.size
+            weights = np.zeros_like(distances) + 1.0 / distances.size
             assert np.abs(weights.sum() - 1) < 1e-10
 
-            axes[1,i].hist(distances, bins=100, alpha=1.0, label=method, weights=weights * 100, histtype='step', linewidth = 3)
+            axes[1, i].hist(
+                distances,
+                bins=100,
+                alpha=1.0,
+                label=method,
+                weights=weights * 100,
+                histtype="step",
+                linewidth=3,
+            )
 
     # add common labels
     # axes[0].set_ylabel("Relative frequency (%)")
-
 
     # axes[1,0].set_xlabel("$X$", labelpad=0)
     # axes[1,1].set_xlabel("$Y$", labelpad=0)
 
     # add major and minor grid lines
     for ax in axes.flatten():
-        ax.grid(which='major', axis='y', linestyle='-', linewidth=0.5, alpha=0.8)
-        ax.grid(which='minor', axis='y', linestyle='--', linewidth=0.3, alpha=0.8)
+        ax.grid(which="major", axis="y", linestyle="-", linewidth=0.5, alpha=0.8)
+        ax.grid(which="minor", axis="y", linestyle="--", linewidth=0.3, alpha=0.8)
         # show minor grid lines
         ax.minorticks_on()
 
     # add superlable y
     fig.supylabel("Relative frequency (%)", x=0.075)
     fig.supxlabel("Distance in embedding space", y=0.02)
-
 
     fig.suptitle("Embedding quality measures", fontsize=12, y=0.93)
 
@@ -556,10 +601,14 @@ def count_intersections(G, y):
 
                 if intersection_point.is_empty:
                     continue
-                if intersection_point.geom_type == 'Point':
+                if intersection_point.geom_type == "Point":
                     intersections[i] += 1
                     intersections[j] += 1
 
                     cumulative_intersections[i] += 1
 
-    return lengths[sorted_by_len], intersections[sorted_by_len], cumulative_intersections[sorted_by_len]
+    return (
+        lengths[sorted_by_len],
+        intersections[sorted_by_len],
+        cumulative_intersections[sorted_by_len],
+    )
