@@ -101,16 +101,18 @@ def _embedding_metrics_single_seed(
     Y_v, Y_e, _ = Ge_in.vertex_and_edge_embeddings(Y)
     Z_v, Z_e, _ = Gtw_in.vertex_and_edge_embeddings(Z)
 
+    G_line = nx.line_graph(G)
+
     result = {
         "vpd": (
-            point_distance_metric(X_v, d),
-            point_distance_metric(Y_v, d),
-            point_distance_metric(Z_v, d),
+            point_distance_metric(X_v, G, d),
+            point_distance_metric(Y_v, G, d),
+            point_distance_metric(Z_v, G, d),
         ),
         "epd": (
-            point_distance_metric(X_e, d),
-            point_distance_metric(Y_e, d),
-            point_distance_metric(Z_e, d),
+            point_distance_metric(X_e, G_line, d),
+            point_distance_metric(Y_e, G_line, d),
+            point_distance_metric(Z_e, G_line, d),
         ),
         "np": (
             knn_neighbor_preservation_accuracy(X_v, G, n_neighbors),

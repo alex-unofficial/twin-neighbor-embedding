@@ -68,17 +68,27 @@ def knn_neighbor_preservation_accuracy(X: np.ndarray, G: nx.Graph, n_neighbors):
     return mean_accuracy
 
 
-def point_distance_metric(X: np.ndarray, dim=2, return_histogram=False, bins="auto"):
-
+def point_distance_metric(X: np.ndarray, G: nx.Graph, dim=2, adjacency=False):
     # Ensure X has shape (n_points, d)
-    if X.shape[1] != dim and X.shape[1] == dim:
+    if X.shape[1] != dim and X.shape[0] == dim:
         X = X.T
 
     all_point_distances = euclidean_distances(X)
 
-    if return_histogram:
-        point_distance_histogram, bin_edges = np.histogram(all_point_distances, bins=bins)
-        return point_distance_histogram, bin_edges
+    if adjacency:
+        adj = nx.adjacency_matrix(G, weight=None)
+        adj_point_distances = adj.multiply(all_point_distances)
+
+        distances = adj_point_distances.data
+        distances = adj_point_distances / all_point_distances.max()
     else:
-        average_point_distance = np.mean(all_point_distances)
-        return average_point_distance
+        np.fill_diagonal(all_point_distances, np.nan)
+
+        distances = all_point_distances.flatten()
+        distances = distances[~np.isnan(distances)]
+        distances = distances / distances.max()
+
+    mean_distance = np.nanmean(distances)
+
+    return mean_distance
+
