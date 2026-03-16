@@ -299,8 +299,8 @@ def tree_of_cliques(
     le, _, ce = count_intersections(G, experiment["EdgeEmbedding"]["V"])
     lt, _, ct = count_intersections(G, experiment["TwinEmbedding"]["V"])
 
-    alpha = 0.3
-    linewidth = 4
+    alpha = 0.7
+    linewidth = 2
 
     segment_alpha = 0.9
     segment_width = 2
@@ -314,7 +314,7 @@ def tree_of_cliques(
     for i, method in enumerate(["VertexEmbedding", "TwinEmbedding"]):
         ax = axes[2 * i]
 
-        ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
+        ax.scatter(*experiment[method]["V"], c="r", s=32, zorder=3)
         drawedges(G, dim_embedding, experiment[method]["V"], ax, alpha, linewidth)
 
         ax.set_box_aspect(1)
@@ -327,8 +327,8 @@ def tree_of_cliques(
             spine.set_color(frame_colors[2 * i])
 
     # Suplot 2
-    axes[1].scatter(*experiment["VertexEmbedding"]["V"], c="r", s=64, zorder=1)
-    axes[1].scatter(*experiment["VertexEmbedding"]["E"], c="b", s=64, zorder=2)
+    axes[1].scatter(*experiment["VertexEmbedding"]["V"], c="r", s=32, zorder=1)
+    axes[1].scatter(*experiment["VertexEmbedding"]["E"], c="b", s=16, zorder=2)
 
     drawsegments(
         experiment["VertexEmbedding"]["E"],
@@ -401,14 +401,14 @@ def tree_of_cliques_curves(
         common_init=True,
     )
 
-    alpha = 0.3
-    linewidth = 4
+    alpha = 0.7
+    linewidth = 2
 
     fig, axes = plt.subplots(1, 3, figsize=(3 * 6, 6))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
         ax = axes[i]
 
-        ax.scatter(*experiment[method]["V"], c="r", s=64, zorder=3)
+        ax.scatter(*experiment[method]["V"], c="r", s=32, zorder=3)
 
         draw_curved_edges(
             G,
