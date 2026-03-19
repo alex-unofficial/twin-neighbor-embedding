@@ -10,6 +10,7 @@ from twin.metrics import *
 from typeguard import typechecked
 import textwrap
 
+
 def graph_embedding_all(
     G: nx.Graph,
     embedding=emb.SpringLayout,
@@ -72,7 +73,6 @@ def graph_embedding_all(
     return dict_result
 
 
-
 def embedding_metrics_all(
     G: nx.Graph,
     embedding=emb.SpringLayout,
@@ -80,12 +80,13 @@ def embedding_metrics_all(
     n_samples: int = 1,
     n_neighbors: int = 10,
     target=None,
+    mode="recall",
     embedding_kw: dict = {},
     twinmatrix_kw: dict = {},
     common_init: bool = True,
     normalize: bool = False,
 ):
-    """ Calculates all metric types given a graph and embedding """
+    """Calculates all metric types given a graph and embedding"""
 
     vertex_point_dist_metric_v = 0.0
     vertex_point_dist_metric_e = 0.0
@@ -104,14 +105,16 @@ def embedding_metrics_all(
         classification_metric_e = 0.0
         classification_metric_tw = 0.0
 
+    Gv_in = gm.VertexMatrix(G, normalize=False)
+    Ge_in = gm.EdgeMatrix(G, normalize=False)
+    Gtw_in = gm.TwinEmbeddingMatrix(G, normalize=normalize, **twinmatrix_kw)
+
+    nv = Gtw_in.incidence.shape[0]
+    ne = Gtw_in.incidence.shape[1]
+
+    G_line = nx.line_graph(G)
+
     for seed in range(n_samples):
-        Gv_in = gm.VertexMatrix(G, normalize=False)
-        Ge_in = gm.EdgeMatrix(G, normalize=False)
-        Gtw_in = gm.TwinEmbeddingMatrix(G, normalize=normalize, **twinmatrix_kw)
-
-        nv = Gtw_in.incidence.shape[0]
-        ne = Gtw_in.incidence.shape[1]
-
         E_in = embedding(seed=seed, d=d, **embedding_kw)
         y0 = E_in.init_embedding(nv + ne, d)
 
@@ -127,23 +130,27 @@ def embedding_metrics_all(
         Y_v, Y_e, _ = Ge_in.vertex_and_edge_embeddings(Y)
         Z_v, Z_e, _ = Gtw_in.vertex_and_edge_embeddings(Z)
 
-        G_line = nx.line_graph(G)
-
-        vertex_point_dist_metric_v  += point_distance_metric(X_v, G, d)
-        vertex_point_dist_metric_e  += point_distance_metric(Y_v, G, d)
+        vertex_point_dist_metric_v += point_distance_metric(X_v, G, d)
+        vertex_point_dist_metric_e += point_distance_metric(Y_v, G, d)
         vertex_point_dist_metric_tw += point_distance_metric(Z_v, G, d)
 
-        edge_point_dist_metric_v  += point_distance_metric(X_e, G_line, d)
-        edge_point_dist_metric_e  += point_distance_metric(Y_e, G_line, d)
+        edge_point_dist_metric_v += point_distance_metric(X_e, G_line, d)
+        edge_point_dist_metric_e += point_distance_metric(Y_e, G_line, d)
         edge_point_dist_metric_tw += point_distance_metric(Z_e, G_line, d)
 
-        neighbor_preservation_metric_v  += knn_neighbor_preservation_accuracy(X_v, G, n_neighbors)
-        neighbor_preservation_metric_e  += knn_neighbor_preservation_accuracy(Y_v, G, n_neighbors)
-        neighbor_preservation_metric_tw += knn_neighbor_preservation_accuracy(Z_v, G, n_neighbors)
+        neighbor_preservation_metric_v += knn_neighbor_preservation_accuracy(
+            X_v, G, n_neighbors, mode=mode
+        )
+        neighbor_preservation_metric_e += knn_neighbor_preservation_accuracy(
+            Y_v, G, n_neighbors, mode=mode
+        )
+        neighbor_preservation_metric_tw += knn_neighbor_preservation_accuracy(
+            Z_v, G, n_neighbors, mode=mode
+        )
 
         if target is not None:
-            classification_metric_v  += knn_classification_accuracy(X_v, target, n_neighbors)
-            classification_metric_e  += knn_classification_accuracy(Y_v, target, n_neighbors)
+            classification_metric_v += knn_classification_accuracy(X_v, target, n_neighbors)
+            classification_metric_e += knn_classification_accuracy(Y_v, target, n_neighbors)
             classification_metric_tw += knn_classification_accuracy(Z_v, target, n_neighbors)
 
     vertex_point_dist_metric_v = vertex_point_dist_metric_v / n_samples
