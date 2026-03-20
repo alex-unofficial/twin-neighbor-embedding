@@ -23,7 +23,7 @@
   )
 
   show heading.where(level: 1): set text(size: 22pt)
-  show heading.where(level: 1): set block(below: 3em)
+  show heading.where(level: 1): set block(below: 2.5em)
   show heading.where(level: 1): it => pagebreak(weak: true) + it
 
   show heading.where(level: 2): set text(size: 15pt)
@@ -46,9 +46,7 @@
         height: 5cm,
       )
 
-      #text(size: 17pt)[Aristotle University of Thessaloniki]
-
-      #v(2cm)
+      #v(1cm)
 
       #title()
 
@@ -89,5 +87,23 @@
 
   set heading(numbering: "1.")
 
+  set math.equation(numbering: "(1)")
+
   doc
 }
+
+#let commentcounters = (:)
+#let comment(initials, color, counters, body) = {
+  if initials not in counters {
+    counters.insert(initials, counter(initials))
+  }
+  let c = counters.at(initials)
+
+  c.step()
+  text(fill: color)[
+    #strong[#initials#context c.display():] #body
+  ]
+}
+
+#let alex(body) = comment("AA", blue, commentcounters, body)
+#let nikos(body) = comment("NP", red, commentcounters, body)

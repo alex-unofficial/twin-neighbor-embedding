@@ -1,7 +1,8 @@
-#import "styling.typ": styling
+#import "conf.typ": styling
 
 #set document(title: [
-  TWIN: A Novel Pre-embedding Transform for Network Visualization
+  Twin Neighbor Embedding: A Pre-Embedding Transform for
+  Improved Network Visualization.
 ])
 
 #show: styling.with(
@@ -13,19 +14,13 @@
     ],
     supervisor: [Nikos Pitsianis]
   ),
-  abstract: lorem(200),
+  abstract: include "abstract.typ",
 )
 
 = Introduction
 
 == Problem Description
-#lorem(200)
-
-#lorem(250)
-
-#lorem(150)
+#include "problem_description.typ"
 
 == State of the Art
-#lorem(300)
-
-#lorem(100)
+#include "sota.typ"
