@@ -1,4 +1,6 @@
-#let styling(
+#import "config.typ": images-dir
+
+#let thesis(
   author: (
     name: [],
     affil: [],
@@ -32,9 +34,9 @@
     below: 1em,
   )
 
-
   set page(numbering: "i")
 
+  show title: set par(justify: false)
   show title: set text(size: 22pt, weight: "bold")
   show title: set align(center)
   show title: set block(below: 1.5em)
@@ -42,7 +44,7 @@
   page(numbering: none)[
     #align(center+top)[
       #image(
-        "pictures/auth-logo.png",
+        images-dir + "auth-logo.png",
         height: 5cm,
       )
 
@@ -51,16 +53,18 @@
       #title()
 
       #text(size: 17pt)[#author.name]
+      
+      #text(size: 15pt)[
+        #set par(leading: 0.5em)
+        _Faculty Supervisor_ \
+        #author.supervisor 
+      ]
+
+      #v(1em)
 
       #text(size: 15pt)[#author.affil]
     ]
     
-    #align(center+horizon)[
-      #text(size: 15pt)[
-        *Faculty Supervisor:* \
-        #author.supervisor
-      ]
-    ]
 
     #align(center+bottom)[
       #text(size: 15pt)[
@@ -69,10 +73,11 @@
     ]
   ]
 
+  show <abstract>: emph
   [
     = Abstract
 
-    #abstract
+    #abstract <abstract>
   ]
 
   show outline.entry.where(level: 1): set block(above: 2em)
@@ -92,18 +97,60 @@
   doc
 }
 
-#let commentcounters = (:)
-#let comment(initials, color, counters, body) = {
-  if initials not in counters {
-    counters.insert(initials, counter(initials))
-  }
-  let c = counters.at(initials)
+#let draft(
+  author: (
+    name: [],
+    affil: [],
+    supervisor: [],
+  ),
+  abstract: [],
+  doc,
+)= {
+  set page(
+    paper: "a4",
+    margin: (x: 2cm, y: 2cm),
+    numbering: "1",
+  )
+  set par(
+    justify: true,
+    leading: 0.6em,
+    spacing: 1.2em,
+  )
+  set text(
+    font: "New Computer Modern",
+    size: 12pt,
+  )
+  set math.equation(numbering: "(1)")
 
-  c.step()
-  text(fill: color)[
-    #strong[#initials#context c.display():] #body
+  show title: set par(justify: false)
+  show title: set text(size: 20pt)
+  show title: set align(center)
+  show title: set block(below: 1.2em)
+
+  [
+    #align(center)[
+      #title()
+
+      #text(size: 15pt)[
+        #grid(
+          columns: (1fr, 1fr),
+          gutter: 0.5em,
+          [#author.name], [#author.supervisor],
+          [], [_Faculty Supervisor_],
+        )
+
+        #author.affil
+      ]
+    ]
+
+    = Abstract
+
+    #[
+      #set par(leading: 0.4em)
+      #emph[#abstract]
+    ]
   ]
-}
+  set heading(numbering: "1.")
 
-#let alex(body) = comment("AA", blue, commentcounters, body)
-#let nikos(body) = comment("NP", red, commentcounters, body)
+  doc
+}

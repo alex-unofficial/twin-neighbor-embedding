@@ -1,11 +1,13 @@
-#import "conf.typ": styling
+#import "config.typ": draft
+#import "styling.typ"
 
 #set document(title: [
   Twin Neighbor Embedding: A Pre-Embedding Transform for
   Improved Network Visualization.
 ])
 
-#show: styling.with(
+#let style = if draft {styling.draft} else {styling.thesis}
+#show: style.with(
   author: (
     name: [Alexandros Athanasiadis],
     affil: [
