@@ -143,11 +143,12 @@
       ]
     ]
 
-    = Abstract
-
+    #show <abstract>: emph
+    #show <abstract>: set par(leading: 0.3em)
     #[
-      #set par(leading: 0.4em)
-      #emph[#abstract]
+      = Abstract
+
+      #abstract <abstract>
     ]
   ]
   set heading(numbering: "1.")
