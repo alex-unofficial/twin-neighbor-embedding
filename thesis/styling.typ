@@ -1,4 +1,4 @@
-#import "config.typ": images-dir
+#import "config.typ": font, images-dir
 
 #let thesis(
   author: (
@@ -20,7 +20,7 @@
     spacing: 1em,
   )
   set text(
-    font: "New Computer Modern",
+    font: font,
     size: 12pt,
   )
 
@@ -117,7 +117,7 @@
     spacing: 1.2em,
   )
   set text(
-    font: "New Computer Modern",
+    font: font,
     size: 12pt,
   )
   set math.equation(numbering: "(1)")
