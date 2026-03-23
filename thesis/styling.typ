@@ -171,6 +171,7 @@
 
   doc
 
+  pagebreak(weak: true)
   bibliography(
     bib-file,
     style: "ieee",
