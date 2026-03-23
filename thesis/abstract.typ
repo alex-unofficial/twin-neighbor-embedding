@@ -20,7 +20,7 @@ address:
   and partial collapse of local substructure],
   [certain vertices or groups of vertices are erroneously placed close together, 
   forming hallucinatory clusters that suggest relationships not present in the data],
-  [traditional layout methods do not explicitly encode geometric edge placement, 
+  [conventional layout methods do not explicitly encode geometric edge placement, 
   which often results in excessive crossings of long edges],
 ).
 The Twin Neighbor Embedding method improves on these limitations by encoding

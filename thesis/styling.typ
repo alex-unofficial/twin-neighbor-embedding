@@ -1,4 +1,4 @@
-#import "config.typ": font, images-dir
+#import "config.typ": font, images-dir, bib-file
 
 #let thesis(
   author: (
@@ -91,10 +91,16 @@
   counter(page).update(1)
 
   set heading(numbering: "1.")
-
   set math.equation(numbering: "(1)")
 
+  show link: underline
+
   doc
+
+  bibliography(
+    bib-file,
+    style: "ieee",
+  )
 }
 
 #let draft(
@@ -120,7 +126,6 @@
     font: font,
     size: 12pt,
   )
-  set math.equation(numbering: "(1)")
 
   show title: set par(justify: false)
   show title: set text(size: 20pt)
@@ -152,6 +157,14 @@
     ]
   ]
   set heading(numbering: "1.")
+  set math.equation(numbering: "(1)")
+
+  show link: underline
 
   doc
+
+  bibliography(
+    bib-file,
+    style: "ieee",
+  )
 }

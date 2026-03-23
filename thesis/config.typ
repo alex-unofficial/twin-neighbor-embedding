@@ -1,9 +1,10 @@
-#let draft = true
+#let draft = false
 
 #let fonts = (
-  a: "New Computer Modern",
-  b: "Libertinus Serif",
+  i: "New Computer Modern",
+  ii: "Libertinus Serif",
 )
-#let font = fonts.a
+#let font = fonts.i
 
 #let images-dir = "/images/"
+#let bib-file = "ref.bib"
