@@ -1874,3 +1874,23 @@ knuth2013combinatorics:
     serial-number:
       isbn: 978-0-19-965659-2
     date: 2013-02-26
+
+yifanhu2015:
+  type: article
+  title: Visualizing large graphs
+  author:
+  - Hu, Yifan
+  - Shi, Lei
+  date: 2015
+  page-range: 115-136
+  url: https://wires.onlinelibrary.wiley.com/doi/abs/10.1002/wics.1343
+  serial-number:
+    doi: https://doi.org/10.1002/wics.1343
+  abstract: 'With the prevalence of big data, there is a growing need for algorithms and techniques for visualizing very large and complex graphs. In this article, we review layout algorithms and interactive exploration techniques for large graphs. In addition, we briefly look at softwares and datasets for visualization graphs, as well as challenges that need to be addressed. WIREs Comput Stat 2015, 7:115–136. doi: 10.1002/wics.1343 This article is categorized under: Statistical Learning and Exploratory Methods of the Data Sciences > Exploratory Data Analysis Data: Types and Structure > Graph and Network Data Statistical and Graphical Methods of Data Analysis > Statistical Graphics and Visualization'
+  parent:
+    type: periodical
+    title: WIREs Computational Statistics
+    issue: 2
+    volume: 7
+
+

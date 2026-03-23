@@ -4,7 +4,9 @@
 #include "context.typ"
 
 == Conventional Approaches <conventional>
-#alex[Force-based and Spectral layout methods. #sne and #tsne]
+#include "conventional.typ"
 
 == State of the Art <sota>
-#alex[#sgtsne, ForceAtlas2, Yifan Hu, OpenOrd, GraphVis, stress and strain based methods]
+#alex[Specific algorithms: #sgtsne, ForceAtlas2, Yifan Hu, OpenOrd, etc.]
+
+#alex[Network visualization software packages: Cytoscape, Gephi, Graphviz, Tulip]
