@@ -1859,4 +1859,18 @@ networkx:
   - type: conference
     title: Python in {Science Conference} ({SciPy} 2008)
 
-
+knuth2013combinatronics:
+  type: chapter
+  title: Two thousand years of combinatronics
+  author: Knuth, Donald E.
+  page-range: 3-37
+  parent:
+    type: book
+    title: "Combinatronics: Ancient and Modern"
+    author:
+      - Wilson, Robin
+      - Watkins, John J.
+    publisher: Oxford University Press
+    serial-number:
+      isbn: 978-0-19-965659-2
+    date: 2013-02-26

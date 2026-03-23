@@ -23,14 +23,14 @@
 = Introduction <intro>
 #include "introduction.typ"
 
-= State of the Art <sota>
-#include "sota.typ"
+= Background <background>
+#include "background.typ"
 
 = The Twin Neighbor Embedding method <tne>
 #alex[The method, how and why it works.]
 
 = Results and Evaluation <results>
-#alex[Including visualization results for qualitative evaluation as well as computer metrics.]
+#alex[Including visualization results for qualitative evaluation as well as computed metrics.]
 
 = The TWIN software package and GUI <software>
 #alex[Brief description of the Software, the parameters and the GUI]

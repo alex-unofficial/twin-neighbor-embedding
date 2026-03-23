@@ -3,7 +3,7 @@
 
 Various layout algorithms exist with differing criteria for determining the spatial
 configuration $X$. Some of these methods and criteria will be discussed in more detail
-in @sota.
+in @conventional and @sota.
 
 A common criterion is to preserve the pairwise geodesic distances of vertices on $G$
 proportionally in the layout $X$. Yet it is impractical to rigidly impose all 
