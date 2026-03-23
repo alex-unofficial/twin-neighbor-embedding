@@ -1861,12 +1861,12 @@ networkx:
 
 knuth2013combinatorics:
   type: chapter
-  title: Two thousand years of combinatronics
+  title: Two thousand years of combinatorics
   author: Knuth, Donald E.
   page-range: 3-37
   parent:
     type: book
-    title: "Combinatronics: Ancient and Modern"
+    title: "Combinatorics: Ancient and Modern"
     author:
       - Wilson, Robin
       - Watkins, John J.
