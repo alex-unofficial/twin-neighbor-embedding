@@ -1,6 +1,5 @@
 #import "macros.typ": *
 #import "commenting.typ": *
-#import "@preview/run-liners:0.1.0": *
 
 Various layout algorithms exist with differing criteria for determining the spatial
 configuration $X$. Some of these methods and criteria will be discussed in more detail
@@ -23,15 +22,16 @@ framework to graph-structured data.
 However #{sne}-based vertex layout suffers from undesirable artifacts that obscure
 structural relationships and hinder accurate interpretation of the data. We identify
 three recurring issues:
-#run-in-enum(
-  numbering-pattern: "(a)",
-  [vertex crowding: vertices with small graph-theoretic distance or strong edge weights
-    are often placed excessively close in the layout, leading to visual crowding 
-    and partial collapse of local substructure ],
-  [erroneous clustering: certain vertices or groups of vertices are erroneously placed 
-    close together, forming hallucinatory clusters that suggest relationships not present 
-    in the data],
-  [excessive long-edge crossings: conventional layout methods do not explicitly encode 
-    geometric edge placement, which often results in excessive crossings of long edges],
-).
+#enum(numbering: "(a)")[
+  vertex crowding: vertices with small graph-theoretic distance or strong edge weights
+  are often placed excessively close in the layout, leading to visual crowding 
+  and partial collapse of local substructure.
+][
+  erroneous clustering: certain vertices or groups of vertices are erroneously placed 
+  close together, forming hallucinatory clusters that suggest relationships not present 
+  in the data.
+][
+  excessive long-edge crossings: conventional layout methods do not explicitly encode 
+  geometric edge placement, which often results in excessive crossings of long edges.
+]
 
