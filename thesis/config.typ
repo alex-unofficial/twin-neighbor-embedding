@@ -7,4 +7,4 @@
 #let font = fonts.i
 
 #let images-dir = "/images/"
-#let bib-file = "ref.bib"
+#let bib-file = "ref.yaml"
