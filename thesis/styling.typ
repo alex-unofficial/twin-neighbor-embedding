@@ -116,6 +116,14 @@
     paper: "a4",
     margin: (x: 2cm, y: 2cm),
     numbering: "1",
+    header: text(
+      size: 9pt,
+      align(horizon)[#context document.title #h(1fr) *DRAFT*]
+    ),
+    footer: text(
+      size: 9pt,
+      align(horizon)[*DRAFT* #h(1fr) #context counter(page).display()]
+    ),
   )
   set par(
     justify: true,
