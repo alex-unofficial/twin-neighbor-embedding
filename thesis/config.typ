@@ -1,4 +1,4 @@
-#let draft = false
+#let draft = true
 
 #let fonts = (
   i: "New Computer Modern",
