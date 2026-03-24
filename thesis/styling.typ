@@ -74,9 +74,8 @@
   ]
 
   [
-    = Abstract
-
-    #abstract <abstract>
+    = Abstract <abstract>
+    #abstract
   ]
 
   show outline.entry.where(level: 1): set block(above: 2em)
@@ -155,17 +154,17 @@
       ]
     ]
 
-    #show <abstract>: set text(size: 10pt)
-    #show <abstract>: set par(leading: 0.5em)
     #block(
       inset: (x: 1cm)
     )[
+      #set text(size: 10pt)
+      #set par(leading: 0.5em)
       #show heading: set text(size: 11pt)
 
-      = Abstract
+      = Abstract <abstract>
       #abstract
 
-    ] <abstract>
+    ]
   ]
   set heading(numbering: "1.")
   set math.equation(numbering: "(1)")
