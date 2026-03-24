@@ -26,13 +26,24 @@
 
   show heading.where(level: 1): set text(size: 22pt)
   show heading.where(level: 1): set block(below: 2.5em)
-  show heading.where(level: 1): it => pagebreak(weak: true) + it
+  show heading.where(level: 1): smallcaps
 
-  show heading.where(level: 2): set text(size: 15pt)
+  show heading.where(level: 2): set text(size: 16pt)
   show heading.where(level: 2): set block(
     above: 2em,
     below: 1em,
   )
+
+  show heading: it => {
+    if it.level == 1 {pagebreak(weak: true)}
+    block(
+      if it.numbering == none {
+        it.body
+      } else {
+        context counter(heading).display(it.numbering) + h(1em) + it.body
+      }
+    )
+  }
 
   set page(numbering: "i")
 
@@ -155,17 +166,18 @@
     ]
 
     #block(
-      inset: (x: 1cm)
+      inset: (x: 1cm),
+      below: 3em,
     )[
       #set text(size: 10pt)
       #set par(leading: 0.5em)
-      #show heading: set text(size: 11pt)
+      #show heading: set text(size: 12pt)
 
       = Abstract <abstract>
       #abstract
-
     ]
   ]
+
   set heading(numbering: "1.")
   set math.equation(numbering: "(1)")
 
