@@ -8,14 +8,15 @@
   body,
 ) = if draft{
 
+  counter(initials).step()
+
   let content = [
-    #counter(initials).step()
     #text(fill: color)[
       #strong(initials + context counter(initials).display(numbering) + ":") #body
     ]
   ]
   
-  if inline {content} else {box(content)}
+  if inline {content} else {block(content)}
 
 } else {none}
 

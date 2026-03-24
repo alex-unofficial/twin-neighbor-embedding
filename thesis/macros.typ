@@ -1,6 +1,6 @@
-#let twin = smallcaps[twin]
-#let tne = smallcaps[tne]
+#let twin = box(smallcaps[twin])
+#let tne = box(smallcaps[tne])
 
-#let sne = smallcaps[sne]
-#let tsne = [$t$-#smallcaps[sne]]
-#let sgtsne = [#smallcaps[sg]-$t$-#smallcaps[sne]]
+#let sne = box(smallcaps[sne])
+#let tsne = box[$t$-#smallcaps[sne]]
+#let sgtsne = box[#smallcaps[sg]-$t$-#smallcaps[sne]]

@@ -73,7 +73,6 @@
     ]
   ]
 
-  show <abstract>: emph
   [
     = Abstract
 
@@ -156,13 +155,17 @@
       ]
     ]
 
-    #show <abstract>: emph
-    #show <abstract>: set par(leading: 0.3em)
-    #[
-      = Abstract
+    #show <abstract>: set text(size: 10pt)
+    #show <abstract>: set par(leading: 0.5em)
+    #block(
+      inset: (x: 1cm)
+    )[
+      #show heading: set text(size: 11pt)
 
-      #abstract <abstract>
-    ]
+      = Abstract
+      #abstract
+
+    ] <abstract>
   ]
   set heading(numbering: "1.")
   set math.equation(numbering: "(1)")

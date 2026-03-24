@@ -5,13 +5,11 @@
 
 === Force-based methods
 #alex[Spring-Electrical model]
-
 #alex[Classical MDS (Strain)]
-
 #alex[Metric MDS (Stress)]
 
 === Spectral Methods
-#alex[Eigenvectors of adjacency matrix and laplacian]
+#alex[Laplacian eigenmaps]
 
 === Stochastic methods
 #alex[#sne and #tsne as embedding methods for $k$NN graphs]

@@ -1,14 +1,21 @@
 #import "commenting.typ": *
 #import "@preview/run-liners:0.1.0": *
 
-Network visualization conventionally is the task of assigning each vertex a
-position in some surface $Sigma$. 
+A simple undirected graph $G(V,E)$ consists of a set of vertices (nodes) $V$,
+and a set of edges (links) $E subset.eq V^2$. Denote by $|V|$ the number of
+vertices and by $E$ the number of edges. If two vertices $v, u in V$ form an
+edge $(v,u) in E$ then we call $v$ and $u$ neighboring or adjacent. A 
+vertex $v$ is incident to an edge $e$ if it is part of $e$. 
+Throughout this work we shall use the terms network and graph interchangeably.
+
+Network visualization conventionally is the task of assigning each vertex
+$v in V$ a position in some surface $Sigma$. 
 Then the edges may be drawn as lines or curves (not strictly in $Sigma$) 
 connecting their incident vertices. 
 As a post-processing step, additional network properties and features may 
 be overlaid on top of the layout as functions defined on the vertices or edges.
 
-Denote by $G(V, E)$ the network under consideration. 
+Denote by $G(V, E)$ the graph under consideration. 
 Each vertex $v in V$ is mapped to a unique point $x(v) in Sigma$.
 The set $X = {x(v) | v in V}$ is called the vertex layout or embedding
 #footnote[
@@ -18,9 +25,6 @@ The set $X = {x(v) | v in V}$ is called the vertex layout or embedding
   In this thesis embedding and layout are used interchangeably, in all cases meaning a layout.
 ]
 and is determined by a network layout algorithm.
-Various layout algorithms exist with differing criteria for determining the spatial
-configuration $X$. Some of these methods and criteria will be discussed in more detail
-in @sota.
 
 
 The surface $Sigma$ is called the embedding space and is commonly $RR^2$,
