@@ -72,10 +72,8 @@ whereas iterative methods refine the layout through repeated updates.
 
 #alex[@yifanhu2015 is a good resource]
 
-=== Force-based methods
-#alex[Spring-Electrical model]
-#alex[Metric MDS (Stress)]
-#alex[Classical MDS (Strain)]
+=== Force-directed methods
+#include "force-based.typ"
 
 === Spectral Methods
 #alex[Laplacian eigenmaps]

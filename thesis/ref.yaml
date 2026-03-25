@@ -1893,4 +1893,87 @@ yifanhu2015:
     issue: 2
     volume: 7
 
+eades1984:
+  type: article
+  title: A Heuristic for Graph Drawing
+  author: Eades, Peter
+  date: 1984
+  url: https://api.semanticscholar.org/CorpusID:63936426
+  parent:
+    type: proceedings
 
+FRlayout:
+  type: article
+  title: Graph drawing by force-directed placement
+  author:
+  - Fruchterman, Thomas M. J.
+  - Reingold, Edward M.
+  date: 1991
+  page-range: 1129-1164
+  url: https://onlinelibrary.wiley.com/doi/abs/10.1002/spe.4380211102
+  serial-number:
+    doi: https://doi.org/10.1002/spe.4380211102
+  abstract: Abstract We present a modification of the spring-embedder model of Eades [Congressus Numerantium, 42, 149–160, (1984)] for drawing undirected graphs with straight edges. Our heuristic strives for uniform edge lengths, and we develop it in analogy to forces in natural systems, for a simple, elegant, conceptually-intuitive, and efficient algorithm.
+  parent:
+    type: periodical
+    title: 'Software: Practice and Experience'
+    issue: 11
+    volume: 21
+
+yifanhu2006layout:
+  type: article
+  title: Efficient, High-Quality Force-Directed Graph Drawing
+  author: Hu, Yifan
+  date: 2006
+  page-range: 37-71
+  url: https://api.semanticscholar.org/CorpusID:14599587
+  parent:
+    type: periodical
+    title: The Mathematica journal
+    volume: 10
+
+bru1995layout:
+  type: article
+  title: Fast Interactive 3-D Graph Visualization
+  author:
+  - Bruß, Ingo
+  - Frick, Arne
+  date: 1995
+  url: https://api.semanticscholar.org/CorpusID:16094190
+  parent:
+    type: proceedings
+    title: International Symposium Graph Drawing and Network Visualization
+
+barneshut1986:
+  type: article
+  title: '{A hierarchical O(N log N) force-calculation algorithm}'
+  author:
+  - Barnes, Josh
+  - Hut, Piet
+  date: 1986-12
+  page-range: 446-449
+  serial-number:
+    doi: 10.1038/324446a0
+  parent:
+    type: periodical
+    title: '\\nat '
+    issue: 6096
+    volume: 324
+
+tunkelang1999:
+  type: article
+  title: A Numerical Optimization Approach to General Graph Drawing
+  author: Tunkelang, Daniel
+  date: 1999
+  page-range: ''
+  parent:
+    type: periodical
+
+quigley2001:
+  type: thesis
+  title: Large scale relational information visualization, clustering, and abstraction
+  author: Quigley, Aaron J.
+  date: 2001
+  genre: PhD Thesis
+  organization: Department of Computer Science and Software Engineering, The University of Newcastle
+  location: Australia

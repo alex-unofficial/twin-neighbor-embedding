@@ -5,7 +5,7 @@ A simple undirected graph $G$ is the tuple $(V,E)$ consisting of a set of
 vertices (nodes) $V$, and a set of edges (links) $E subset.eq V times V$. 
 Denote by $|V|$ the number of vertices and by $|E|$ the number of edges. 
 If two vertices $v, u in V$ form an edge $(v,u) in E$ then we call $v$ and $u$ 
-neighboring or adjacent.
+neighboring or adjacent. We write $v <-> u$ if $v$ and $u$ are adjacent.
 A vertex $v$ is incident to an edge $e$ if it is part of $e$.
 Throughout this work we shall use the terms network and graph interchangeably.
 
