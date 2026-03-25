@@ -1,11 +1,12 @@
 #import "commenting.typ": *
 #import "@preview/run-liners:0.1.0": *
 
-A simple undirected graph $G(V,E)$ consists of a set of vertices (nodes) $V$,
-and a set of edges (links) $E subset.eq V^2$. Denote by $|V|$ the number of
-vertices and by $E$ the number of edges. If two vertices $v, u in V$ form an
-edge $(v,u) in E$ then we call $v$ and $u$ neighboring or adjacent. A 
-vertex $v$ is incident to an edge $e$ if it is part of $e$. 
+A simple undirected graph $G$ is the tuple $(V,E)$ consisting of a set of 
+vertices (nodes) $V$, and a set of edges (links) $E subset.eq V times V$. 
+Denote by $|V|$ the number of vertices and by $|E|$ the number of edges. 
+If two vertices $v, u in V$ form an edge $(v,u) in E$ then we call $v$ and $u$ 
+neighboring or adjacent.
+A vertex $v$ is incident to an edge $e$ if it is part of $e$.
 Throughout this work we shall use the terms network and graph interchangeably.
 
 Network visualization conventionally is the task of assigning each vertex
@@ -15,7 +16,7 @@ connecting their incident vertices.
 As a post-processing step, additional network properties and features may 
 be overlaid on top of the layout as functions defined on the vertices or edges.
 
-Denote by $G(V, E)$ the graph under consideration. 
+Consider the graph $G = (V,E)$.
 Each vertex $v in V$ is mapped to a unique point $x(v) in Sigma$.
 The set $X = {x(v) | v in V}$ is called the vertex layout or embedding
 #footnote[
@@ -41,9 +42,9 @@ primarily in three aspects:
   [post-processing utilities and overlays]
 ).
 The analysis in this thesis is primarily concerned with (ii), and from this
-point forward it will be assumed that $Sigma eq.triple RR^2$ and overlays will
-be used only to highlight structural aspects of the network useful in the
-visual understanding and qualitative assessment of the layout.
+point forward it will be assumed that $Sigma eq.triple RR^d$ (normally $d=2$) 
+and overlays will be used only to highlight structural aspects of the network 
+useful in the visual understanding and qualitative assessment of the layout.
 
 Constructing such embeddings is inherently challenging. 
 A low-dimensional layout must represent a complex network topology while preserving 
