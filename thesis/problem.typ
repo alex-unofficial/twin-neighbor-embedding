@@ -1,4 +1,5 @@
 #import "commenting.typ": *
+#import "macros.typ": *
 #import "@preview/run-liners:0.1.0": *
 
 A simple undirected graph $G$ is the tuple $(V,E)$ consisting of a set of 
@@ -17,8 +18,8 @@ As a post-processing step, additional network properties and features may
 be overlaid on top of the layout as functions defined on the vertices or edges.
 
 Consider the graph $G = (V,E)$.
-Each vertex $v in V$ is mapped to a unique point $x(v) in Sigma$.
-The set $X = {x(v) | v in V}$ is called the vertex layout or embedding
+Each vertex $v in V$ is mapped to a unique point $vec(x)(v) in Sigma$.
+The set $X = {vec(x)(v) | v in V}$ is called the vertex layout or embedding
 #footnote[
   In topological graph theory an embedding strictly is a drawing of the vertices 
   and edges in a way such that the edges may intersect only at their ends in 

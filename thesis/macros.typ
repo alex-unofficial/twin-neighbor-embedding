@@ -4,3 +4,8 @@
 #let sne = box(smallcaps[sne])
 #let tsne = box[$t$-#smallcaps[sne]]
 #let sgtsne = box[#smallcaps[sg]-$t$-#smallcaps[sne]]
+
+#let vec(it) = {$bold(upright(it))$}
+#let uvec(it) = {$hat(vec(it))$}
+
+#let bigO = {$cal(O)$}

@@ -8,12 +8,13 @@ We must assign each vertex $v in V$ a position $x(v) in RR^d$.
 
 Denote by $n = |V|$ the number of vertices and by $m = |E|$ the number of edges.
 Given some ordering of the vertices $1, 2, dots, n$ the layout $X$
-is made of $n$ position vectors $x_1, x_2, dots, x_n$ such that $x_i = x(i)$.
+is made of $n$ position vectors $vec(x)_1, vec(x)_2, dots, vec(x)_n$ such that 
+$vec(x)_i = vec(x)(i)$ is the position of vertex $i$.
 From a computational perspective the layout $X in RR^(n times d)$ can be treated as 
-a conventional matrix whose rows are the vectors $x_(i)^(T)$.
+a conventional matrix whose rows are the vectors $vec(x)_i^T$.
 
 It is obvious that any single graph has infinitely many layouts, given we have
-not stated any constraints on $x(v)$. However, not every layout is of the same
+not stated any constraints on $vec(x)(v)$. However, not every layout is of the same
 quality. Take, for example, $n$ randomly sampled positions in $RR^d$ and
 assign each one to a vertex. This is a valid layout, but it encodes no information
 about the underlying network. From a data analysis perspective, it is practically useless.
@@ -38,8 +39,8 @@ results.
 
 Under this perspective, a layout algorithm may be viewed as attempting to
 approximate a minimizer of an objective function $scr(L)_G (X)$.
-If $X^(*) =  argmin_X scr(L)_G (X)$ then the layout algorithm should attempt 
-to approximate $X approx X^(*)$.
+If $X^* =  argmin_X scr(L)_G (X)$ then the layout algorithm should attempt 
+to approximate $X approx X^*$.
 
 Once a layout criterion has been defined, the problem becomes that of computing
 a configuration $X$ that approximately minimizes this objective. In practice,
