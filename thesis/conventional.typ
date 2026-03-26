@@ -42,12 +42,3 @@ of layout algorithms, focusing on representative methods and the
 principles that underlie their formulations.
 
 #alex[@yifanhu2015 is a good resource]
-
-=== Force-directed methods <force-based>
-#include "force-based.typ"
-
-=== Spectral Methods
-#alex[Laplacian eigenmaps]
-
-=== Stochastic methods
-#alex[#sne and #tsne as embedding methods for $k$NN graphs]

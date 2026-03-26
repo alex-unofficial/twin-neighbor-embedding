@@ -1,3 +1,5 @@
+#import "commenting.typ": *
+
 == Motivation <motivation>
 #include "motivation.typ"
 
@@ -6,6 +8,10 @@
 
 == Related Work <related>
 #include "related.typ"
+
+#alex[Section break here?]
+
+#include "purpose.typ"
 
 == Contributions <contributions>
 #include "contributions.typ"

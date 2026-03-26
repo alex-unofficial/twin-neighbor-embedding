@@ -23,7 +23,6 @@
     font: font,
     size: 12pt,
   )
-
   show heading.where(level: 1): set text(size: 22pt)
   show heading.where(level: 1): set block(below: 2.5em)
   show heading.where(level: 1): smallcaps
@@ -114,8 +113,17 @@
 
   set heading(numbering: "1.")
   set math.equation(numbering: "(1)")
-
-  show link: underline
+  show ref: it => {
+    let eq = math.equation
+    let el = it.element
+    // Skip all other references.
+    if el == none or el.func() != eq { return it }
+    // Override equation references.
+    link(el.location(), numbering(
+      el.numbering,
+      ..counter(eq).at(el.location())
+    ))
+  }
 
   doc
 
@@ -202,8 +210,17 @@
   }
 
   set math.equation(numbering: "(1)")
-
-  show link: underline
+  show ref: it => {
+    let eq = math.equation
+    let el = it.element
+    // Skip all other references.
+    if el == none or el.func() != eq { return it }
+    // Override equation references.
+    link(el.location(), numbering(
+      el.numbering,
+      ..counter(eq).at(el.location())
+    ))
+  }
 
   doc
 
