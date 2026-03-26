@@ -7,8 +7,8 @@ Consider a graph $G = (V, E)$.
 We must assign each vertex $v in V$ a position $x(v) in RR^d$. 
 
 Denote by $n = |V|$ the number of vertices and by $m = |E|$ the number of edges.
-Given some ordering of the vertices $v_1, v_2, dots,  v_n$ the layout $X$
-is made of $n$ position vectors $x_1, x_2, dots, x_n$ such that $x_i = x(v_i)$.
+Given some ordering of the vertices $1, 2, dots, n$ the layout $X$
+is made of $n$ position vectors $x_1, x_2, dots, x_n$ such that $x_i = x(i)$.
 From a computational perspective the layout $X in RR^(n times d)$ can be treated as 
 a conventional matrix whose rows are the vectors $x_(i)^(T)$.
 
