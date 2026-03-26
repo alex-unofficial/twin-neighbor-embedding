@@ -30,6 +30,12 @@
 
   show heading.where(level: 2): set text(size: 16pt)
   show heading.where(level: 2): set block(
+    above: 3em,
+    below: 1em,
+  )
+
+  show heading.where(level: 3): set text(size: 14pt)
+  show heading.where(level: 3): set block(
     above: 2em,
     below: 1em,
   )
@@ -43,6 +49,13 @@
         context counter(heading).display(it.numbering) + h(1em) + it.body
       }
     )
+  }
+
+  show heading.where(level: 4): set text(size: 12pt)
+  show heading.where(level: 4): set heading(numbering: none, outlined: false)
+  show heading.where(level: 4): it => {
+    v(1em)
+    h(-1cm) + strong(it.body) + [.]
   }
 
   set page(numbering: "i")
@@ -169,9 +182,11 @@
       inset: (x: 1cm),
       below: 3em,
     )[
-      #set text(size: 10pt)
+      #set text(size: 11pt)
       #set par(leading: 0.5em)
-      #show heading: set text(size: 12pt)
+
+      #show <abstract>: set text(size: 11pt)
+      #show <abstract>: it => {strong(it.body + [.]) + h(0.2em)}
 
       = Abstract <abstract>
       #abstract
@@ -179,6 +194,13 @@
   ]
 
   set heading(numbering: "1.")
+
+  show heading.where(level: 4): set heading(numbering: none)
+  show heading.where(level: 4): it => {
+    v(1em)
+    strong(it.body) + [.]
+  }
+
   set math.equation(numbering: "(1)")
 
   show link: underline

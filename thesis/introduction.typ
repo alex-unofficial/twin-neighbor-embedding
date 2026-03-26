@@ -1,11 +1,11 @@
-== Motivation
+== Motivation <motivation>
 #include "motivation.typ"
 
-== Problem Description
+== Problem Description <problem>
 #include "problem.typ"
 
-== Research Gap
-#include "research-gap.typ"
+== Related Work <related>
+#include "related.typ"
 
-== Contributions
+== Contributions <contributions>
 #include "contributions.typ"

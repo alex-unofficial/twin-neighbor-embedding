@@ -368,7 +368,19 @@ cytoscape:
   type: misc
   title: Cytoscape
 
-twin:
+twinPaperUnpublished:
+  type: manuscript
+  title: Twin Neighbor Embedding of Sparse Data Networks
+  author:
+  - Athanasiadis, Alexandros
+  - Floros, Dimitris
+  - Pitsianis, Nikos
+  - Sun, Xiaobai
+  date: 2025
+  note: Unpublished research paper
+
+
+twinSource:
   type: misc
   title: Twin Neighbor Embedding
   author:
@@ -1977,3 +1989,21 @@ quigley2001:
   genre: PhD Thesis
   organization: Department of Computer Science and Software Engineering, The University of Newcastle
   location: Australia
+
+noack2004:
+  type: article
+  title: An Energy Model for Visual Graph Clustering
+  author: Noack, Andreas
+  date: 2004
+  editor: Liotta, Giuseppe
+  page-range: 425-436
+  serial-number:
+    isbn: 978-3-540-24595-7
+  abstract: We introduce an energy model whose minimum energy drawings reveal the clusters of the drawn graph. Here a cluster is a set of nodes with many internal edges and few edges to nodes outside the set. The drawings of the best-known force and energy models do not clearly show clusters for graphs whose diameter is small relative to the number of nodes. We formally characterize the minimum energy drawings of our energy model. This characterization shows in what sense the drawings separate clusters, and how the distance of separated clusters to the other nodes can be interpreted.
+  parent:
+    type: proceedings
+    title: Graph Drawing
+    publisher:
+      name: Springer Berlin Heidelberg
+      location: Berlin, Heidelberg
+

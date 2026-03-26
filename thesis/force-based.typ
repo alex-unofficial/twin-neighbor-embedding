@@ -42,81 +42,111 @@ Methods in this category differ primarily in three aspects:
   Common approaches include approximation techniques, multilevel methods, and data
   structures that accelerate force computation.
 
-*The Spring-Electrical model*
+The general framework described above gives rise to numerous concrete layout models.
+In the following sections several representative approaches are presented, 
+beginning with the classical spring–electrical model and followed by methods 
+based on alternative energy formulations such as LinLog and multidimensional scaling.
+For each method we briefly describe the force or energy model and the algorithm 
+used to compute the layout.
+
+==== The Spring-Electrical model
 This model was first introduced by Peter Eades in 1984 @eades1984.
-In this first approach, every pair of vertices that form an edge in $G$ was
-connected by springs whose attractive force grows logarithmically with distance, 
-while non-adjacent vertices were subject to a repulsive force inversely proportional 
-to their distance in the layout.
-Then a physical simulation was used to find a stable configuration starting
-from some initial configuration.
+In this first approach, each edge in $G$ was modeled as a spring
+whose attractive force grew logarithmically with distance, 
+while non-adjacent vertices were subject to a repulsive force 
+inversely proportional to their distance.
+A physical simulation was then used to find a stable layout starting
+from an initial configuration.
 
-Later, Fruchterman and Reingold @FRlayout suggested using attractive spring
-forces proportional to the squared distance between adjacent vertices
-and repulsive electrical forces between all vertices inversely proportional
-to their distance in the layout.
+Later, Fruchterman and Reingold @FRlayout suggested a model in which 
+attractive spring forces are proportional to the squared distance 
+between adjacent vertices, while repulsive electrical forces act between 
+all vertex pairs and are inversely proportional to their distance.
 
-Using the unit direction vector 
-$uvec(r)_(i j) = (vec(x)_i - vec(x)_j)/(||vec(x)_i - vec(x)_j||)$,
-the attractive force is
+Let the unit direction vector from $j$ to $i$ be defined as
+$ uvec(r)_(i j) = (vec(x)_i - vec(x)_j)/(||vec(x)_i - vec(x)_j||) $
+
+The attractive force is
 $ vec(F)_a (i, j) = - (||vec(x)_i - vec(x)_j||^2)/K med uvec(r)_(i j) quad i ~ j $
 and the repulsive force is
 $ vec(F)_r (i, j) = (K^2)/(||vec(x)_i - vec(x)_j||) med uvec(r)_(i j) quad i eq.not j $
-where the parameter $K$ is related to the nominal edge length of the final layout.
+where the parameter $K$ represents the desired edge length in the final layout.
 
-These forces correspond to an energy function:
+These forces correspond to the following energy function @noack2004:
 $ cal(E)_"FR" (X) = sum_(i ~ j) (||vec(x)_i - vec(x)_j||^3)/(3K)
   - sum_(i eq.not j) K^2 ln(||vec(x)_i - vec(x)_j||) $
 
-The algorithm for computing the layout consists of calculating for each vertex $i$
-the normalized force direction $vec(f)_i$ as
+The layout is computed iteratively. For each vertex $i$, the normalized 
+force direction $uvec(f)_i$ is calculated as:
 $ vec(F)_i = sum_(j ~ i) vec(F)_a (i, j) + sum_(j eq.not i) vec(F)_r (i, j), quad
-  vec(f)_i = vec(F)_i/(||vec(F)_i||) $
-according to the previous configuration $X^((j))$ then moving the position in
-the direction of the force a distance according to a decreasing step length $h^((j))$
+  uvec(f)_i = vec(F)_i/(||vec(F)_i||) $
+
+Using the previous configuration $X^((j))$,
+the vertex position is updated by moving in the direction of 
+$uvec(f)_i$ with decreasing step length $h^((j))$
 $ vec(x)_i^((j + 1)) <- vec(x)_i^((j)) + h^((j)) med vec(f)_i $
-until the layout stabilizes to an equilibrium point.
-Refinements on the method use an adaptive step length updating scheme 
-@bru1995layout @yifanhu2006layout. 
+until the layout stabilizes at an equilibrium point.
+Later refinements introduce adaptive step-length schemes @bru1995layout @yifanhu2006layout. 
 
 This method usually works well for small graphs, but for larger graphs
-it is prone to being trapped in one of the local minima of the energy,
-while the algorithm itself must calculate the forces between all $n(n-1)/2$
-vertex pairs, resulting in $bigO(n^2)$ computational complexity. 
+it is prone to becoming trapped in local minima of the energy function @yifanhu2015.
+In addition, the algorithm itself must calculate repulsive forces between all 
+$n(n-1)/2$ vertex pairs, resulting in $BigO(n^2)$ computational complexity. 
 
 The time complexity can be improved by using a spatial partitioning technique
-such as the Barnes-Hut algorithm @barneshut1986, used widely in physics
-for simulations of $n$-body problems, which can compute all forces in 
-$bigO(n log n)$ time with good accuracy. Such an approach is taken
+such as the Barnes-Hut algorithm @barneshut1986, widely used in physics
+for $n$-body simulations, which can approximate the forces in 
+$BigO(n log n)$ time with good accuracy. Such an approach is taken
 in @tunkelang1999 and @quigley2001.
 
-To effectively overcome the configuration becoming trapped in a local minimum, 
+To address the problem of the configuration becoming trapped in a local minimum, 
 various algorithms #alex(inline: true)[(citations)] utilize a multilevel 
-(or multiscale) approach, by generating a progressively coarser series of graphs 
+(or multiscale) approach by generating a progressively coarser series of graphs 
 $G = G^0, G^1, G^2, dots, G^k$, such that $G^(j + 1)$ is a 
-coarse approximation of $G^j$, with fewer vertices, while retaining its 
-basic connectivity.  Then a progressively finer series of layouts 
+coarse approximation of $G^j$, with fewer vertices, while preserving the
+basic connectivity structure. 
+Then a progressively finer series of layouts 
 $X_k, X_(k-1), X_(k-2), dots, X_0 = X$ is generated, where $X_j$
-is a layout of graph $G^j$, using $X_(j + 1)$ as its initial configuration.
+is a layout of graph $G^j$, using $X_j^((0)) = X_(j + 1)$ as its 
+initial configuration.  
 The core idea is that by having fewer vertices that encode the same
-basic connectivity, the energy function will correspond to a coarse
-approximation of the original, while being smoother and therefore
-easier to traverse without becoming trapped in local minima,
-at the same time having the same general shape of the original 
-such that the computed minimum of the coarse energy function 
-is likely close to a minimum of the finer energy function. 
-By repeating this process in finer and finer steps the method 
-attempts to refine the computed equilibrium point to finer versions
-of the graph. 
+basic connectivity, the energy function $cal(E)^j$ will correspond 
+to a coarse approximation of the original $cal(E)^0$, 
+while being smoother and therefore easier to traverse without 
+becoming trapped in local minima.
+At the same time, since $cal(E)^j$ has the same basic
+shape as $cal(E)^(j-1)$, its minimum is likely to be close to 
+a minimum of the finer energy function. 
+By repeating this process in finer and finer steps, the method 
+attempts to refine the computed equilibrium point for progessivelt 
+finer versions of $G$.
 The final layout $X_0$ is an approximate equilibrium configuration 
-of the energy function of $G$, only less likely to be in one of the 
-many other local minima that exist in the original energy function.
+of $cal(E)^0$, but is less likely to lie in one of its many local 
+minima compared to random initialization.
 Notably this approach is not limited to the spring-electrical
 model, to force-directed methods, or to network layout in general, 
-but has found wide application in many combinatorial optimization
+but has found wide application in a variety of combinatorial optimization
 problems #alex(inline: true)[(more citations)].
 
-*The Stress model (Metric MDS)*
+#alex[
+  We should consider a multi-level approach to #tne as well.
+  A refinement strategy like the one described above could produce
+  better results, but there is an even simpler idea:
+  first generate a traditional vertex layout using #sgtsne and 
+  generate the edge layout as defined in the paper, then use the
+  combined vertex--edge layout as the initial configuration for the
+  #tne step. This might be able to retain some wanted properties
+  of the vertex layout while alleviating crowding. Will test soon.
+]
 
-*The Strain model (Classical MDS)*
+The Fruchterman-Reingold spring-electrical force model tends to generate 
+layouts with small and uniform edge lengths and few edge crossings. 
+However, it performs poorly at separating clusters, since edges connecting 
+different clusters should typically be longer @noack2004.
+
+==== LinLog and PolyLog models 
+
+==== The Stress model (Metric MDS)
+
+==== The Strain model (Classical MDS)
 

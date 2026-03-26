@@ -1,9 +1,11 @@
 #import "@preview/run-liners:0.1.0": *
-
-This thesis aims to address challenges in existing methods for the visual
-analysis of networks by introducing the Twin Neighbor Embedding method, 
+#import "macros.typ": *
+//
+This thesis aims to discuss challenges in existing methods for the visual
+analysis of networks and describe the Twin Neighbor Embedding (#tne) method, 
 a simple pre-embedding transform designed to improve the quality
-of existing network layout algorithms. 
+of existing network layout algorithms, based on unpublished related
+research @twinPaperUnpublished.
 Network representations play a central role in scientific data analysis, as many 
 real-world systems and relationships are naturally modeled as networks.
 Network visualization is therefore an integral component of network analysis, 
@@ -11,6 +13,9 @@ as spatial layouts can reveal structural properties of the underlying
 network in an intuitive and interpretable manner.
 However, existing network layout methods exhibit key limitations that can
 obscure structural relationships and hinder accurate interpretation of the data.
+#sne based methods have been applied in recent years to the layout of sparse networks
+using efficient and scalable algorithms @pitsianis2019SpacelandEmbedding. 
+However methods like #sgtsne still exhibit key limitations.
 We identify three recurring issues which the Twin Neighbor Embedding method aims to 
 address:
 #run-in-enum(

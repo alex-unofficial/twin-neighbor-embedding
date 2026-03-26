@@ -8,4 +8,4 @@
 #let vec(it) = {$bold(upright(it))$}
 #let uvec(it) = {$hat(vec(it))$}
 
-#let bigO = {$cal(O)$}
+#let BigO = {$cal(O)$}
