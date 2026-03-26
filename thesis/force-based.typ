@@ -73,7 +73,7 @@ $ vec(F)_r (i, j) = (K^2)/(||vec(x)_i - vec(x)_j||) med uvec(r)_(i j) quad i eq.
 where the parameter $K$ represents the desired edge length in the final layout.
 
 These forces correspond to the following energy function @noack2004:
-$ cal(E)_"FR" (X) = sum_(i ~ j) (||vec(x)_i - vec(x)_j||^3)/(3K)
+$ cal(E)_"FR" (X) = sum_(i ~ j) 1/(3K) ||vec(x)_i - vec(x)_j||^3
   - sum_(i eq.not j) K^2 ln(||vec(x)_i - vec(x)_j||) $
 
 The layout is computed iteratively. For each vertex $i$, the normalized 
@@ -144,7 +144,37 @@ layouts with small and uniform edge lengths and few edge crossings.
 However, it performs poorly at separating clusters, since edges connecting 
 different clusters should typically be longer @noack2004.
 
-==== LinLog and PolyLog models 
+==== LinLog and $r$-PolyLog models 
+The LinLog energy model @noack2004 was introduced by Andreas Noack in 2004,
+to improve on the cluster seperation problem of the Fruchterman-Reingold
+force model. Noack takes an energy-centric approach to defining the 
+dynamical system of particles that represent the layout $X$.
+
+Specifically the LinLog energy function $cal(E)_"LinLog"$ is defined as
+$ cal(E)_"LinLog" (X) = sum_(i ~ j) ||vec(x)_i - vec(x)_j||
+  - sum_(i eq.not j) ln(||vec(x)_i - vec(x)_j||) $
+and the problem is framed from the explicit perspective of finding
+a minimal-energy configuration $X$.
+
+A specific algorithm to find the minima is not described, but
+standard optimization methods in conjuction with
+multilevel approaches may be used in practice.
+
+LinLog has better separation of clusters with small diameter
+compared to Fruchterman-Reingold, but sacrifices edge length
+uniformity as a result.
+
+Noack also introduces the generalized $r$-PolyLog class of energy
+models with corresponding energy functions
+$ cal(E)_(r"-PolyLog") = sum_(i ~ j) 1/r ||vec(x)_i - vec(x)_j||^r
+  - sum_(i eq.not j) ln(||vec(x)_i - vec(x)_j||) $
+Where parameter $r >= 1$ decribes the model behaviour. Choice $r = 1$
+separates clusters while $r -> infinity$ enforces uniform edge
+lengths, with compromises between the both extremes.
+
+Notice that the $1$-PolyLog model is equivalent to LinLog, while
+the $3$-PolyLog energy is the same as Fruchterman-Reingold with $K = 1$ 
+(which is already subject to the choice of scale). 
 
 ==== The Stress model (Metric MDS)
 
