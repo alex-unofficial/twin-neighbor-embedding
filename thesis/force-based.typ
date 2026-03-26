@@ -103,7 +103,7 @@ To address the problem of the configuration becoming trapped in a local minimum,
 various algorithms #alex(inline: true)[(citations)] utilize a multilevel 
 (or multiscale) approach by generating a progressively coarser series of graphs 
 $G = G^0, G^1, G^2, dots, G^k$, such that $G^(j + 1)$ is a 
-coarse approximation of $G^j$, with fewer vertices, while preserving the
+coarse approximation of $G^j$ with fewer vertices, while preserving the
 basic connectivity structure. 
 Then a progressively finer series of layouts 
 $X_k, X_(k-1), X_(k-2), dots, X_0 = X$ is generated, where $X_j$
@@ -118,7 +118,7 @@ At the same time, since $cal(E)^j$ has the same basic
 shape as $cal(E)^(j-1)$, its minimum is likely to be close to 
 a minimum of the finer energy function. 
 By repeating this process in finer and finer steps, the method 
-attempts to refine the computed equilibrium point for progessivelt 
+attempts to refine the computed equilibrium point for progressively
 finer versions of $G$.
 The final layout $X_0$ is an approximate equilibrium configuration 
 of $cal(E)^0$, but is less likely to lie in one of its many local 

@@ -4,7 +4,7 @@
 #import "@preview/axiom:0.1.0": *
 
 Consider a graph $G = (V, E)$. 
-We must assign each vertex $v in V$ a position $x(v) in RR^d$. 
+We must assign to each vertex $v in V$ a position $vec(x)(v) in RR^d$. 
 
 Denote by $n = |V|$ the number of vertices and by $m = |E|$ the number of edges.
 Given some ordering of the vertices $1, 2, dots, n$ the layout $X$

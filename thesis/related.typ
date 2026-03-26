@@ -35,10 +35,12 @@ compared to classical #sne for dimensionality reduction of point-cloud data.
 has achieved good performance, while still exhibiting some of the limitations
 of #sne methods.
 
-As part of an effort to address the remaining issues of #sgtsne for sparse
+In an effort to address the remaining issues of #sgtsne for sparse
 networks we developed the Twin Neighbor Embedding (#tne) method and the #twin
 software package as part of yet unpublished research with
 Dimitris Floros, Nikos Pitsianis, and Xiaobai Sun @twinPaperUnpublished.
+
+#alex[Section break here?]
 
 The aim of this thesis is to present and analyze the #tne method and
 the #twin software and compare it to existing network layout methods in terms of 
@@ -57,9 +59,8 @@ matrix to extend and improve pre-existing layout methods, primarily
 
 Despite its conceptual and mathematical simplicity, #tne proves effective in 
 mitigating vertex crowding and erroneous clustering across various real-world and 
-synthetic networks.  Additionally, due to its explicit geometric encoding of edge 
-placement it improves on excessive edge crossing and enables edges to be drawn
-as parametric curves without manual intervention by the user. 
+synthetic networks. Additionally, due to its explicit geometric encoding of edge 
+placement it significantly alleviates the problem of excessive edge crossing. 
 Various visualization results, as well as quantitative evaluations of the method are
 presented in @results.
 
