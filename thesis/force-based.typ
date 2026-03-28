@@ -97,14 +97,14 @@ it is prone to becoming trapped in local minima of the energy function @yifanhu2
 In addition, the algorithm itself must calculate repulsive interactions between all 
 $n(n-1)/2$ vertex pairs, resulting in $BigO(n^2)$ computational complexity.
 
-*Fast force approximation.*
+_Fast force approximation._
 The time complexity can be improved by using a spatial partitioning technique
 such as the Barnes-Hut algorithm @barneshut1986, widely used in physics
 for $n$-body simulations, which can approximate the forces in 
 $BigO(n log n)$ time with good accuracy. Such an approach is taken
 in @tunkelang1999 @quigley2001 and @yifanhu2006layout.
 
-*Multilevel Methods.*
+_Multilevel Methods._
 To address the problem of the solution becoming trapped in local minima, 
 various algorithms #alex(inline: true)[(citations)] 
 utilize a multilevel (or multiscale) approach by generating a progressively 
@@ -186,71 +186,64 @@ up to a constant scaling factor.
 A limitation of Spring-Electrical models like those described above is
 that they primarily enforce local edge length constraints and do not 
 explicitly encode global distance relationships between vertices.
-Real-world networks often include quantitative information associated
-with their edges in the form of weights. They might represent 
-similarity or distance between the vertices. A modification could
-be made to include stronger or weaker attractive forces to 
-influence the distance between each edge. However a more
-principled approach is taken in the Stress model
-which attempts to match all vertex distances.  
+Real-world networks often include quantitative information on their edges 
+in the form of weights representing similarity or distance between the vertices. 
+While such information could be incorporated by adjusting the strength of 
+attractive forces, the Stress model instead adopts a more principled approach
+that attempts to match the distances between all vertex pairs.  
 
-Consider a weighted graph $G = (V, E, w)$ where $V, E$ are the vertex
-and edge sets, and $w: E -> W$ is a function mapping each edge $e$ to
-a value $w(e) in W$. Typical choices for $W$ include $RR$, $RR^+$, $[0,1]$,
-$NN$, $CC$, etc.
-We denote by $e_(i j) = (i, j)$ and $w_(i j) = w(e_(i j))$ when $e_(i j) in E$.
+Consider a weighted graph $G = (V, E, w)$ where $V$ and $E$ are the vertex
+and edge sets, and $w: E -> W$ maps each edge $e$ to a value $w(e) in W$. 
+We denote edges by $e_(i j) = (i, j)$ and write $w_(i j) = w(e_(i j))$ when $e_(i j) in E$.
 
 For each vertex pair $(i,j)$ we derive a target distance $d_(i j) in RR^+$. 
 If $e_(i j) in E$, the distance is obtained by applying a transformation
-$f: W -> RR^+$ that maps each edge weight to a distance, 
-$ d_(i j) = f(w_(i j)) $
-For non-adjacent vertices we typically define $d_(i j)$ as the shortest-path
+$f: W -> RR^+$ that maps each edge weight to a distance, so that $d_(i j) = f(w_(i j))$.
+For non-adjacent vertices, $d_(i j)$ is typically defined as the shortest-path
 distance between $i$ and $j$ in $G$ when edges are assigned lengths $f(w_(i j))$.
 
-We assume that $G$ is connected ensuring that $d_(i j)$ is defined
-for all vertex pairs. If the graph is disconnected, the connected components
+We assume that $G$ is connected, ensuring that $d_(i j)$ is defined
+for all vertex pairs. If the graph is disconnected, its connected components
 can be identified and the algorithm applied to each component separately.
 
-The ideal choice of transformation $f$ depends on the information represented 
+The choice of transformation $f$ depends on the information represented 
 by the weights. If the weights encode distances between vertices, the identity 
-mapping $f(w) = w$ is sufficient.
+mapping $f(w) = w$ suffices.
 If instead $w_(i j)$ represents a similarity or probability, a natural choice
-is $f(w) = log(1 slash w)$. This transformation preserves the ordering of similarities
+is $f(w) = -log(w)$. This transformation preserves the ordering of similarities
 and has the useful property that shortest-path distances become additive:
-probabilities along a path multiply as their negative logarithms sum.
+probabilities along a path multiply while their negative logarithms sum.
 
-We compute the ideal distance $d_(i j)$ for each vertex pair in $V^2$;
-then we seek to generate a layout which matches the ideal distance for each
-pair of vertices.
+Once the ideal distances $d_(i j)$ are defined for all vertex pairs,
+the goal is to compute a layout that approximates the ideal distances
+as closely as possible.
 
 In the stress model, each vertex pair is connected by a spring with nominal
-length $d_(i j)$ and constant $k_(i j)$. This imposes an energy function
+length $d_(i j)$ and stiffness $k_(i j)$. This yields the energy function
 $ cal(E)_"Stress" (X) = sum_(i < j) 
   k_(i j) (||vec(x)_i - vec(x)_j|| - d_(i j))^2 $ <energy-stress>
-whose minimum corresponds to the layout which optimally matches the ideal distances 
-according to this model.
-A typical choice for $k_(i j) = 1 slash d_(i j)^2$ which yields the equivalent formulation
-$sum_(i < j) (||vec(x)_i - vec(x)_j|| slash d_(i j) - 1)^2$, thus measures the relative
-difference between the actual and ideal edge length.
+whose minimum corresponds to the layout that optimally matches the ideal distances.
+A typical choice is $k_(i j) = 1 slash d_(i j)^2$ which yields the equivalent formulation
+$ sum_(i < j) ((||vec(x)_i - vec(x)_j||) / d_(i j) - 1)^2 $
+thereby measuring the relative deviation between the actual and ideal edge lengths.
 
 Although the stress model is often grouped with force-directed methods, 
 it is more naturally interpreted as an explicit optimization formulation 
 derived from Multidimensional Scaling (MDS) @torgerson1952MDS @kruskal1964MDS.
-It was introduced to network layout by Kamada and Kawai in 1989 @kamadakawai1989.
-In order to minimize @energy-stress they proposed using Newton's method on 
-each position, one vertex at a time. 
-More recently, stress majorization @gansner2004 became the preferred approach 
+It was introduced to network layout by Kamada and Kawai in 1989 @kamadakawai1989,
+who proposed minimizing @energy-stress using Newton's method.
+More recently, stress majorization @gansner2004 has become the preferred approach 
 due to its robustness and guaranteed monotonic decrease of the stress function.
 
-The Stress model as defined is not scalable for large networks. Formulating the
-model requires computing the shortest-path distances for all vertex pairs. Using
-Johnson's algorithm this task requires $BigO(n^2 log n + n m)$ time complexity,
-with $BigO(n^2)$ space requirements to store the resulting distances.
+The Stress model as defined is not easily scalable for large networks. 
+Constructing the model requires computing shortest-path distances for all vertex pairs.
+Using Johnson's algorithm this step requires $BigO(n^2 log n + n m)$ time
+and $BigO(n^2)$ memory to store the computed distances.
 The stress-majorization step additionally requires solving dense linear systems
-in each iteration which can be more computationally expensive than the distance 
+in each iteration, which can be more computationally expensive than the distance 
 computation itself.
-Therefore, for very large graphs this model is computationally expensive and
-memory prohibitive @yifanhu2015. Various optimizations and approximations
-have been developed, trading accuracy for reduced time and memory usage.
+Consequently, for very large graphs the method becomes both computationally expensive 
+and memory intensive @yifanhu2015. Various optimizations and approximations
+have therefore been proposed that trade accuracy for reduced time and memory requirements.
 #alex(inline: true)[Citations?]
 
