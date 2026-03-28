@@ -2067,3 +2067,19 @@ gansner2004:
     type: proceedings
     volume: 3383
 
+hall1970:
+  type: article
+  title: An r-Dimensional Quadratic Placement Algorithm
+  author: Hall, Kenneth M.
+  date: 1970-11
+  page-range: 219-229
+  url: https://ideas.repec.org/a/inm/ormnsc/v17y1970i3p219-229.html
+  serial-number:
+    doi: 10.1287/mnsc.17.3.219
+  abstract: In this paper the solution to the problem of placing n connected points (or nodes) in r-dimensional Euclidean space is given. The criterion for optimality is minimizing a weighted sum of squared distances between the points subject to quadratic constraints of the form X'X - 1, for each of the r unknown coordinate vectors. It is proved that the problem reduces to the minimization of a sum or r positive semi-definite quadratic forms which, under the quadratic constraints, reduces to the problem of finding r eigenvectors of a special &quot;disconnection&quot; matrix. It is shown, by example, how this can serve as a basis for cluster identification.
+  parent:
+    type: periodical
+    title: Management Science
+    issue: 3
+    volume: 17
+

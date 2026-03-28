@@ -10,7 +10,7 @@
 #include "force-based.typ"
 
 === Spectral Methods
-#alex[Laplacian eigenmaps]
+#include "spectral.typ"
 
 === Stochastic methods
 #alex[#sne and #tsne as embedding methods for $k$NN graphs]
