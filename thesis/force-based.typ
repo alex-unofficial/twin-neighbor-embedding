@@ -133,11 +133,67 @@ Where parameter $r >= 1$ decribes the model behaviour. Choice $r = 1$
 separates clusters while $r -> infinity$ enforces uniform edge
 lengths, with compromises between the both extremes.
 
-Notice that the $1$-PolyLog energy is equivalent to LinLog @energy-linlog, while
+Notice that $1$-PolyLog is equivalent to LinLog @energy-linlog, while
 the $3$-PolyLog energy is the same as Fruchterman-Reingold @energy-fr with $K = 1$ 
 (which is already subject to the choice of scale). 
 
+A limitation of Spring-Electrical models like those described above is
+that they do not explicitly encode edge length in the layout. Real
+world networks often include quantitative information associated
+with their edges in the form of weights. They might represent 
+similarity or distance between the vertices. A modification could
+be made to include stronger or weaker attractive forces to 
+influence the distance between each edge. However a more
+principled approach is taken in the Stress and Strain models
+which attempt to match all vertex distances.  
+
 ==== The Stress model
+Consider a weighted graph $G = (V, E, w)$ where $V, E$ are the vertex
+and edge sets, and $w: E -> W$ is a function mapping each edge $e$ to
+a value $w(e) in W$. Typical choices for $W$ include $RR$, $RR^+$, $[0,1]$,
+$NN$, $CC$, etc.
+We denote by $e_(i j) = (i, j)$ and $w_(i j) = w(e_(i j))$ when $e_(i j) in E$.
+
+For each vertex pair $(i,j)$ we seek to find a distance $d_(i j) in RR^+$. 
+If $e_(i j) in E$ then we can set $d_(i j) = f(w_(i j))$ where the function 
+$f: W -> RR^+$ maps each weight
+to a distance, and depends on what the weights represent.
+#footnote[
+  for example, if the weights represent a distance between vertices
+  then a simple choice of $f(q) = q$ may suffice.
+  If weights represent similarity between vertices we might chooce $f(q) = (1 - q)/q$, etc.
+]
+If $e_(i j) in.not E$ then we typically define $d_(i j)$ as the shortest path
+distance.
+$ d_(i j) = cases(
+  f(w_(i j)) "if" e_(i j) in E,
+  min_(k ~ i) {f(w_(i k)) + d_(k j)} "if" e_(i j) in.not E,
+) $
+We assume that $G$ is a connected graph and thus such a distance $d_(i j)$
+may be computed for every $i$ and $j$. In the case of disjoint graphs
+we can simply identify the connected-subgraphs and perform the algorithm
+for each one seperately.
+
+We compute the ideal distance $d_(i j)$ for each vertex pair in $V^2$ then
+we seek to generate a layout which matches the ideal distance for each
+pair of vertices.
+
+In the stress model, each vertex pair is connected by a spring with nominal
+length $d_(i j)$ and constant $k_(i j)$. This imposes an energy function
+$ cal(E)_"Stress" = sum_(i eq.not j) 1/2 k_(i j) (||x_i - x_j|| - d_(i j))^2 $ <energy-stress>
+whose minimum corresponds to the layout which optimally matches the ideal distances 
+according to this model.
+A typical choice for $k_(i j) = 2 slash d_(i j)^2$ which results in energy function
+$sum_(i eq.not j) (||x_i - x_j|| slash d_(i j) - 1)^2$, thus measures the relative
+difference between the actual and ideal edge length.
+
+This model has its roots in Multidimensional Scaling (MDS) @kruskal1964MDS and
+was introduced to network layout by Kamada and Kawai in 1989 @kamadakawai1989.
+In order to minimize @energy-stress they proposed using Newton's method on 
+each position, one vertex at a time. More recently, the technique of Stress
+Majorization @gansner2004 became a preferred method to minimize the stress
+model energy due to its robustness.
 
 ==== The Strain model
+
 

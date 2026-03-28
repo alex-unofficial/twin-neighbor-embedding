@@ -2007,3 +2007,63 @@ noack2004:
       name: Springer Berlin Heidelberg
       location: Berlin, Heidelberg
 
+kruskal1964MDS:
+  type: article
+  title: Multidimensional scaling by optimizing goodness of fit to a nonmetric hypothesis
+  author: Kruskal, Joseph B.
+  date: 1964
+  page-range: 1-27
+  url: https://api.semanticscholar.org/CorpusID:48165675
+  parent:
+    type: periodical
+    title: Psychometrika
+    volume: 29
+
+torgerson1952MDS:
+  type: article
+  title: 'Multidimensional Scaling: I. Theory and Method'
+  author: Torgerson, Warren S.
+  date: 1952
+  page-range: 401-419
+  serial-number:
+    doi: 10.1007/BF02288916
+  parent:
+    type: periodical
+    title: Psychometrika
+    issue: 4
+    volume: 17
+
+kamadakawai1989:
+  type: article
+  title: An algorithm for drawing general undirected graphs
+  author:
+  - Kamada, Tomihisa
+  - Kawai, Satoru
+  date: 1989
+  page-range: 7-15
+  url: https://www.sciencedirect.com/science/article/pii/0020019089901026
+  serial-number:
+    doi: https://doi.org/10.1016/0020-0190(89)90102-6
+    issn: 0020-0190
+  parent:
+    type: periodical
+    title: Information Processing Letters
+    issue: 1
+    volume: 31
+
+gansner2004:
+  type: article
+  title: Graph Drawing by Stress Majorization
+  author:
+  - Gansner, Emden
+  - Koren, Yehuda
+  - North, Stephen
+  date: 2004
+  page-range: ''
+  serial-number:
+    doi: 10.1007/978-3-540-31843-9_25
+    isbn: 978-3-540-24528-5
+  parent:
+    type: proceedings
+    volume: 3383
+
