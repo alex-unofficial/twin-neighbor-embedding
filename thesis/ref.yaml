@@ -2083,3 +2083,18 @@ hall1970:
     issue: 3
     volume: 17
 
+koren2002:
+  type: article
+  title: 'ACE: A Fast Multiscale Eigenvectors Computation for Drawing Huge Graphs'
+  author:
+  - Koren, Yehuda
+  - Carmel, Liran
+  - Harel, David
+  date: 2002
+  page-range: 137-144
+  serial-number:
+    doi: 10.1109/INFVIS.2002.1173159
+    isbn: 0-7695-1751-X
+  parent:
+    type: proceedings
+

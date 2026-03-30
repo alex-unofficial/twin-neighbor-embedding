@@ -8,4 +8,6 @@
 #let vec(it) = {$bold(upright(it))$}
 #let uvec(it) = {$hat(vec(it))$}
 
+#let diag = {$upright("diag")$}
+
 #let BigO = {$cal(O)$}
