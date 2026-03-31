@@ -2098,3 +2098,16 @@ koren2002:
   parent:
     type: proceedings
 
+
+mcinnes2020umap:
+  type: misc
+  title: 'UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction'
+  author:
+  - McInnes, Leland
+  - Healy, John
+  - Melville, James
+  date: 2020
+  url: https://arxiv.org/abs/1802.03426
+  serial-number:
+    arxiv: '1802.03426'
+

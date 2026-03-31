@@ -44,7 +44,7 @@ Methods in this category differ primarily in three aspects:
 The general framework described above gives rise to numerous concrete layout models.
 In the following sections several representative approaches are presented, 
 beginning with the classical spring–electrical model and followed by methods 
-based on alternative energy formulations such as LinLog and Multidimensional Scaling (MDS).
+based on alternative energy formulations such as LinLog and Multidimensional Scaling (#mds).
 For each method we briefly describe the force or energy model and the algorithm 
 used to compute the layout.
 
@@ -229,7 +229,7 @@ thereby measuring the relative deviation between the actual and ideal edge lengt
 
 Although the stress model is often grouped with force-directed methods, 
 it is more naturally interpreted as an explicit optimization formulation 
-derived from Multidimensional Scaling (MDS) @torgerson1952MDS @kruskal1964MDS.
+derived from Multidimensional Scaling (#mds) @torgerson1952MDS @kruskal1964MDS.
 It was introduced to network layout by Kamada and Kawai in 1989 @kamadakawai1989,
 who proposed minimizing @energy-stress using Newton's method.
 More recently, stress majorization @gansner2004 has become the preferred approach 
