@@ -2111,3 +2111,36 @@ mcinnes2020umap:
   serial-number:
     arxiv: '1802.03426'
 
+vandermaaten2014:
+  type: article
+  title: Accelerating t-SNE using Tree-Based Algorithms
+  author:
+    name: Maaten
+    given-name: Laurens
+    prefix: van der
+  date: 2014
+  page-range: 3221-3245
+  url: http://jmlr.org/papers/v15/vandermaaten14a.html
+  parent:
+    type: periodical
+    title: Journal of Machine Learning Research
+    issue: 93
+    volume: 15
+
+linderman2017fitsne:
+  type: article
+  title: Fast Interpolation-based t-SNE for Improved Visualization of Single-Cell RNA-Seq Data
+  author:
+  - Linderman, George C.
+  - Rachh, Manas
+  - Hoskins, Jeremy G.
+  - Steinerberger, Stefan
+  - Kluger, Yuval
+  date: 2017
+  page-range: 243-245
+  url: https://api.semanticscholar.org/CorpusID:34472149
+  parent:
+    type: periodical
+    title: Nature methods
+    volume: 16
+

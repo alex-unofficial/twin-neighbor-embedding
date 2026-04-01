@@ -91,13 +91,15 @@ as it now uses a heavy-tailed Student-$t$ distribution instead of the
 previous Gaussian. The probability $q_(i j)$ between points $i$ and $j$ is given by
 $ q_(i j) = (1 + ||vec(x)_i - vec(x)_j||^2)^(-1) / 
   (sum_(k eq.not l) (1 + ||vec(x)_k - vec(x)_l||^2)^(-1)) quad "for" i eq.not j $
+  <induced-prob-tsne>
 
 For consistency, self-neighbor probabilities are again excluded in the symmetric
 formulation, so $p_(i i) = q_(i i) = 0$.
 
 These two changes result in the following gradient
 $ (partial cal(E)_(t"-SNE"))/(partial vec(x)_i) = 
-  4 sum_j (p_(i j) - q_(i j)) (vec(x)_i - vec(x)_j)/(1 + ||vec(x)_i - vec(x)_j||^2) $
+  4 sum_j (p_(i j) - q_(i j)) (vec(x)_i - vec(x)_j)/(1 + ||vec(x)_i - vec(x)_j||^2) $ 
+  <gradient-tsne>
 which has a simpler symmetric form than the gradient of classical #sne.
 
 Together, these changes mitigate both of the above limitations of #sne.
@@ -113,15 +115,53 @@ In practice, this produces substantially more useful visual embeddings for many
 point-cloud datasets compared to classical #sne and several earlier nonlinear
 dimensionality reduction methods such as Sammon mapping and Isomap.
 
-==== Extension to sparse network visualization (#sgtsne)
-As presented above, #sne and #tsne are not intrinsically network layout methods,
-but methods for matching a low-dimensional embedding to a target neighborhood
-probability model derived from input data. In the standard setting this model is
-constructed from pairwise distances in a high-dimensional point cloud.
+In the exact formulation of #tsne, the joint probability distribution $P$ is dense,
+since the Gaussian neighborhood model assigns nonzero probability to essentially every
+pair of points. However, when the perplexity is small, the vast majority of these
+probabilities are negligible. Consequently, practical implementations of #tsne often
+replace $P$ by a sparse approximation obtained by retaining only the strongest local
+neighborhood relations, typically through an exact or approximate $k$-nearest-neighbor
+search, followed by symmetrization and renormalization. In this sense, practical #tsne
+is already well approximated by a sparse stochastic neighborhood graph, even when the
+original method is formally defined on a dense similarity matrix.
 
-This perspective extends naturally to network layout by replacing the point-cloud-derived
-probability model with one derived directly from the graph structure. The target
-distribution $P$ may then be constructed from adjacency, edge weights, random-walk
-affinities, geodesic distances, or other graph-based similarity measures, while the
-induced distribution $Q$ is still determined by the low-dimensional layout.
-This is the basic idea underlying sparse graph #tsne methods such as #sgtsne.
+To understand the computational effect of sparsifying $P$, it is useful to
+rewrite the gradient @gradient-tsne using the definition of $q_(i j)$ in
+@induced-prob-tsne as
+$ (partial cal(E)_(t"-SNE"))/(partial vec(x)_i) = 
+  4 sum_j (p_(i j) - q_(i j)) q_(i j) Z (vec(x)_i - vec(x)_j) $ 
+with normalization term $Z = sum_(k eq.not l) (1 + ||vec(x)_k - vec(x)_l||^2)^(-1)$.
+This allows as to rewrite the gradient as a sum of attractive and repulsive forces
+$ (partial cal(E)_(t"-SNE"))/(partial vec(x)_i) = 
+  4 underbrace(sum_j p_(i j) q_(i j) Z (vec(x)_i - vec(x)_j), F_"attr") - 
+  4 underbrace(sum_j q_(i j)^2 Z (vec(x)_i - vec(x)_j), F_"rep") $
+
+The sparsification substantially reduces the cost of the attractive part of the
+gradient, since only pairs with nonzero $p_(i j)$ contribute. However, the repulsive
+part remains dense, because the low-dimensional distribution $Q$ depends on all
+pairs of points. For this reason, the dominant computational cost in large-scale
+#tsne lies in approximating the repulsive interactions. Barnes-Hut #tsne
+@vandermaaten2014 uses a spatial tree to approximate distant repulsive forces and
+reduces the overall complexity to approximately $BigO(n log n)$, while also computing
+a sparse approximation of $P$ from nearest-neighbor relations.
+FIt-SNE @linderman2017fitsne accelerates the repulsive term further by 
+interpolating the interaction kernel onto a regular grid and using the 
+Fast Fourier Transform to evaluate the resulting convolution efficiently, 
+together with approximate nearest-neighbor methods for constructing the sparse 
+high-dimensional affinities.
+
+
+==== Extension to sparse network visualization
+The sparse formulation used in practical #tsne suggests a natural extension to
+network layout. Rather than constructing a sparse stochastic $k$NN graph
+as an approximation of a dense point-cloud similarity model, one may instead 
+begin directly from a given sparse graph that is already given as input.
+
+In this setting, the target distribution $P$ is derived directly from the graph
+structure itself, for example from adjacency, edge weights, random-walk
+affinities, or geodesic similarities, while the induced distribution $Q$
+remains determined by the low-dimensional layout. 
+The embedding then seeks a low-dimensional layout whose induced distribution $Q$
+matches this graph-based target distribution, in the same spirit as #tsne.
+
+This is the central idea underlying sparse graph #tsne methods such as #sgtsne.
