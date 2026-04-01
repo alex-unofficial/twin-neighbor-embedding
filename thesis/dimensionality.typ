@@ -66,8 +66,8 @@ which has the interpretation of forces on $vec(x)_i$, pulling toward
 or pushing away from $vec(x)_j$, depending on whether $j$ is assigned
 too much or too little neighborhood probability in the embedding.
 
-The #sne method produces good embeddings in terms of neighborhood preservation
-and can reveal cluster structure, but often suffers from substantial point crowding.
+The #sne method preserves local neighborhood structure well and can reveal
+cluster structure, but often suffers from substantial point crowding.
 Additionally, the objective @energy-sne is difficult to optimize effectively,
 and the solution tends to become trapped in local minima.
 
@@ -91,6 +91,7 @@ as it now uses a heavy-tailed Student-$t$ distribution instead of the
 previous Gaussian. The probability $q_(i j)$ between points $i$ and $j$ is given by
 $ q_(i j) = (1 + ||vec(x)_i - vec(x)_j||^2)^(-1) / 
   (sum_(k eq.not l) (1 + ||vec(x)_k - vec(x)_l||^2)^(-1)) quad "for" i eq.not j $
+
 For consistency, self-neighbor probabilities are again excluded in the symmetric
 formulation, so $p_(i i) = q_(i i) = 0$.
 
@@ -103,7 +104,7 @@ Together, these changes mitigate both of the above limitations of #sne.
 The heavy-tailed kernel produces repulsive forces for dissimilar points
 that decay more slowly with distance compared to #sne, effectively reducing crowding
 in the layout.
-In addition the objective @energy-tsne produces a more stable optimization
+In addition, the objective @energy-tsne produces a more stable optimization
 landscape in practice using standard optimization methods.
 
 #tsne uses a modified steepest descent algorithm with momentum and an initial
