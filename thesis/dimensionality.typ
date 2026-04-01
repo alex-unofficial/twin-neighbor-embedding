@@ -35,11 +35,6 @@ that the Shannon entropy of the distribution $P_i$ measured in bits
 (defined as $H(P_i) = - sum_j p_(j|i) log_2 p_(j|i)$) satisfies the equation $2^(H(P_i)) = k$.
 The value $2^(H(P_i))$ is called the perplexity $"Perp"(P_i)$, and represents
 the effective number of neighbors $k$ of the distribution.
-#footnote[
-  Consider that $2^(H(P_i)) = k => H(P_i) = log_2 k = - log_2 (1 slash k) = I(1 slash k)$.
-  Then the entropy (or average uncertainty) of $P_i$ is equal to the information 
-  in a uniform distribution with $k$ values.
-]
 The value $k$ is chosen beforehand.
 
 For a given low dimensional layout $X$ we also construct a conditional distribution with 
@@ -132,7 +127,7 @@ $ (partial cal(E)_(t"-SNE"))/(partial vec(x)_i) =
   4 sum_j (p_(i j) - q_(i j)) q_(i j) Z (vec(x)_i - vec(x)_j) $ 
 with normalization term $Z = sum_(k eq.not l) (1 + ||vec(x)_k - vec(x)_l||^2)^(-1)$.
 
-This allows as to rewrite the gradient as a sum of attractive and repulsive forces
+This allows us to rewrite the gradient as a sum of attractive and repulsive forces
 $ (partial cal(E)_(t"-SNE"))/(partial vec(x)_i) = 
   4 underbrace(sum_j p_(i j) q_(i j) Z (vec(x)_i - vec(x)_j), F_"attr") - 
   4 underbrace(sum_j q_(i j)^2 Z (vec(x)_i - vec(x)_j), F_"rep") $
@@ -156,7 +151,7 @@ high-dimensional affinities.
 The sparse formulation used in practical #tsne suggests a natural extension to
 network layout. Rather than constructing a sparse stochastic #knn graph
 as an approximation of a dense point-cloud similarity model, one may instead 
-begin directly from a given sparse graph that is already given as input.
+begin directly from a sparse graph provided as input.
 
 In this setting, the target distribution $P$ is derived directly from the graph
 structure itself, for example from adjacency, edge weights, random-walk
