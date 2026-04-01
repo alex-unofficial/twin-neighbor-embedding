@@ -8,6 +8,8 @@
 #let tsne = box[$t$-#sne]
 #let sgtsne = box[#smallcaps[sg]-$t$-#sne]
 
+#let knn = box[$k$-NN]
+
 #let vec(it) = {$bold(upright(it))$}
 #let uvec(it) = {$hat(vec(it))$}
 

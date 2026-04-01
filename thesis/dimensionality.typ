@@ -83,7 +83,7 @@ The symmetric version instead introduces a joint probability distribution $P$,
 defined by $p_(i j) = (p_(j|i) + p_(i|j))/(2 n)$, together with a corresponding
 low-dimensional joint distribution $Q$ defined in the next paragraph.
 This allows for the objective to be written as a single KL divergence
-$ cal(E)_(t"-SNE") (X) = cal(D)_"KL" (P || Q) = sum_i sum_j p_(i j) log p_(i j)/q_(i j) $
+$ cal(E)_(t"-SNE") (X) = cal(D)_"KL" (P || Q) = sum_(i eq.not j) p_(i j) log p_(i j)/q_(i j) $
 <energy-tsne>
 
 The definition of the joint probability $Q$ is the second major change,
@@ -98,7 +98,7 @@ formulation, so $p_(i i) = q_(i i) = 0$.
 
 These two changes result in the following gradient
 $ (partial cal(E)_(t"-SNE"))/(partial vec(x)_i) = 
-  4 sum_j (p_(i j) - q_(i j)) (vec(x)_i - vec(x)_j)/(1 + ||vec(x)_i - vec(x)_j||^2) $ 
+  4 sum_j (p_(i j) - q_(i j)) (1 + ||vec(x)_i - vec(x)_j||^2)^(-1) (vec(x)_i - vec(x)_j) $ 
   <gradient-tsne>
 which has a simpler symmetric form than the gradient of classical #sne.
 
@@ -122,7 +122,7 @@ probabilities are negligible. Consequently, practical implementations of #tsne o
 replace $P$ by a sparse approximation obtained by retaining only the strongest local
 neighborhood relations, typically through an exact or approximate $k$-nearest-neighbor
 search, followed by symmetrization and renormalization. In this sense, practical #tsne
-is already well approximated by a sparse stochastic neighborhood graph, even when the
+is already well approximated by a sparse stochastic #knn graph, even when the
 original method is formally defined on a dense similarity matrix.
 
 To understand the computational effect of sparsifying $P$, it is useful to
@@ -131,6 +131,7 @@ rewrite the gradient @gradient-tsne using the definition of $q_(i j)$ in
 $ (partial cal(E)_(t"-SNE"))/(partial vec(x)_i) = 
   4 sum_j (p_(i j) - q_(i j)) q_(i j) Z (vec(x)_i - vec(x)_j) $ 
 with normalization term $Z = sum_(k eq.not l) (1 + ||vec(x)_k - vec(x)_l||^2)^(-1)$.
+
 This allows as to rewrite the gradient as a sum of attractive and repulsive forces
 $ (partial cal(E)_(t"-SNE"))/(partial vec(x)_i) = 
   4 underbrace(sum_j p_(i j) q_(i j) Z (vec(x)_i - vec(x)_j), F_"attr") - 
@@ -140,7 +141,7 @@ The sparsification substantially reduces the cost of the attractive part of the
 gradient, since only pairs with nonzero $p_(i j)$ contribute. However, the repulsive
 part remains dense, because the low-dimensional distribution $Q$ depends on all
 pairs of points. For this reason, the dominant computational cost in large-scale
-#tsne lies in approximating the repulsive interactions. Barnes-Hut #tsne
+#tsne lies in approximating the repulsive interactions. Barnes-Hut-SNE
 @vandermaaten2014 uses a spatial tree to approximate distant repulsive forces and
 reduces the overall complexity to approximately $BigO(n log n)$, while also computing
 a sparse approximation of $P$ from nearest-neighbor relations.
@@ -153,7 +154,7 @@ high-dimensional affinities.
 
 ==== Extension to sparse network visualization
 The sparse formulation used in practical #tsne suggests a natural extension to
-network layout. Rather than constructing a sparse stochastic $k$NN graph
+network layout. Rather than constructing a sparse stochastic #knn graph
 as an approximation of a dense point-cloud similarity model, one may instead 
 begin directly from a given sparse graph that is already given as input.
 
