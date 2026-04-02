@@ -1,12 +1,14 @@
-#let twin = box(smallcaps[twin])
-#let tne = box(smallcaps[tne])
+#let twin = box[TWIN]
+#let tne = box[TNE]
 
-#let mds = box(smallcaps[mds])
-#let umap = box(smallcaps[umap])
+#let mds = box[MDS]
+#let umap = box[UMAP]
 
-#let sne = box(smallcaps[sne])
-#let tsne = box[$t$-#sne]
-#let sgtsne = box[#smallcaps[sg]-$t$-#sne]
+#let sne = box[SNE]
+#let tsne = box[$t$-SNE]
+#let sgtsne = box[SG-$t$-SNE]
+#let tsnepi = box[$t$-SNE-$Pi$]
+#let sgtsnepi = box[SG-$t$-SNE-$Pi$]
 
 #let knn = box[$k$-NN]
 

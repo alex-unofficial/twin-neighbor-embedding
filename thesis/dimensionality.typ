@@ -146,18 +146,67 @@ Fast Fourier Transform to evaluate the resulting convolution efficiently,
 together with approximate nearest-neighbor methods for constructing the sparse 
 high-dimensional affinities.
 
-
-==== Extension to sparse network visualization
+==== Extension to sparse stochastic graph embedding (#sgtsne)
 The sparse formulation used in practical #tsne suggests a natural extension to
-network layout. Rather than constructing a sparse stochastic #knn graph
-as an approximation of a dense point-cloud similarity model, one may instead 
-begin directly from a sparse graph provided as input.
+network layout.  In conventional #tsne, the target distribution $P$ is obtained indirectly 
+from high-dimensional feature vectors by first constructing a distance-based #knn graph,
+then converting each neighborhood into a conditional Gaussian distribution, and
+finally symmetrizing the result. 
+Once the target distribution $P$ has been constructed, the subsequent embedding
+optimization depends only on $P$ and the induced low-dimensional distribution $Q$,
+not directly on the original point-cloud coordinates $Y$.
 
-In this setting, the target distribution $P$ is derived directly from the graph
-structure itself, for example from adjacency, edge weights, random-walk
-affinities, or geodesic similarities, while the induced distribution $Q$
-remains determined by the low-dimensional layout. 
-The embedding then seeks a low-dimensional layout whose induced distribution $Q$
-matches this graph-based target distribution, in the same spirit as #tsne.
+This suggests that the probability-matching formulation of #tsne need not be tied
+specifically to point-cloud data. Instead, one may ask whether the same objective can
+be posed directly on a sparse stochastic graph given as input, rather than using such
+a graph only as an approximation to a dense similarity model. #sgtsne 
+@pitsianis2019SpacelandEmbedding removes this interface restriction and instead 
+takes as input a sparse stochastic graph directly. 
 
-This is the central idea underlying sparse graph #tsne methods such as #sgtsne.
+The method takes as input a sparse stochastic graph $G = (V, E, P_c)$, 
+where $P_c = [p_(j|i)]$ is a row-stochastic conditional probability matrix
+supported on the adjacency pattern of $G$. 
+
+In the formulation used in practice, #sgtsne applies a row-wise nonlinear
+rescaling to $P_c$, constructing a parameterized family of
+stochastic matrices #box[$P_c^((lambda)) = [p_(j|i)^((lambda))]$].
+For each vertex $i$, an exponent $gamma_i$ is chosen such that
+$ sum_(j ~ i) p_(j|i)^(gamma_i) = lambda $
+and the rescaled conditional probabilities are then defined, such that each row 
+remains stochastic. They are given by
+$ p_(j|i)^((lambda)) = p_(j|i)^(gamma_i) / lambda $
+This corresponds to the special case used in the reported experiments, where the
+more general monotone transform of the original formulation is taken to be the identity.
+
+This rescaling plays a role analogous to the perplexity-based bandwidth selection
+used in #sne and #tsne, but is adapted directly to a sparse stochastic graph.
+Rather than deriving neighborhood distributions from distances and then enforcing
+a fixed entropy level, it allows the concentration of the existing conditional
+probabilities to be varied directly while preserving the sparsity pattern of the graph.
+
+As in #tsne, this rescaled conditional model is symmetrized into a joint target distribution 
+$ P^((lambda)) = (P_c^((lambda)) + (P_c^((lambda)))^T)/(2 n) $
+while the low-dimensional distribution $Q$ is still defined 
+by the Student-$t$ kernel in the layout space, like in @induced-prob-tsne. 
+The embedding is then obtained by minimizing the same Kullback-Leibler divergence 
+$cal(D)_"KL" (P^((lambda))|| Q)$ as in #tsne.
+
+By varying $lambda$, the method interpolates between more concentrated and more
+uniform neighborhood distributions on the fixed sparse support of the graph, thereby
+providing a controllable family of target probability models for the embedding.
+
+Although the input graph is sparse, the low-dimensional distribution $Q$ remains
+dense, so the repulsive term in the gradient still involves all pairs of vertices.
+For this reason, the practical implementation #sgtsnepi uses #tsnepi as its
+computational back-end. #tsnepi is a high-performance computational implementation 
+for large sparse graph embeddings, accelerating both the sparse attractive term and
+the dense repulsive term through permutations and memory-aware access patterns
+tailored to modern hierarchical memory architectures.
+
+#alex[
+  This needs a paragraph for the limitations of #sgtsne as a network
+  layout method. These are described in detail in @related. I don't
+  want to repeat myself again.
+]
+
+#nikos[Please check that everything here is correct]
