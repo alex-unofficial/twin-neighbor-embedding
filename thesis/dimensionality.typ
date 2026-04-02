@@ -56,7 +56,7 @@ $ cal(E)_"SNE" (X) = sum_i cal(D)_"KL" (P_i || Q_i)
 
 Differentiating @energy-sne w.r.t the vectors $vec(x)_i$ results in gradient
 $ (partial cal(E)_"SNE")/(partial vec(x)_i) = 
-  2 sum_j (p_(j|i) - q_(j|i) + p_(i|j) - q_(i|j)) (vec(x)_i - vec(x)_j) $
+  2 sum_(j eq.not i) (p_(j|i) - q_(j|i) + p_(i|j) - q_(i|j)) (vec(x)_i - vec(x)_j) $
 which has the interpretation of forces on $vec(x)_i$, pulling toward 
 or pushing away from $vec(x)_j$, depending on whether $j$ is assigned
 too much or too little neighborhood probability in the embedding.
@@ -93,8 +93,8 @@ formulation, so $p_(i i) = q_(i i) = 0$.
 
 These two changes result in the following gradient
 $ (partial cal(E)_(t"-SNE"))/(partial vec(x)_i) = 
-  4 sum_j (p_(i j) - q_(i j)) (1 + ||vec(x)_i - vec(x)_j||^2)^(-1) (vec(x)_i - vec(x)_j) $ 
-  <gradient-tsne>
+  4 sum_(j eq.not i) (p_(i j) - q_(i j)) 
+  (1 + ||vec(x)_i - vec(x)_j||^2)^(-1) (vec(x)_i - vec(x)_j) $ <gradient-tsne>
 which has a simpler symmetric form than the gradient of classical #sne.
 
 Together, these changes mitigate both of the above limitations of #sne.
@@ -124,13 +124,13 @@ To understand the computational effect of sparsifying $P$, it is useful to
 rewrite the gradient @gradient-tsne using the definition of $q_(i j)$ in
 @induced-prob-tsne as
 $ (partial cal(E)_(t"-SNE"))/(partial vec(x)_i) = 
-  4 sum_j (p_(i j) - q_(i j)) q_(i j) Z (vec(x)_i - vec(x)_j) $ 
-with normalization term $Z = sum_(k eq.not l) (1 + ||vec(x)_k - vec(x)_l||^2)^(-1)$.
+  4 sum_(j eq.not i) (p_(i j) - q_(i j)) q_(i j)/Z (vec(x)_i - vec(x)_j) $ 
+with normalization term $1 / Z = sum_(k eq.not l) (1 + ||vec(x)_k - vec(x)_l||^2)^(-1)$.
 
 This allows us to rewrite the gradient as a sum of attractive and repulsive forces
 $ (partial cal(E)_(t"-SNE"))/(partial vec(x)_i) = 
-  4 underbrace(sum_j p_(i j) q_(i j) Z (vec(x)_i - vec(x)_j), F_"attr") - 
-  4 underbrace(sum_j q_(i j)^2 Z (vec(x)_i - vec(x)_j), F_"rep") $
+  4 / Z underbrace(sum_(j eq.not i) p_(i j) q_(i j) (vec(x)_i - vec(x)_j), F_"attr") - 
+  4 / Z underbrace(sum_(j eq.not i) q_(i j)^2 (vec(x)_i - vec(x)_j), F_"rep") $
 
 The sparsification substantially reduces the cost of the attractive part of the
 gradient, since only pairs with nonzero $p_(i j)$ contribute. However, the repulsive
