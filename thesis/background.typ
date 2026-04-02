@@ -16,5 +16,12 @@
 #include "dimensionality.typ"
 
 == State of the Art <sota>
-#alex[#sgtsne, ForceAtlas2, Yifan Hu, OpenOrd, LinLog, NEATO, PivotMDS, GRIP, etc.]
-#alex[Network visualization software packages: Cytoscape, Gephi, Graphviz, Tulip]
+#alex[
++ Fruchterman-Reingold: NetworkX `spring_layout(method="force")`
++ Yifan Hu: GraphViz `sfdp`
++ ForceAtlas2: `fa2` python package (+ LinLog variant)
++ Kamada Kawai: NetworkX `kamada_kawai_layout`
++ Stress majorization (MDS style): GraphViz `neato`
++ Spectral: NetworkX `spectral_layout`
++ #sgtsnepi: `sgtsnepi` python package
+]
