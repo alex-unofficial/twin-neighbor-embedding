@@ -814,7 +814,7 @@ Graphs2021:
   - Karpinski, Stefan
   date: 2021
 
-hagberg2008ExploringNetwork:
+hagberg2008networkx:
   type: article
   title: Exploring {Network Structure}, {Dynamics}, and {Function} Using {NetworkX}
   author:
@@ -2143,4 +2143,52 @@ linderman2017fitsne:
     type: periodical
     title: Nature methods
     volume: 16
+
+jacomy2014fa2:
+  type: article
+  title: ForceAtlas2, a Continuous Graph Layout Algorithm for Handy Network Visualization Designed for the Gephi Software
+  author:
+  - Jacomy, Mathieu
+  - Venturini, Tommaso
+  - Heymann, Sebastien
+  - Bastian, Mathieu
+  date: 2014
+  url: https://api.semanticscholar.org/CorpusID:14763635
+  parent:
+    type: periodical
+    title: PLoS ONE
+    volume: 9
+
+gansner2003graphviz:
+  type: article
+  title: An Open Graph Visualization System and Its Applications to Software Engineering
+  author:
+  - Gansner, Emden
+  - North, Stephen
+  date: 2003
+  page-range: ''
+  serial-number:
+    doi: 10.1002/1097-024X(200009)30:113.3.CO;2-E
+  parent:
+    type: periodical
+    title: 'Software: Practice and Experience'
+    volume: 30
+
+bastian2009gephi:
+  type: article
+  title: 'Gephi: An Open Source Software for Exploring and Manipulating Networks'
+  author:
+  - Bastian, Mathieu
+  - Heymann, Sebastien
+  - Jacomy, Mathieu
+  date: 2009-03
+  page-range: 361-362
+  url: https://ojs.aaai.org/index.php/ICWSM/article/view/13937
+  serial-number:
+    doi: 10.1609/icwsm.v3i1.13937
+  parent:
+    type: periodical
+    title: Proceedings of the International AAAI Conference on Web and Social Media
+    issue: 1
+    volume: 3
 

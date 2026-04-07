@@ -203,10 +203,12 @@ for large sparse graph embeddings, accelerating both the sparse attractive term 
 the dense repulsive term through permutations and memory-aware access patterns
 tailored to modern hierarchical memory architectures.
 
-#alex[
-  This needs a paragraph for the limitations of #sgtsne as a network
-  layout method. These are described in detail in @related. I don't
-  want to repeat myself again.
-]
+#sgtsnepi additionally enables efficient computation of 3D embeddings,
+something not previously possible even for the accelerated #tsne methods
+like BH-#tsne and FIt-#sne. The higher dimensionality enables the embedding
+to capture more complex structural relationships in the data. 
+
+However, #sgtsne still suffers from some of the limitations of #sne based methods.
+Embeddings often include substantial vertex crowding and excessive edge crossing. 
 
 #nikos[Please check that everything here is correct]
