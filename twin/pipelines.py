@@ -11,6 +11,40 @@ from typeguard import typechecked
 import textwrap
 
 
+def graph_embedding(
+    G: nx.Graph,
+    representation=gm.VertexMatrix,
+    embedding=emb.SpringLayout,
+    y0=None,
+    seed: int = 0,
+    d: int = 2,
+    embedding_kw: dict = {},
+    representation_kw: dict = {},
+    normalize: bool = False,
+    return_dict: bool = False,
+):
+    """Runs the embedding pipeline given a Graph Representation and Embedding algorithm"""
+
+    E = embedding(seed=seed, d=d, **embedding_kw)
+    Gm = representation(G, normalize=normalize, **representation_kw)
+
+    n = Gm.adj.shape[0]
+
+    Y = E.embed(Gm, y0)
+
+    y_v, y_e, y_s = Gm.vertex_and_edge_embeddings(Y)
+
+    if return_dict:
+        dict_result = {
+            "V": y_v, "E": y_e, "S": y_s,
+            "OriginalGraph": G,
+            "GraphMatrix": Gm,
+        }
+
+        return dict_result
+    else:
+        return y_v, y_e, y_s
+
 def graph_embedding_all(
     G: nx.Graph,
     embedding=emb.SpringLayout,
