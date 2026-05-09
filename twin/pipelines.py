@@ -5,6 +5,7 @@ import pandas as pd
 
 from twin import graphmatrix as gm
 from twin import embedding as emb
+from twin.batching import *
 from twin.metrics import *
 
 from typeguard import typechecked
@@ -44,6 +45,55 @@ def graph_embedding(
         return dict_result
     else:
         return y_v, y_e, y_s
+
+
+def batch_graph_embedding(
+    batch_input,
+    registries,
+    *,
+    y0=None,
+    seed: int = 0,
+    d: int = 2,
+    normalize: bool = False,
+    return_dict: bool = False,
+    duplicate_policy: str = "error",
+    progress: bool = False,
+    progress_every: int = 1,
+    progress_verbose: bool = False,
+    progress_fn=print,
+) -> dict[BatchKey, object]:
+
+    def runner(case: BatchCase):
+        c = BatchCaseView(case)
+        c.require("graph", "representation", "embedding")
+
+        G = resolve_object_choice(c.choice("graph"))
+
+        return graph_embedding(
+            G,
+            representation=c.obj("representation"),
+            embedding=c.obj("embedding"),
+            y0=y0,
+            seed=seed,
+            d=d,
+            representation_kw=c.kwargs("representation"),
+            embedding_kw=c.kwargs("embedding"),
+            normalize=normalize,
+            return_dict=return_dict,
+        )
+
+    return run_batch(
+        batch_input,
+        registries,
+        runner,
+        duplicate_policy=duplicate_policy,
+        axis_order=["graph", "representation", "embedding"],
+        progress=progress,
+        progress_every=progress_every,
+        progress_verbose=progress_verbose,
+        progress_fn=progress_fn,
+    )
+
 
 def graph_embedding_all(
     G: nx.Graph,

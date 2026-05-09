@@ -31,7 +31,10 @@ def compute_slopes(B, Xv):
         x1, y1 = Xv[:, idx[0]]
         x2, y2 = Xv[:, idx[1]]
         # compute the slope
-        s[i] = (y2 - y1) / (x2 - x1)
+        if x2 != x1:
+            s[i] = (y2 - y1) / (x2 - x1)
+        else:
+            s[i] = np.inf
 
     return s
 
