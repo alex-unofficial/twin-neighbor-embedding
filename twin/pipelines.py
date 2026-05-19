@@ -5,6 +5,7 @@ import pandas as pd
 
 from twin import graphmatrix as gm
 from twin import embedding as emb
+from twin import dataset as data
 from twin.batching import *
 from twin.metrics import *
 
@@ -47,10 +48,40 @@ def graph_embedding(
         return y_v, y_e, y_s
 
 
+batch_registries = {
+    "graph": {
+        "ring_of_cliques": data.ring_of_cliques,
+        "tree_of_cliques": data.tree_of_cliques,
+        "karate_club": nx.karate_club_graph,
+        "football_2023": data.football_2023,
+        "small_world": data.small_world,
+        "barabasi_albert": data.barabasi_albert,
+        "mnist": data.mnist,
+        "tabula": data.tabula,
+    },
+
+    "representation": {
+        "vertex": gm.VertexMatrix,
+        "edge": gm.EdgeMatrix,
+        "twin": gm.TwinEmbeddingMatrix,
+    },
+
+    "embedding": {
+        "spring": emb.SpringLayout,
+        "yifanhu": emb.YifanHuLayout,
+        "forceatlas2": emb.ForceAtlas2Layout,
+        "kamada-kawai": emb.KamadaKawaiLayout,
+        "neato": emb.NeatoLayout,
+        "spectral": emb.SpectralLayout,
+        "sgtsne": emb.SGtSNELayout,
+    },
+}
+
+
 def batch_graph_embedding(
     batch_input,
-    registries,
     *,
+    registries=batch_registries,
     y0=None,
     seed: int = 0,
     d: int = 2,

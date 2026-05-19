@@ -6,36 +6,6 @@ import twin.graphmatrix as gm
 import twin.embedding as emb
 
 from twin.pipelines import batch_graph_embedding
-from twin.batching import run_batch
-
-registries = {
-    "graph": {
-        "ring_of_cliques": data.ring_of_cliques,
-        "tree_of_cliques": data.tree_of_cliques,
-        "karate_club": nx.karate_club_graph,
-        "football_2023": data.football_2023,
-        "small_world": data.small_world,
-        "barabasi_albert": data.barabasi_albert,
-        "mnist": data.mnist,
-        "tabula": data.tabula,
-    },
-
-    "representation": {
-        "vertex": gm.VertexMatrix,
-        "edge": gm.EdgeMatrix,
-        "twin": gm.TwinEmbeddingMatrix,
-    },
-
-    "embedding": {
-        "spring": emb.SpringLayout,
-        "yifanhu": emb.YifanHuLayout,
-        "forceatlas2": emb.ForceAtlas2Layout,
-        "kamada-kawai": emb.KamadaKawaiLayout,
-        "neato": emb.NeatoLayout,
-        "spectral": emb.SpectralLayout,
-        "sgtsne": emb.SGtSNELayout,
-    },
-}
 
 batch_input = [{
     # small-medium size graphs (run everything)
@@ -114,7 +84,6 @@ batch_input = [{
 
 batch_result = batch_graph_embedding(
     batch_input,
-    registries,
     progress_verbose=True,
     progress_fn=logger.info,
 )
