@@ -24,6 +24,7 @@ dependencies = [
     "networkx>=3.6.1",
     "numpy>=2.4.1",
     "pandas>=3.0.3",
+    "pydot>=4.0.1",
     "python-dotenv>=1.2.1",
     "python-igraph>=1.0.0",
     "rasterio>=1.5.0",
