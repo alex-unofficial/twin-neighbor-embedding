@@ -6,7 +6,6 @@ Description: This module contains classes for extracting graph matrices.
 
 import networkx as nx
 from dataclasses import dataclass
-import rasterio
 import scipy.sparse as sp
 import numpy as np
 from twin.twin_embedding import twin_adjacency
