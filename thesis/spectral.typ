@@ -23,8 +23,8 @@ $W_(i j) = w_(i j)$ when $i eq.not j$ and $W_(i i) = 0$.
 Using the laplacian definition in @weighted-laplacian, the energy @energy-hall can be written as
 $ cal(E)_"Spectral" (X) = tr(X^T L^w X), quad "subject to" X^T X = I "and" X^T vec(1) = 0 $ <energy-laplacian>
 
-Minimizing @energy-laplacian subject to $X^T X = I$ and $X^T vec(1) = 0$ yields
-solutions $X^*$ whose columns are eigenvectors $X^*_k$ of $L^w$.
+Minimizing @energy-laplacian yields solutions $X^*$ whose columns are eigenvectors 
+$X^*_k$ of $L^w$.
 The energy at the optimum becomes
 $ cal(E)_"Spectral" (X^*) = sum_(k=1)^d lambda_k $ 
 where $lambda_k$ are the corresponding eigenvalues. 
