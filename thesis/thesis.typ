@@ -27,7 +27,7 @@
 #include "background.typ"
 
 = Layout evaluation and metrics <metrics>
-#alex[Description of visual examination of layouts and metrics for layout performance]
+#include "evaluation.typ"
 
 = The Twin Neighbor Embedding method <tne>
 #alex[The method, how and why it works.]
