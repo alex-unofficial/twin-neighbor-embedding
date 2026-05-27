@@ -1,3 +1,5 @@
+#import "@preview/wordometer:0.1.5": word-count, total-words
+
 #import "config.typ": font, images-dir, bib-file
 
 #let thesis(
@@ -142,6 +144,7 @@
   abstract: [],
   doc,
 )= {
+
   set page(
     paper: "a4",
     margin: (x: 2cm, y: 2cm),
@@ -152,7 +155,13 @@
     ),
     footer: text(
       size: 9pt,
-      align(horizon)[*DRAFT* #h(1fr) #context counter(page).display()]
+      align(horizon)[
+        *DRAFT* 
+        #h(1fr) 
+        (#strong(total-words) words)
+        #h(1fr) 
+        #context counter(page).display()
+      ]
     ),
   )
   set par(
@@ -169,6 +178,8 @@
   show title: set text(size: 20pt)
   show title: set align(center)
   show title: set block(below: 1.2em)
+
+  show: word-count
 
   [
     #align(center)[
