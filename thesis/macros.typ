@@ -18,3 +18,5 @@
 #let diag = {$upright("diag")$}
 
 #let BigO = {$cal(O)$}
+
+#let range(base, final) = [$base_1, base_2, ..., base_final$]

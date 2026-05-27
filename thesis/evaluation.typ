@@ -70,3 +70,6 @@ class separability, point crowding, edge geometry, and global distance
 preservation. The remainder of this section defines the metrics used in the
 evaluation and clarifies which aspect of layout quality each metric is intended
 to measure.
+
+== Evaluation Metrics <metrics>
+#include "metrics.typ"

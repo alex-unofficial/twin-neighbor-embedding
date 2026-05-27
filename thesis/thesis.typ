@@ -26,7 +26,7 @@
 = Background <background>
 #include "background.typ"
 
-= Layout evaluation and metrics <metrics>
+= Layout evaluation and metrics <evaluation>
 #include "evaluation.typ"
 
 = The Twin Neighbor Embedding method <tne>
