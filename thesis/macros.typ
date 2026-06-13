@@ -15,8 +15,13 @@
 #let vec(it) = {$bold(upright(it))$}
 #let uvec(it) = {$hat(vec(it))$}
 
-#let diag = {$upright("diag")$}
+#let diag = math.op("diag")
 
-#let BigO = {$cal(O)$}
+#let BigO = math.op($cal(O)$)
+
+#let argmax = math.op("argmax", limits: true)
+#let argmin = math.op("argmin", limits: true)
+#let mean = math.op("mean", limits: true)
 
 #let range(base, final) = [$base_1, base_2, ..., base_final$]
+

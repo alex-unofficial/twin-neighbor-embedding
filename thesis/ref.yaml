@@ -2192,3 +2192,30 @@ bastian2009gephi:
     issue: 1
     volume: 3
 
+smelser2025:
+  type: misc
+  title: '"Normalized Stress" is Not Normalized: How to Interpret Stress Correctly'
+  author:
+  - Smelser, Kiran
+  - Miller, Jacob
+  - Kobourov, Stephen
+  date: 2025
+  url: https://arxiv.org/abs/2408.07724
+  serial-number:
+    arxiv: '2408.07724'
+
+ahmed2024:
+  type: misc
+  title: 'Size Should not Matter: Scale-invariant Stress Metrics'
+  author:
+  - Ahmed, Reyan
+  - Erten, Cesim
+  - Kobourov, Stephen
+  - Lotz, Jonah
+  - Miller, Jacob
+  - Taraz, Hamlet
+  date: 2024
+  url: https://arxiv.org/abs/2408.04688
+  serial-number:
+    arxiv: '2408.04688'
+

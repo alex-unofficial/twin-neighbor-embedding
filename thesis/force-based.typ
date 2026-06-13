@@ -201,6 +201,7 @@ If $e_(i j) in E$, the distance is obtained by applying a transformation
 $f: W -> RR^+$ that maps each edge weight to a distance, so that $d_(i j) = f(w_(i j))$.
 For non-adjacent vertices, $d_(i j)$ is typically defined as the shortest-path
 distance between $i$ and $j$ in $G$ when edges are assigned lengths $f(w_(i j))$.
+For unweighted graphs, all edges are assigned uniform length $1$.
 
 We assume that $G$ is connected, ensuring that $d_(i j)$ is defined
 for all vertex pairs. If the graph is disconnected, its connected components
