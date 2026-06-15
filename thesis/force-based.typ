@@ -208,12 +208,14 @@ for all vertex pairs. If the graph is disconnected, its connected components
 can be identified and the algorithm applied to each component separately.
 
 The choice of transformation $f$ depends on the information represented 
-by the weights. If the weights encode distances between vertices, the identity 
-mapping $f(w) = w$ suffices.
+by the weights. 
+If the weights encode distances between vertices, the identity mapping $f(w) = w$ suffices.
 If instead $w_(i j)$ represents a similarity or probability, a natural choice
 is $f(w) = -log(w)$. This transformation preserves the ordering of similarities
 and has the useful property that shortest-path distances become additive:
 probabilities along a path multiply while their negative logarithms sum.
+Other choices are better suited to different weight models and include
+functions such as $f(w) = 1 slash w$ and $f(w) = 1 - w$.
 
 Once the ideal distances $d_(i j)$ are defined for all vertex pairs,
 the goal is to compute a layout that approximates the ideal distances

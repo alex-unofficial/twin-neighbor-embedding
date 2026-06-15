@@ -47,19 +47,14 @@ this thesis adopts a pluralistic approach: for each structural or visual propert
 of interest, we use one or more representative metrics that capture common and
 practically useful interpretations of that property.
 
-=== Feature Preservation Metrics
+=== Structural Feature Preservation
 Consider an (optionally weighted) graph $G = (V,E,w)$ with $n$ vertices
 and $m$ edges, and a layout $X in RR^(n times d)$. 
-A layout metric is a rule $f$ which assigns
-a numerical value to such a pair $(G,X)$. Since the layout dimension depends
-on the number of vertices of $G$, we write this schematically as
-$f(G, X) in RR$.
+A layout metric is a rule $f$ which assigns a numerical value to such a pair $(G,X)$. 
 
-For a fixed graph $G$, the metric induces a function
-$ f_G : RR^(n times d) -> RR $
-defined by $f_G (X) = f(G,X)$. We also write this value as $f(X ; G)$,
-emphasizing that the layout $X$ is the object being evaluated while the graph
-$G$ provides the structural reference.
+For a fixed graph $G$, we write the corresponding graph-specific metric as $X |-> f(X ; G)$,
+where the notation emphasizes that the layout $X$ is the object being evaluated 
+while the graph $G$ provides the structural reference.
 
 Some metrics are first defined locally, for each vertex or edge, and then
 aggregated over the graph. In such cases $f(X ; G)$ denotes the final aggregate
@@ -69,6 +64,31 @@ For weighted graphs we define $w_(i j) = w(e_(i j))$ to be the weight of edge
 $e_(i j) in E$, and $w_(i j) = 0$ when $e_(i j) in.not E$. 
 For unweighted graphs, we construct the trivially weighted graph where all 
 weights are $1$, such that $w_(i j) = 1$ if $i ~ j$, and $w_(i j) = 0$ otherwise.
+In this case, the weights are taken to represent a sense of similarity,
+or affinity, rather than distance. This means that vertices which are
+connected with high edge weights are more closely related, something which
+is often desirable to preserve in the layout.
+
+Conversely, we may define an ideal distance $d_(i j)$ between each pair of vertices.
+Similar to the definition in @force-based, we generally define $d_(i j)$ for 
+adjacent vertices to be a function of the weight of the edge $f(w_(i j))$, 
+and for non-adjacent vertices to be the shortest-path length between 
+$i$ and $j$ induced by these edge lengths.
+
+Datasets of networks may provide values for the edges corresponding to
+either similarities/strengths/affinity scores or to distances/costs. 
+Since these interpretations are inversely ordered but not metrically equivalent, 
+any conversion from affinity to distance requires an explicit modeling choice. 
+At minimum the transformation should be monotone decreasing.
+Stronger requirements and the specifics of this conversion are outside the 
+scope of this thesis, however, we mention that some common choices used
+in practice include $d = 1 slash w$, $d = 1 - w$ and $d = -log(w)$.
+
+When a local score is undefined because its denominator is zero, the corresponding
+vertex is excluded from the aggregate unless otherwise stated. For metrics based
+on graph-theoretic distances, we evaluate only vertex pairs with finite distance,
+or equivalently restrict the metric to connected components according to the
+convention specified in the experimental setup.
 
 ==== Adjacency Distance Ratio
 We would like to preserve the adjacency relationship between vertices in $G$
@@ -211,19 +231,13 @@ $ W^k_i (X ; G)
 For this reason, we refer to this metric as weighted recall.
 
 ==== Scale-Normalized Stress
-Another graph level feature we would like preserved is the global distances
-between vertices. For a graph $G$ we can derive a set of ideal distances $d_(i j)$
-for every vertex pair. 
-Similar to the definition in @force-based, we generally define $d_(i j)$ for 
-adjacent vertices to be a function of the weight of the edge $f(w_(i j))$, 
-and for non-adjacent vertices to be the shortest-path length between 
-$i$ and $j$ induced by these edge lengths.
-We say then, that a layout $X$ is global distance preserving, if
-the geometric distances between points in $X$ are proportional
-to the distances in $d_(i j)$.
+Another graph-level feature we would like preserved is the global distances between vertices. 
+For a graph $G$ we can derive a set of ideal distances $d_(i j)$ for every vertex pair. 
+We say that a layout $X$ is global distance preserving, if the geometric
+distances between points in $X$ are proportional to the distances in $d_(i j)$.
 Since it is generally impossible to exactly realize the graph distances as
-Euclidean distances in $RR^d$,
-we must construct a metric which measures the degree of distance preservation.
+Euclidean distances in $RR^d$, we must construct a metric which measures the degree 
+of distance preservation.
 
 Borrowing from #mds and the Stress model defined in @force-based,
 we can use the Raw Stress function as a crude metric for
@@ -241,9 +255,8 @@ they both stem from its non-invariance to scale:
   In fact, it assumes that $X$ has the same implicit scale
   as the distances $d_(i j)$ which cannot be guaranteed
   for every layout algorithm. 
-  As a result Raw Stress is not an appropriate metric for comparing 
-  accross different layout algorithms, which is the explicit
-  purpose of a metric.
+  As a result, Raw Stress is not an appropriate metric for comparing 
+  across different layout algorithms.
 
 A common improvement over Raw Stress is to normalize the squared error.
 There are several related normalizations in the literature.
@@ -298,80 +311,76 @@ the scale of relative distance error rather than squared relative error;
 it does not affect the optimal scaling factor.
 Smaller values of $"SNS"$ indicate better global distance preservation.
 
-==== Silhouette Score
-Community structure is a feature of networks which is of critical importance 
-to scientific network analysis. In fact, one of the primary goals of 
-network visualization often is the visual detection of communities in the embedded graph.
-For this reason, it is desirable to preserve the community structure in the layout.
+=== Label-based Feature Preservation
+Many real-world networks include labels or categories associated with their
+vertices. These labels may correspond to known communities, classes, topics,
+functional groups, or other external attributes of the entities represented by
+the graph. When such labels are meaningful, a useful layout should often make
+them visually interpretable: vertices with the same label should tend to form
+compact and visually distinguishable regions in the drawing.
 
-It is hard to formally define what a community is, however, we understand 
-communities generally as groups of vertices which are connected more densely with
-each other than with other vertices in the graph.
-Nevertheless, various approaches exist for detecting communities in networks. 
-This is the task of assigning to each vertex $i$ a label $cal(l)_i$, 
-such that communities are made up of vertices with a common label:
+Community labels are an important special case. Although community structure is
+difficult to define uniquely, communities are generally understood as groups of
+vertices which are more densely connected internally than externally. Community
+detection methods attempt to infer such groups from the graph topology by
+assigning to each vertex $i$ a label $cal(l)_i$, such that each community is the
+set of vertices with a common label:
 $ C(cal(l)) = {i in V | cal(l)_i = cal(l)} $
-Additionally, real-world networks often include labels for each of the vertices,
-which correspond to some feature of the entity which the vertex represents:
-e.g. a citation network where each vertex represents a unique academic article 
-may provide, for each vertex, information like its primary author,
-the publication journal, its research topic etc.
-It is not necessary that these external labels are reflected in any way in 
-the network structure.
-In practice however, communities found in real-world networks often correlate
-with meaningful external attributes of the represented entities.
 
-It is a significant methodological concern whether external labels or 
-communities detected from the graph should be used as the reference partition 
-when evaluating the community-preservation properties of a layout.
+However, labels used for evaluation need not be produced by a community
+detection algorithm. In many datasets, labels are supplied externally and
+correspond to attributes of the represented entities. For example, in a citation
+network where each vertex represents an academic article, labels may indicate
+the article's author, publication venue, research topic, or field. Such labels
+are not guaranteed to be reflected in the graph topology, but in many real-world
+networks they correlate with meaningful structural organization.
 
-- Since all of the layout algorithms discussed have access only to the graph topology, 
-  using external labels may result in evaluating layout algorithms according to 
-  information which is not necessarily encoded in the graph structure available to them. 
+There is therefore a methodological question about which reference partition
+should be used when evaluating label or community preservation in a layout.
+Using external labels may evaluate layout algorithms according to information
+which is not necessarily encoded in the graph structure available to them. On
+the other hand, using labels produced by a community detection algorithm imposes
+the assumptions of that algorithm onto the evaluation. These assumptions may
+differ significantly between algorithms, and may even overlap with the machinery
+used by some layout methods. In such cases, the evaluation may favor layouts
+which agree with the assumptions of the detection algorithm rather than layouts
+which more generally reveal meaningful structure.
 
-- On the other hand, using a community detection algorithm necessarily imposes 
-  the assumptions of the algorithm onto the evaluation of a layout. 
-  These assumptions differ significantly between algorithms, 
-  even in their basic definition of what a community is. 
-  Additionally, some community detection algorithms use similar machinery as 
-  some layout algorithms, even so far as to use point-cloud embeddings as a 
-  first step in the community detection process.
-  Then the evaluation may be biased toward layout algorithms which agree with 
-  the assumptions or utilize similar machinery with that of the detection algorithm.
+For this reason, the purpose of the following metrics is not to measure
+agreement with a particular community detection algorithm, but to assess whether
+semantically meaningful labels present in the data are reflected in the
+visualization. We therefore use external labels when available. Although such
+labels are not guaranteed to correspond to structural communities in the graph,
+they are independent of both the layout and evaluation procedures, and thus
+provide a common reference against which different layout algorithms may be
+compared.
 
-The purpose of the metric is not to measure agreement with a particular community 
-detection algorithm, but rather to assess whether semantically meaningful categories 
-present in the data are reflected in the visualization.
-We therefore use external labels when available for the evaluation of
-label/community separation.
-Although such labels are not guaranteed to correspond to structural communities 
-in the graph, they are independent of both the layout and evaluation procedures.
-Consequently, they provide a common reference against which different layout 
-algorithms may be compared without introducing assumptions inherited from a 
-particular community detection method.
-Additionally, we can test whether a given external labeling is
-reflected in the graph structure using similar metrics to the ones
-used to evaluate the layout. 
-This is discussed in more detail after defining the relevant metrics.
+Whenever a metric uses external labels, we also compute the corresponding
+graph-based score when possible. This allows layout results to be interpreted
+relative to the extent to which the same labels are encoded in the graph itself.
+Thus, we compare the graph and the layout according to their ability to reflect
+the same external partition under the same evaluation criterion.
 
-As for the layout, in order for communities to be visually distinct,
-it is preferred that vertices within a community are placed compactly
-in the layout, with good relative separation between communities,
-thus creating visually distinguishable point clusters.
+
+==== Silhouette Score
+For a given layout, in order for labeled groups to be visually distinct,
+vertices with the same label should be placed compactly in the layout, 
+with good relative separation between groups, thus creating visually distinguishable 
+point clusters.
 
 One metric to measure this criterion is the commonly used silhouette score.
 It is defined for a single vertex as the normalized difference of
-distances between the points in its own community and the points in
-the closest neighboring community.
+distances between the points in its own label group and the points in
+the closest neighboring group.
 
 Let $cal(L)$ be the set of unique labels such that for every $i in V => cal(l)_i in cal(L)$.
 Then, let $cal(C)$ be the set of all labeled communities:
 $ cal(C) = {C(cal(l)) | cal(l) in cal(L)} $
 
-We define the community of vertex $i$ as
+We define the label group of vertex $i$ as
 $ C_i = C(cal(l)_i) = {j in V | cal(l)_j = cal(l)_i}. $
 
-Then we calculate its average distance to points in its own community as
+We calculate its average distance to points in its own community as
 $ a_i = 1/(|C_i| - 1) sum_(j in C_i , i eq.not j) ||vec(x)_j - vec(x)_i|| $
 Then the average distance to points in the closest neighboring community is
 $ b_i = min_(C in cal(C), C eq.not C_i) 1/(|C|) sum_(j in C) ||vec(x)_j - vec(x)_i|| $
@@ -385,13 +394,14 @@ to another community than to its assigned community,
 and values near $0$ indicate that the vertex is close to the
 border between the communities.
 Notably, this score is not well defined for singleton communities
-where $|C_i| = 1$, so we set the score for these vertices as $0$.
+where $|C_i| = 1$, so in our implementation we set the score for 
+these vertices as $0$.
 
 The global score is given as the mean of the scores for each point
 $ "Sil"(X ; cal(l)) = 1/n sum_(i in V) "Sil"_i (X ; cal(l)) $
 A large positive global score indicates compact and well-separated 
 labeled communities in the layout.
-Inversly, negative scores indicate that vertices are, on averag, 
+Conversely, negative scores indicate that vertices are, on average, 
 closer to other labeled groups than to their assigned group.
 
 As mentioned, we can use a similar metric in order to test whether the
@@ -400,23 +410,16 @@ we define the graph-theoretic silhouette score given by
 $ a^*_i = 1/(|C_i| - 1) sum_(j in C_i , i eq.not j) d_(i j) $
 $ b^*_i = min_(C in cal(C), C eq.not C_i) 1/(|C|) sum_(j in C) d_(i j) $
 $ "Sil"^*_i (G ; cal(l)) = (b^*_i - a^*_i) / max{a^*_i, b^*_i} $
-Where $d_(i j)$ denote the graph-theoretic distances like described previously.
+Here $d_(i j)$ denotes the graph-theoretic distances like described previously.
 Then the global score $"Sil"^* (G ; cal(l))$ is defined as above.
-
-The graph-theoretic silhouette provides a baseline for how strongly the
-external labels are reflected in the graph distances themselves. Layout scores
-should therefore be interpreted relative to this baseline. This does not
-introduce the same concern as using a community detection algorithm, since the
-reference partition is not produced by an algorithm whose assumptions may
-overlap with those of the layout method. Instead, we compare the graph and the
-layout according to their ability to reflect the same external partitioning
-under the same separation criterion.
 
 ==== #knn Classification Accuracy
 Another metric corresponding to the same criterion is to measure the accuracy 
 of using a #knn based classifier in its recovery of the initial labels.
-This is based on the principle that for any vertex, a community preserving layout 
-should place it near vertices of the same community. 
+In contrast to Silhouette score, which is a global score of separation
+and compactness, this metric measures instead local label-homogeneity.
+This is based on the principle that a label-preserving layout should place each
+vertex near other vertices with the same label.
 Therefore, predicting the label of a vertex from the labels of its 
 nearest neighbors should be accurate.
 
@@ -439,7 +442,7 @@ $ s_i (cal(l)) = |cal(N)^k_X (i) inter C(cal(l))| $
 Alternatively, we may weigh the score according to the distance
 of $vec(x)_j$ to $vec(x)_i$, such that closer points contribute more
 strongly than those farther away:
-$ s_i (cal(l)) = sum_(j in cal(N)^k_X (i) inter C(cal(l))) f(||vec(x_i) - vec(x_j)||) $
+$ s_i (cal(l)) = sum_(j in cal(N)^k_X (i) inter C(cal(l))) f(||vec(x)_i - vec(x)_j||) $
 Here $f$ is a decreasing function of distance, so that larger distances
 correspond to smaller contributions. The choice of $f(d) = 1$ reduces to
 the simple voting scheme, while a common distance-weighted alternative is 
@@ -449,13 +452,13 @@ In all cases, the classifier is defined by selecting the label with
 the highest score:
 $ hat(cal(l))_i = argmax_(cal(l) in cal(L)) s_i (cal(l)) $
 
-The #knn classification accuracy is then defines as the 
+The #knn classification accuracy is then defined as the 
 fraction of vertices whose predicted labels match their
 true labels.
 $ "Acc"^k (X ; cal(l)) = 1/n sum_(i in V) [hat(cal(l))_i = cal(l)_i] $
 Here $[ dot ]$ denotes the Iverson bracket.
 A high value of $"Acc"^k (X ; cal(l))$ indicates that the local
-neighborhoods in the layout are label-homoegeneous enough to 
+neighborhoods in the layout are label-homogeneous enough to 
 recover the original labels from nearby vertices.
 
 Conversely, the equivalent graph metric uses a neighborhood classifier which 
@@ -469,11 +472,15 @@ $ hat(cal(l))^*_i = argmax_(cal(l)) s^*_i (cal(l)) $
 The corresponding graph-neighborhood classification accuracy is
 $ "Acc"^* (G ; cal(l)) = 1/n sum_i [hat(cal(l))^*_i = cal(l)_i] $
 For isolated vertices, the graph neighborhood contains no information from
-which the label can be recovered. We therefore count such vertices as incorrect,
-except when they belong to singleton label classes.
+which the label can be recovered, so such vertices are excluded from this
+graph-based baseline.
 
-This measures how well the external labels are reflected in the graph topology 
-according to the same local classification criterion, while also serving as a 
-baseline against which the scores of the layout algorithms can be compared.
+This graph-based score measures how strongly the external labels are reflected
+in the one-hop topology of the graph. It therefore provides a baseline for
+interpreting the layout-based classification accuracy: a low layout score is less
+meaningful when the same labels are weakly recoverable from the graph itself.
 
-=== Visual Quality Metrics
+=== Evaluation of Visual Quality
+
+
+
