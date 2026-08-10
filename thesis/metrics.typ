@@ -10,10 +10,16 @@ The measures considered here correspond broadly to two categories of desirable
 properties in scientific network layout:
 #run-in-enum(
   numbering-pattern: "(i)",
-  [the degree to which structural features of the graph are preserved in the layout],
+  [the degree to which features of the graph are preserved in the layout],
   [the degree to which the layout is visually clear and free from artifacts such as
   crowding, clutter, or excessive edge complexity],
 ).
+Feature preservation, in turn, covers two related but distinct concerns: the
+preservation of the graph's topological structure, such as adjacency and
+distance, and the preservation of externally meaningful labels or communities,
+which need not be recoverable from the topology alone. We treat each of these
+three concerns in its own subsection below: structural feature preservation,
+label-based feature preservation, and visual quality.
 
 In what follows, we use criterion to refer to the qualitative property of
 interest, such as neighborhood preservation or point crowding, and metric to
@@ -38,7 +44,7 @@ proximity: adjacent vertices should be placed close to one another relative to
 non-adjacent vertices. This can be measured in several ways. One may compare the
 distances of adjacent and non-adjacent vertex pairs, or construct the $k$ nearest
 neighbors of each point in the layout and compare them to the graph neighborhood
-of the corresponding vertex
+of the corresponding vertex.
 
 Each of these choices captures a different interpretation of the same informal
 criterion. There is therefore no canonical metric for a general property such as
@@ -113,9 +119,11 @@ together relative to the global spatial scale of the layout.
 Typically, we want $"ADR"(X ; G) < 1$.
 
 For an unweighted graph, this reduces to
-$ "ADR"(X ; G) 
-  = (1/m sum_(i ~ j) ||vec(x)_i - vec(x)_j||)
+$ "ADR"(X ; G)
+  = (1/m sum_(i ~ j, i < j) ||vec(x)_i - vec(x)_j||)
   / (2/(n(n-1)) sum_(i < j) ||vec(x)_i - vec(x)_j||) $
+where, as throughout, $i ~ j$ ranges over unordered adjacent pairs, each
+counted once.
 
 This metric is not intended to exhaust all possible interpretations of
 adjacency preservation. It captures one simple and practically useful
@@ -128,8 +136,12 @@ question of whether graph-neighbors are recovered among spatial neighbors.
 This metric corresponds to a rank-based interpretation of the same criterion:
 if adjacency is preserved by spatial proximity, then graph-neighbors of a
 vertex should appear among its nearest embedded neighbors.
-In contrast to the previous distance-ratio metric, this metric does not compare 
+In contrast to the previous distance-ratio metric, this metric does not compare
 distance values directly, but instead evaluates the ordering induced by embedded distances.
+Comparing the graph neighborhood of a vertex against its embedded #knn set
+through set-overlap statistics of this kind is a standard approach for
+evaluating graph layouts and node embeddings @kruiger2017Graphlayouts
+@ahmed2020gd2 @bohm2025.
 
 Consider the vertex $i in V$. We define its graph neighborhood as 
 $cal(N)_G (i) = {j in V | i ~ j}$ and its degree $deg(i) = |cal(N)_G (i)|$.
@@ -260,7 +272,7 @@ they both stem from its non-invariance to scale:
 
 A common improvement over Raw Stress is to normalize the squared error.
 There are several related normalizations in the literature.
-In Multidimensional scaling, Kruskal's Stress-1 @kruskal1964MDS 
+In #mds, Kruskal's Stress-1 @kruskal1964MDS 
 normalizes the squared error by $sum_(i < j) ||vec(x)_i - vec(x)_j||^2$, while
 another common form, often also called normalized stress, normalizes
 by $sum_(i < j) d_(i j)^2$. In our notation, the latter is
@@ -304,8 +316,8 @@ $ "SNS"(X ; G)
 
 This metric measures the discrepancy between graph distances and embedded
 distances after accounting for the arbitrary global scale of the layout.
-It can be proven that it is invariant to scaling transformations
-of both the layout $X$ and the ideal distances $d_(i j)$.
+It can be proven @ahmed2024 @smelser2025 that it is invariant to scaling
+transformations of both the layout $X$ and the ideal distances $d_(i j)$.
 The square root is included so that the stress value is expressed on 
 the scale of relative distance error rather than squared relative error; 
 it does not affect the optimal scaling factor.
@@ -368,7 +380,7 @@ vertices with the same label should be placed compactly in the layout,
 with good relative separation between groups, thus creating visually distinguishable 
 point clusters.
 
-One metric to measure this criterion is the commonly used silhouette score.
+One metric to measure this criterion is the commonly used silhouette score @rousseeuw1987.
 It is defined for a single vertex as the normalized difference of
 distances between the points in its own label group and the points in
 the closest neighboring group.
@@ -414,13 +426,15 @@ Here $d_(i j)$ denotes the graph-theoretic distances like described previously.
 Then the global score $"Sil"^* (G ; cal(l))$ is defined as above.
 
 ==== #knn Classification Accuracy
-Another metric corresponding to the same criterion is to measure the accuracy 
-of using a #knn based classifier in its recovery of the initial labels.
+Another metric corresponding to the same criterion is to measure the accuracy
+of using a #knn based classifier in its recovery of the initial labels, an
+approach used to quantify embedding quality since the original #tsne paper
+@tsne and in more recent graph-embedding evaluations @bohm2025.
 In contrast to Silhouette score, which is a global score of separation
 and compactness, this metric measures instead local label-homogeneity.
 This is based on the principle that a label-preserving layout should place each
 vertex near other vertices with the same label.
-Therefore, predicting the label of a vertex from the labels of its 
+Therefore, predicting the label of a vertex from the labels of its
 nearest neighbors should be accurate.
 
 A classifier is defined as a procedure which assigns each vertex $i$ to a
@@ -429,7 +443,7 @@ A classifier of the form we discuss, however, has access to the labels
 $cal(l)_j$ with $j eq.not i$.
 
 Specifically, let $cal(N)_X^k (i)$ denote the set of $k$ nearest neighbors of
-$x_i$ in the layout $X$. Equivalently, this defines the #knn graph $G_X^k$ of
+$vec(x)_i$ in the layout $X$. Equivalently, this defines the #knn graph $G_X^k$ of
 $X$, whose vertices are the vertices of $G$, and where each vertex $i$ is
 connected to its $k$ nearest neighbors in $X$. Notably, this graph is not
 necessarily undirected, since there is no guarantee that
@@ -511,7 +525,10 @@ than structural preservation directly.
 
 ==== Point Crowding
 This artifact appears when some subset of vertices is placed at distances
-that are very small compared to the overall scale of the layout.
+that are very small compared to the overall scale of the layout. It is closely
+related to the crowding problem discussed in the #sne and #tsne literature
+@tsne, where a disproportionate number of points are forced close together
+near the center of the embedding.
 In such cases, the vertices may become difficult to distinguish visually,
 and the local substructure among them may be obscured.
 
@@ -535,7 +552,7 @@ $ overline(d) = 2/(n(n - 1)) sum_(i < j) ||vec(x)_i - vec(x)_j|| $
 
 The normalized $k$-nearest neighbor distance is therefore defined as
 
-$ "NND"_k (X) = (d_k (x)) / overline(d)
+$ "NND"_k (X) = (d_k (X)) / overline(d)
   = (1/n sum_(i in V) 1/k sum_(j in cal(N)^k_X (i)) ||vec(x)_i - vec(x)_j||) 
   / (2/(n(n - 1)) sum_(i < j) ||vec(x)_i - vec(x)_j||) $
 
@@ -546,10 +563,11 @@ the overall size of the drawing.
 Larger values indicate that vertices are better separated locally and
 are therefore easier to distinguish visually.
 
-A closely related graph-drawing aesthetic is node resolution, which measures
-whether distinct vertices are sufficiently separated in the drawing.
-A Common global form of this criterion compares the smallest pairwise vertex
-distance against the largest pairwise vertex distance:
+A closely related graph-drawing aesthetic is node resolution @purchase2002,
+which measures whether distinct vertices are sufficiently separated in the
+drawing. A common global form of this criterion, used for example by
+@ahmed2020gd2, compares the smallest pairwise vertex distance against the
+largest pairwise vertex distance:
 
 $ "NR" (X) = (min_(i < j) ||vec(x)_i - vec(x)_j||) / (max_(i < j) ||vec(x)_i - vec(x)_j||) $
 
@@ -567,7 +585,7 @@ $ "VNR" (X) = 1/n sum_(i in V)
   (min_(j eq.not i) ||vec(x)_i - vec(x)_j||) / (max_(j eq.not i) ||vec(x)_i - vec(x)_j||) $
 
 This metric measures the typical local separation of a vertex relative to its
-own visual range in the layout. Smaller values idicate that, for many vertices,
+own visual range in the layout. Smaller values indicate that, for many vertices,
 the nearest visible neighbor is very close compared with the scale over which
 the rest of the layout extends. Larger values indicate better vertex separation.
 
@@ -613,7 +631,9 @@ layout space, beginning at $vec(x)_i$ and ending at $vec(x)_j$. When two such
 edge curves intersect away from their common endpoints, we call this an edge
 crossing.
 
-In practical graph layout, edge crossings are often unavoidable. First, a
+Edge crossings are among the most studied readability artifacts in graph
+drawing, and reducing them is a classical aesthetic criterion @purchase2002.
+In practical graph layout, however, edge crossings are often unavoidable. First, a
 non-planar graph cannot be drawn in two-dimensional Euclidean space without
 edge crossings. For planar graphs, there exist algorithms that produce planar
 drawings, such as the Tutte embedding @tutte1963. However, such methods are not
@@ -630,19 +650,26 @@ a defect that can always be eliminated, but as a visual artifact whose
 frequency should be measured and compared across layouts.
 
 Furthermore, not every edge crossing has the same effect on the visual quality
-of a layout. Crossings between short edges in locally dense regions may have a
-limited effect on the interpretation of the global structure, since their visual
-impact is confined to a small part of the drawing. By contrast, excessive crossings
-between longer edges can be more disruptive, since they create visual clutter
-across larger parts of the layout and make it harder to follow the connectivity
-between separated regions.
+of a layout. Cognitive studies of graph readability support the general
+principle that crossings are not uniformly disruptive: in path-tracing tasks,
+Ware et al. @ware2002 found that edge crossings degrade performance more
+strongly when they occur along long paths traced through the drawing, in
+addition to the separate and dominant effect of path continuity. Motivated by
+this context-dependence, we make an analogous distinction based on edge length
+rather than path length: crossings between short edges in locally dense
+regions may have a limited effect on the interpretation of the global
+structure, since their visual impact is confined to a small part of the
+drawing. By contrast, we expect that crossings between longer edges are more
+disruptive, since they create visual clutter across larger parts of the
+layout and make it harder to follow the connectivity between separated
+regions.
 
 For this reason we introduce two global metrics for measuring edge crossing
-as a negative artifact: The first is the total number of crossings $"Cr"(X)$,
-the other is a length weighted version $"LWCr"(X)$.
+as a negative artifact: the first is the total number of crossings $"Cr"(X)$,
+the other is a length-weighted version $"LWCr"(X)$.
 
 Formally, we consider the curve representing edge $e_(i j)$ which joins
-vertices $v_i$ and $v_j$ as the set of values of a parametric function 
+vertices $i$ and $j$ as the set of values of a parametric function
 $vec(p)_(i j): [0,1] -> RR^d$ with $vec(p)_(i j)(0) = vec(x)_i$ and 
 $vec(p)_(i j)(1) = vec(x)_j$ such that $ cal(P)_(i j) = {vec(p)_(i j)(t), t in [0,1]} $
 
@@ -690,9 +717,13 @@ number of crossings in the layout $X$ is defined as the sum of $"cr"(dot, dot)$
 over all pairs of distinct edges:
 $ "Cr"(X) = sum_(1 <= a < b <= m) "cr"(e_a, e_b) $
 This counts every crossing between every pair of edges in the drawing, including
-the rare case of curved edges crossing more than once. Larger values of
-$"Cr"(X)$ indicate a more visually cluttered layout, and $"Cr"(X) = 0$
-corresponds to a crossing-free drawing.
+the rare case of curved edges crossing more than once. Unlike the classical
+graph-drawing convention, which excludes pairs of edges sharing a common
+vertex from the crossing count since straight-line edges cannot cross away
+from a shared endpoint, we do not exclude such pairs here, since curved edges
+incident to the same vertex may still cross one another away from it. Larger
+values of $"Cr"(X)$ indicate a more visually cluttered layout, and
+$"Cr"(X) = 0$ corresponds to a crossing-free drawing.
 
 As discussed above, however, not all crossings are equally disruptive:
 crossings between edges that each span a large portion of the layout tend to be
@@ -727,3 +758,25 @@ crossing artifact. $"Cr"(X)$ weighs every crossing equally and thus quantifies
 the overall visual density due to edge overlap, while $"LWCr"(X)$ emphasizes
 crossings that are more likely to obscure the large-scale connectivity of the
 graph.
+
+This concludes the set of evaluation metrics used throughout this thesis.
+Taken together, the metrics defined in this section span three complementary
+views of layout quality. Structural feature preservation ---
+$"ADR"(X ; G)$, the neighborhood-recovery scores $R^k$, $P^k$, and $J^k$,
+weighted recall $W^k$, and scale-normalized stress $"SNS"(X ; G)$ --- measures
+the extent to which the graph's topological and distance information is
+reflected in the geometry of the layout. Label-based feature preservation ---
+the silhouette score $"Sil"(X ; cal(l))$ and #knn classification accuracy
+$"Acc"^k (X ; cal(l))$ --- measures the extent to which externally meaningful
+groupings are visually recoverable. Visual quality --- the point-crowding
+scores $"NND"_k (X)$ and $"VNR"(X)$, together with the crossing metrics
+$"Cr"(X)$ and $"LWCr"(X)$ --- measures the readability of the drawing
+independent of any structural correspondence to the graph.
+
+No single metric among these is sufficient on its own, nor is any intended as
+a canonical or exhaustive measure of its corresponding criterion. Rather, this
+pluralistic set is meant to be applied jointly: a layout method is judged not
+by any individual score, but by the pattern of trade-offs it exhibits across
+all three categories. This is the basis on which the Twin Neighbor Embedding
+method introduced in @tne, and the layout methods it is compared against, are
+evaluated in @results.

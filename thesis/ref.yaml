@@ -1448,6 +1448,20 @@ pezzotti2018MultiscaleVisualization:
     issue: 3
     volume: 37
 
+purchase2002:
+  type: article
+  title: Metrics for graph drawing aesthetics
+  author: Purchase, Helen C.
+  date: 2002-10
+  page-range: 501-516
+  serial-number:
+    doi: 10.1006/jvlc.2002.0232
+  parent:
+    type: periodical
+    title: Journal of Visual Languages and Computing
+    issue: 5
+    volume: 13
+
 pitsianis2019SpacelandEmbedding:
   type: article
   title: Spaceland Embedding of Sparse Stochastic Graphs
@@ -1509,6 +1523,19 @@ rieck2015PersistentHomology:
     title: Computer Graphics Forum
     issue: 3
     volume: 34
+
+rousseeuw1987:
+  type: article
+  title: 'Silhouettes: A graphical aid to the interpretation and validation of cluster analysis'
+  author: Rousseeuw, Peter J.
+  date: 1987-11
+  page-range: 53-65
+  serial-number:
+    doi: 10.1016/0377-0427(87)90125-7
+  parent:
+    type: periodical
+    title: Journal of Computational and Applied Mathematics
+    volume: 20
 
 shabbeer2011:
   type: article
@@ -1725,6 +1752,24 @@ walshaw2003:
     title: Journal of Graph Algorithms and Applications
     issue: 3
     volume: 7
+
+ware2002:
+  type: article
+  title: Cognitive measurements of graph aesthetics
+  author:
+  - Ware, Colin
+  - Purchase, Helen
+  - Colpoys, Linda
+  - McGill, Matthew
+  date: 2002-06
+  page-range: 103-110
+  serial-number:
+    doi: 10.1057/palgrave.ivs.9500013
+  parent:
+    type: periodical
+    title: Information Visualization
+    issue: 2
+    volume: 1
 
 Wenbo2022:
   type: article
@@ -2232,4 +2277,43 @@ tutte1963:
     type: periodical
     title: Proceedings of the London Mathematical Society
     issue: 1
+
+ahmed2020gd2:
+  type: article
+  title: 'Graph Drawing via Gradient Descent, (GD)^2'
+  author:
+  - Ahmed, Reyan
+  - De Luca, Felice
+  - Devkota, Sabin
+  - Kobourov, Stephen
+  - Li, Mingwei
+  date: 2020
+  page-range: 3-17
+  serial-number:
+    doi: 10.1007/978-3-030-68766-3_1
+    arxiv: '2008.05584'
+  parent:
+    type: proceedings
+    title: Graph Drawing and Network Visualization (GD 2020)
+    publisher:
+      name: Springer
+    volume: 12590
+
+bohm2025:
+  type: article
+  title: Node Embeddings via Neighbor Embeddings
+  author:
+  - Böhm, Jan Niklas
+  - Keute, Marius
+  - Guzmán, Alica
+  - Damrich, Sebastian
+  - Draganov, Andrew
+  - Kobak, Dmitry
+  date: 2025
+  url: https://arxiv.org/abs/2503.23822
+  serial-number:
+    arxiv: '2503.23822'
+  parent:
+    type: periodical
+    title: Transactions on Machine Learning Research
 
