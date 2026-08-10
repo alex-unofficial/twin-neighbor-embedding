@@ -19,6 +19,8 @@
 
 #let BigO = math.op($cal(O)$)
 
+#let emptyset = $diameter$
+
 #let argmax = math.op("argmax", limits: true)
 #let argmin = math.op("argmin", limits: true)
 #let mean = math.op("mean", limits: true)

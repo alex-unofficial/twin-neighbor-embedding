@@ -127,6 +127,8 @@
     ))
   }
 
+  set math.mat(delim: ("[", "]"))
+
   doc
 
   bibliography(
@@ -232,6 +234,8 @@
       ..counter(eq).at(el.location())
     ))
   }
+
+  set math.mat(delim: ("[", "]"))
 
   doc
 

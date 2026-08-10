@@ -2219,3 +2219,17 @@ ahmed2024:
   serial-number:
     arxiv: '2408.04688'
 
+tutte1963:
+  type: article
+  title: How to Draw a Graph
+  author: Tutte, W. T.
+  date: 1963
+  page-range: 743-767
+  url: https://londmathsoc.onlinelibrary.wiley.com/doi/abs/10.1112/plms/s3-13.1.743
+  serial-number:
+    doi: https://doi.org/10.1112/plms/s3-13.1.743
+  parent:
+    type: periodical
+    title: Proceedings of the London Mathematical Society
+    issue: 1
+

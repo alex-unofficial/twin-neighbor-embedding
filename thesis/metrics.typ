@@ -481,6 +481,249 @@ interpreting the layout-based classification accuracy: a low layout score is les
 meaningful when the same labels are weakly recoverable from the graph itself.
 
 === Evaluation of Visual Quality
+For any layout to be useful, it is required for it to be visually interpretable.
+Regardless of how well a layout preserves some graph-level feature, if its
+features are unclear or obscured, it loses its ability to meaningfully improve
+understanding of the underlying network by visual examination. These features
+can be obscured in a number of ways that make interpretation confusing. Point
+crowding and excessive edge crossings are among the most common artifacts which
+decrease the readability of a network layout, and are the artifacts this section
+will focus on.
 
+It should be clear that feature preservation and visual clarity are separate,
+although not unrelated, qualities. High visual clarity scores do not imply high
+feature preservation scores, and high feature preservation scores do not imply
+high visual clarity scores. In some cases, they might even be in tension: for
+example, point crowding scores penalize vertices placed too close together,
+while adjacency and community preservation scores may reward similar behavior in
+some cases. A good layout therefore must be at the same time feature-preserving
+and visually interpretable in order to be useful for network analysis.
 
+For this reason, visual quality metrics should be interpreted as complementary
+to the feature-preservation metrics defined above. They do not measure whether
+the layout correctly represents a particular structural property of the graph;
+rather, they measure whether the drawing is readable enough for the represented
+structure to be visually inspected.
 
+We therefore focus on point crowding and edge crossings as representative
+visual quality metrics, intended to measure common readability artifacts rather
+than structural preservation directly.
+
+==== Point Crowding
+This artifact appears when some subset of vertices is placed at distances
+that are very small compared to the overall scale of the layout.
+In such cases, the vertices may become difficult to distinguish visually,
+and the local substructure among them may be obscured.
+
+Again, the absolute scale of the distances does not matter, only their
+relative magnitudes, since one may uniformly scale any layout without
+changing its quality. Therefore, a point-crowding metric should compare
+local point spacing against a global spatial scale of the layout.
+
+A direct way to measure local spacing is to consider, for each vertex,
+the distances to its nearest embedded neighbors. Let $cal(N)^k_X (i)$
+denote the set of the $k$ nearest neighbors of $vec(x)_i$ in the layout.
+We define the average local $k$-nearest-neighbor distance as
+
+$ d_k (X) = 1/n sum_(i in V) 1/k sum_(j in cal(N)^k_X (i)) ||vec(x)_i - vec(x)_j|| $
+
+This quantity measures the typical local spacing around a vertex.
+However, it is scale-dependent. To remove the dependence on the
+arbitrary scale of the layout, we normalize it by the global average
+pairwise distance
+$ overline(d) = 2/(n(n - 1)) sum_(i < j) ||vec(x)_i - vec(x)_j|| $
+
+The normalized $k$-nearest neighbor distance is therefore defined as
+
+$ "NND"_k (X) = (d_k (x)) / overline(d)
+  = (1/n sum_(i in V) 1/k sum_(j in cal(N)^k_X (i)) ||vec(x)_i - vec(x)_j||) 
+  / (2/(n(n - 1)) sum_(i < j) ||vec(x)_i - vec(x)_j||) $
+
+This metric compares the typical local spacing of the layout to its global
+spatial scale. Smaller values indicate stronger point crowding, since the
+nearest embedded neighbors of a typical vertex are very close relative to
+the overall size of the drawing.
+Larger values indicate that vertices are better separated locally and
+are therefore easier to distinguish visually.
+
+A closely related graph-drawing aesthetic is node resolution, which measures
+whether distinct vertices are sufficiently separated in the drawing.
+A Common global form of this criterion compares the smallest pairwise vertex
+distance against the largest pairwise vertex distance:
+
+$ "NR" (X) = (min_(i < j) ||vec(x)_i - vec(x)_j||) / (max_(i < j) ||vec(x)_i - vec(x)_j||) $
+
+This metric is scale-invariant and directly penalizes near-overlapping
+vertices. However, because it depends on the single closest pair of vertices,
+it behaves as a worst-case overlap detector. 
+One nearly coincident pair can make the score very small, even if the rest of 
+the layout is visually readable.
+
+For this reason, we use a vertex-wise averaged version of node resolution.
+For each vertex, we compare its distance to the nearest other vertex with its
+distance to the farthest other vertex:
+
+$ "VNR" (X) = 1/n sum_(i in V) 
+  (min_(j eq.not i) ||vec(x)_i - vec(x)_j||) / (max_(j eq.not i) ||vec(x)_i - vec(x)_j||) $
+
+This metric measures the typical local separation of a vertex relative to its
+own visual range in the layout. Smaller values idicate that, for many vertices,
+the nearest visible neighbor is very close compared with the scale over which
+the rest of the layout extends. Larger values indicate better vertex separation.
+
+Unlike the global node-resolution score, $"VNR"$ is not determined by a single
+closest pair. It therefore remains sensitive to point crowding while better
+reflecting the typical readability of the layout. Like the global version, 
+it is invariant under uniform scaling of the layout, since both the numerator
+and denominator of each vertex-wise ratio scale by the same factor.
+
+The two metrics capture related but distinct aspects of point crowding.
+$"NND"_k$ measures the average spacing inside small local neighborhoods,
+whereas $"VNR"$ measures how close the nearest point to a typical vertex
+is relative to that vertex's full visual range. We use both as representative
+point-crowding metrics: $"NND"_k$ for local neighborhood crowding and $"VNR"$
+for node-resolution readability.
+
+In addition to these scalar metrics, we also examine the distribution of 
+normalized pairwise vertex distances in the layout. 
+
+We can use either all pairwise distances,
+$ {1/overline(d) ||vec(x)_i - vec(x)_j|| : i < j} $
+or local spacing values, such as nearest-neighbor distances,
+$ {1/overline(d) min_(j eq.not i) ||vec(x)_i - vec(x)_j|| : i in V} $
+
+This distribution can be visualized using histograms, box plots, or 
+one-dimensional scatter plots.
+These plots are not treated as formal evaluation metrics, since they do not
+produce a single scalar score by which layouts can be ordered.
+However, they provide useful diagnostic information about the structure
+of point spacing in the drawing.
+In particular, they make it possible to compare whether one layout contains
+a larger lower tail of very small distances, whether its distances are
+more evenly distributed, or whether the scalar crowding metrics are being
+influenced by a small number of near-overlapping vertices.
+
+==== Edge Crossing
+When visualizing graphs, the vertices are usually drawn as points, while the
+edges are drawn as curves connecting the corresponding vertex positions. In
+many graph layouts, an edge $i ~ j$ is drawn as a straight line segment from
+$vec(x)_i$ to $vec(x)_j$. However, this is not always the case, as we will see
+in @tne. We therefore consider edges more generally as curve segments in the
+layout space, beginning at $vec(x)_i$ and ending at $vec(x)_j$. When two such
+edge curves intersect away from their common endpoints, we call this an edge
+crossing.
+
+In practical graph layout, edge crossings are often unavoidable. First, a
+non-planar graph cannot be drawn in two-dimensional Euclidean space without
+edge crossings. For planar graphs, there exist algorithms that produce planar
+drawings, such as the Tutte embedding @tutte1963. However, such methods are not
+sufficient for scientific network visualization in general, since planarity is
+only one possible aesthetic criterion and does not guarantee the preservation
+of other relevant structural features. A crossing-free drawing may still
+produce other visual artifacts, such as point crowding, or may fail to reflect
+important graph-level properties.
+
+Moreover, many real-world networks are not planar, and even when a graph is
+planar, the layout algorithms considered in this thesis are not designed to
+guarantee a planar drawing. For this reason, edge crossings are not treated as
+a defect that can always be eliminated, but as a visual artifact whose
+frequency should be measured and compared across layouts.
+
+Furthermore, not every edge crossing has the same effect on the visual quality
+of a layout. Crossings between short edges in locally dense regions may have a
+limited effect on the interpretation of the global structure, since their visual
+impact is confined to a small part of the drawing. By contrast, excessive crossings
+between longer edges can be more disruptive, since they create visual clutter
+across larger parts of the layout and make it harder to follow the connectivity
+between separated regions.
+
+For this reason we introduce two global metrics for measuring edge crossing
+as a negative artifact: The first is the total number of crossings $"Cr"(X)$,
+the other is a length weighted version $"LWCr"(X)$.
+
+Formally, we consider the curve representing edge $e_(i j)$ which joins
+vertices $v_i$ and $v_j$ as the set of values of a parametric function 
+$vec(p)_(i j): [0,1] -> RR^d$ with $vec(p)_(i j)(0) = vec(x)_i$ and 
+$vec(p)_(i j)(1) = vec(x)_j$ such that $ cal(P)_(i j) = {vec(p)_(i j)(t), t in [0,1]} $
+
+Then for two such edges $e_(i j)$ and $e_(k l)$ and their curves
+$cal(P)_(i j)$ and $cal(P)_(k l)$, we say that $e_(i j)$ and $e_(k l)$ cross
+iff there exists some $vec(p) in RR^d$ with $vec(p) eq.not vec(x)_i$ and 
+$vec(p) eq.not vec(x)_j$, such that $vec(p) in cal(P)_(i j)$ and $vec(p) in cal(P)_(k l)$.
+Equivalently, $e_(i j)$ and $e_(k l)$ cross when
+$ (cal(P)_(i j) inter cal(P)_(k l) backslash {vec(x)_i, vec(x)_j}) eq.not emptyset $
+
+The number of crossings between $e_(i j)$ and $e_(k l)$ is given as 
+$ "cr"(e_(i j), e_(k l)) = |cal(P)_(i j) inter cal(P)_(k l) backslash {vec(x)_i, vec(x)_j}| $
+which might be more than $1$ since we are working with curves and not straight lines.
+
+Since the sets $cal(P)_(i j)$ are uncountably infinite, it is useful to work instead with 
+the index formulation: the edges $e_(i j)$ and $e_(k l)$ cross iff there exists 
+$psi, xi in (0, 1)$ such that
+$ vec(p)_(i j)(psi) = vec(p)_(k l)(xi) $
+Where root-finding methods can be used to find the intersections.
+In practice a bounding-polygon scheme can be used to efficiently check
+for possible intersections, then followed by the more expensive root-finding
+refinement step.
+
+In the special case where the two curve segments are linear, given by
+$ vec(p)_(i j)(psi) = vec(p)_i + vec(v)_(i j) psi
+\ vec(p)_(k l)(xi) = vec(p)_k + vec(v)_(k l) xi $
+finding the roots is equivalent to solving a 2 dimensional linear system:
+$ mat(vec(v)_(i j), -vec(v)_(k l)) mat(psi ; xi) = vec(x)_k - vec(x)_i $
+then checking that $psi$ and $xi$ are both in $(0, 1)$.
+
+Following from this fact, an approximate method to find the crossings of two edges 
+is often to split the curve segments into "polylines" wherein each curve is represented
+as a set of line segments that begin and end at sampled points on the original curve,
+and then check for intersections between each pair of line segments in the two polylines.
+This is not exactly accurate with regards to the previous problem, but especially as the
+number of segments used for each polyline increases, this method becomes a sufficiently good
+approximation for the purposes of our metrics.
+Note that for a uniform augmentation of $m$ edges into polylines, each with $s$ line segments,
+the time complexity to detect all intersections becomes $BigO(s^2 n^2)$.
+
+Having established how individual crossings are detected, we can now define the
+two global metrics introduced at the start of this subsection. Let
+$e_1, dots, e_m$ denote an arbitrary enumeration of the edges of $G$. The total
+number of crossings in the layout $X$ is defined as the sum of $"cr"(dot, dot)$
+over all pairs of distinct edges:
+$ "Cr"(X) = sum_(1 <= a < b <= m) "cr"(e_a, e_b) $
+This counts every crossing between every pair of edges in the drawing, including
+the rare case of curved edges crossing more than once. Larger values of
+$"Cr"(X)$ indicate a more visually cluttered layout, and $"Cr"(X) = 0$
+corresponds to a crossing-free drawing.
+
+As discussed above, however, not all crossings are equally disruptive:
+crossings between edges that each span a large portion of the layout tend to be
+more disruptive to visual interpretation than crossings confined to a small,
+locally dense region. To capture this asymmetry, we define a length-weighted
+crossing metric that accounts for the length of the two edges involved in each
+crossing.
+
+We take the length of an edge to be the Euclidean distance between its
+endpoints,
+$ L(e_(i j)) = ||vec(x)_i - vec(x)_j|| $
+regardless of the shape of the curve used to draw it, since it is the distance
+spanned across the layout, rather than the path taken, that determines how much
+of the drawing a crossing on that edge can disrupt. As with the other metrics in
+this section, we compare this to the average edge length of the layout,
+$ overline(L)(X) = 1/m sum_(e in E) L(e) $
+so that the contribution of a crossing is judged relative to the typical edge
+length of the drawing rather than to an arbitrary absolute scale.
+
+The length-weighted crossing number is then defined as
+$ "LWCr"(X) = 1/overline(L)(X) sum_(1 <= a < b <= m) (L(e_a) + L(e_b))/2 "cr"(e_a, e_b) $
+Each crossing is weighted by the average length of the two edges involved,
+relative to the average edge length of the layout. When all edges have equal
+length, this weight is $1$ for every crossing and $"LWCr"(X)$ reduces exactly
+to $"Cr"(X)$. In general, crossings between long edges contribute more to
+$"LWCr"(X)$ than crossings between short edges, in agreement with the
+observation that the former tend to be more disruptive to visual
+interpretation.
+
+Together, $"Cr"(X)$ and $"LWCr"(X)$ provide complementary global views of the
+crossing artifact. $"Cr"(X)$ weighs every crossing equally and thus quantifies
+the overall visual density due to edge overlap, while $"LWCr"(X)$ emphasizes
+crossings that are more likely to obscure the large-scale connectivity of the
+graph.
