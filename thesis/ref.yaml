@@ -505,31 +505,6 @@ dibartolomeo2024EvaluatingGraph:
     issue: 6
     volume: 43
 
-dibartolomeo2024EvaluatingGrapha:
-  type: article
-  title:
-    value: 'Evaluating {Graph Layout Algorithms}: {A Systematic Review} of {Methods} and {Best Practices}'
-    short: Evaluating {Graph Layout Algorithms}
-  author:
-  - Di Bartolomeo, Sara
-  - Crnovrsanin, Tarik
-  - Saffo, David
-  - Puerta, Eduardo
-  - Wilson, Connor
-  - Dunne, Cody
-  date: 2024-09
-  page-range: e15073
-  serial-number:
-    doi: 10.1111/cgf.15073
-    issn: 0167-7055, 1467-8659
-  language: en-US
-  abstract: Abstract Evaluations—encompassing computational evaluations, benchmarks and user studies—are essential tools for validating the performance and applicability of graph and network layout algorithms (also known as graph drawing). These evaluations not only offer significant insights into an algorithm's performance and capabilities, but also assist the reader in determining if the algorithm is suitable for a specific purpose, such as handling graphs with a high volume of nodes or dense graphs. Unfortunately, there is no standard approach for evaluating layout algorithms. Prior work holds a ‘Wild West’ of diverse benchmark datasets and data characteristics, as well as varied evaluation metrics and ways to report results. It is often difficult to compare layout algorithms without first implementing them and then running your own evaluation. In this systematic review, we delve into the myriad of methodologies employed to conduct evaluations—the utilized techniques, reported outcomes and the pros and cons of choosing one approach over another. Our examination extends beyond computational evaluations, encompassing user‐centric evaluations, thus presenting a comprehensive understanding of algorithm validation. This systematic review—and its accompanying website—guides readers through evaluation types, the types of results reported, and the available benchmark datasets and their data characteristics. Our objective is to provide a valuable resource for readers to understand and effectively apply various evaluation methods for graph layout algorithms. A free copy of this paper and all supplemental material is available at osf.io , and the categorized papers are accessible on our website at https://visdunneright.github.io/gd‐comp‐eval/ .
-  parent:
-    type: periodical
-    title: Computer Graphics Forum
-    issue: 6
-    volume: 43
-
 dimitris-thesis:
   type: thesis
   title: Efficient Analysis of Local and Global Structures in Large Networks
@@ -907,27 +882,6 @@ isomap:
     title: Science
     issue: 5500
     volume: 290
-
-jacomy2014:
-  type: article
-  title: '{ForceAtlas2}, a {Continuous Graph Layout Algorithm} for {Handy Network Visualization Designed} for the {Gephi Software}'
-  author:
-  - Jacomy, Mathieu
-  - Venturini, Tommaso
-  - Heymann, Sebastien
-  - Bastian, Mathieu
-  date: 2014-06
-  editor: Muldoon, Mark R.
-  page-range: e98679
-  serial-number:
-    doi: 10.1371/journal.pone.0098679
-    issn: 1932-6203
-  language: en-US
-  parent:
-    type: periodical
-    title: PLoS ONE
-    issue: 6
-    volume: 9
 
 kadushin2012:
   type: book
@@ -1320,20 +1274,6 @@ pagerank1999:
   parent:
     type: periodical
 
-brin1998anatomylargescale:
-  type: article
-  title: The Anatomy of a Large-Scale Hypertextual {Web} Search Engine
-  author:
-  - Brin, Sergey
-  - Page, Lawrence
-  date: 1998
-  page-range: 107-117
-  parent:
-    type: periodical
-    title: Computer Networks and ISDN Systems
-    issue: 1–7
-    volume: 30
-
 pajek:
   type: misc
   title: Pajek
@@ -1709,6 +1649,7 @@ tsne:
   - Hinton, G.
   date: 2008
   page-range: 2579-2605
+  url: https://www.jmlr.org/papers/v9/vandermaaten08a.html
   parent:
     type: periodical
     title: Journal of Machine Learning Research
@@ -1900,22 +1841,6 @@ miller2023:
       location: Cham
     volume: 14465
 
-networkx:
-  type: article
-  title: Exploring {Network Structure}, {Dynamics}, and {Function} Using {NetworkX}
-  author:
-  - Hagberg, Aric A.
-  - Schult, Daniel A.
-  - Swart, Pieter J.
-  date: 2008
-  serial-number:
-    doi: 10.25080/TCWV9851
-  language: en-US
-  parent:
-  - type: proceedings
-  - type: conference
-    title: Python in {Science Conference} ({SciPy} 2008)
-
 knuth2013combinatorics:
   type: chapter
   title: Two thousand years of combinatorics
@@ -1940,9 +1865,9 @@ yifanhu2015:
   - Shi, Lei
   date: 2015
   page-range: 115-136
-  url: https://wires.onlinelibrary.wiley.com/doi/abs/10.1002/wics.1343
+  url: https://yifanhu.net/PUB/large_graph_wires.pdf
   serial-number:
-    doi: https://doi.org/10.1002/wics.1343
+    doi: 10.1002/wics.1343
   abstract: 'With the prevalence of big data, there is a growing need for algorithms and techniques for visualizing very large and complex graphs. In this article, we review layout algorithms and interactive exploration techniques for large graphs. In addition, we briefly look at softwares and datasets for visualization graphs, as well as challenges that need to be addressed. WIREs Comput Stat 2015, 7:115–136. doi: 10.1002/wics.1343 This article is categorized under: Statistical Learning and Exploratory Methods of the Data Sciences > Exploratory Data Analysis Data: Types and Structure > Graph and Network Data Statistical and Graphical Methods of Data Analysis > Statistical Graphics and Visualization'
   parent:
     type: periodical
@@ -1955,51 +1880,45 @@ eades1984:
   title: A Heuristic for Graph Drawing
   author: Eades, Peter
   date: 1984
-  url: https://api.semanticscholar.org/CorpusID:63936426
-  parent:
-    type: proceedings
-
-FRlayout:
-  type: article
-  title: Graph drawing by force-directed placement
-  author:
-  - Fruchterman, Thomas M. J.
-  - Reingold, Edward M.
-  date: 1991
-  page-range: 1129-1164
-  url: https://onlinelibrary.wiley.com/doi/abs/10.1002/spe.4380211102
-  serial-number:
-    doi: https://doi.org/10.1002/spe.4380211102
-  abstract: Abstract We present a modification of the spring-embedder model of Eades [Congressus Numerantium, 42, 149–160, (1984)] for drawing undirected graphs with straight edges. Our heuristic strives for uniform edge lengths, and we develop it in analogy to forces in natural systems, for a simple, elegant, conceptually-intuitive, and efficient algorithm.
+  page-range: 149-160
+  url: https://www.cs.ubc.ca/~will/536E/papers/Eades1984.pdf
   parent:
     type: periodical
-    title: 'Software: Practice and Experience'
-    issue: 11
-    volume: 21
+    title: Congressus Numerantium
+    volume: 42
 
-yifanhu2006layout:
+yifanhu2005layout:
   type: article
-  title: Efficient, High-Quality Force-Directed Graph Drawing
+  title: Efficient and High Quality Force-Directed Graph Drawing
   author: Hu, Yifan
-  date: 2006
+  date: 2005
   page-range: 37-71
-  url: https://api.semanticscholar.org/CorpusID:14599587
+  url: https://yifanhu.net/PUB/graph_draw_small.pdf
   parent:
     type: periodical
-    title: The Mathematica journal
+    title: The Mathematica Journal
+    issue: 1
     volume: 10
 
-bru1995layout:
-  type: article
-  title: Fast Interactive 3-D Graph Visualization
+bruss1996layout:
+  type: anthos
+  title: Fast Interactive 3-{D} Graph Visualization
   author:
-  - Bruß, Ingo
+  - Bruss, Ingo
   - Frick, Arne
-  date: 1995
-  url: https://api.semanticscholar.org/CorpusID:16094190
+  date: 1996
+  editor: Brandenburg, Franz J.
+  page-range: 99-110
+  serial-number:
+    doi: 10.1007/BFb0021794
+    isbn: 978-3-540-49351-8
   parent:
-    type: proceedings
-    title: International Symposium Graph Drawing and Network Visualization
+    type: anthology
+    title: Graph Drawing
+    publisher:
+      name: Springer Berlin Heidelberg
+      location: Berlin, Heidelberg
+    volume: 1027
 
 barneshut1986:
   type: article
@@ -2013,18 +1932,22 @@ barneshut1986:
     doi: 10.1038/324446a0
   parent:
     type: periodical
-    title: '\\nat '
+    title: Nature
     issue: 6096
     volume: 324
 
 tunkelang1999:
-  type: article
+  type: thesis
   title: A Numerical Optimization Approach to General Graph Drawing
   author: Tunkelang, Daniel
   date: 1999
-  page-range: ''
-  parent:
-    type: periodical
+  genre: PhD Thesis
+  organization: School of Computer Science, Carnegie Mellon University
+  publisher:
+    name: Carnegie Mellon University
+    location: Pittsburgh, PA, USA
+  note: Technical Report CMU-CS-98-189
+  url: http://reports-archive.adm.cs.cmu.edu/anon/1998/CMU-CS-98-189.pdf
 
 quigley2001:
   type: thesis
@@ -2033,7 +1956,10 @@ quigley2001:
   date: 2001
   genre: PhD Thesis
   organization: Department of Computer Science and Software Engineering, The University of Newcastle
-  location: Australia
+  publisher:
+    name: The University of Newcastle
+    location: Australia
+  url: https://aaronquigley.org/wp-content/uploads/2019/03/aquigley-thesis-mar-02.pdf
 
 noack2004:
   type: article
@@ -2043,6 +1969,7 @@ noack2004:
   editor: Liotta, Giuseppe
   page-range: 425-436
   serial-number:
+    doi: 10.1007/978-3-540-24595-7_40
     isbn: 978-3-540-24595-7
   abstract: We introduce an energy model whose minimum energy drawings reveal the clusters of the drawn graph. Here a cluster is a set of nodes with many internal edges and few edges to nodes outside the set. The drawings of the best-known force and energy models do not clearly show clusters for graphs whose diameter is small relative to the number of nodes. We formally characterize the minimum energy drawings of our energy model. This characterization shows in what sense the drawings separate clusters, and how the distance of separated clusters to the other nodes can be interpreted.
   parent:
@@ -2051,6 +1978,7 @@ noack2004:
     publisher:
       name: Springer Berlin Heidelberg
       location: Berlin, Heidelberg
+    volume: 2912
 
 kruskal1964MDS:
   type: article
@@ -2088,7 +2016,7 @@ kamadakawai1989:
   page-range: 7-15
   url: https://www.sciencedirect.com/science/article/pii/0020019089901026
   serial-number:
-    doi: https://doi.org/10.1016/0020-0190(89)90102-6
+    doi: 10.1016/0020-0190(89)90102-6
     issn: 0020-0190
   parent:
     type: periodical
@@ -2104,12 +2032,16 @@ gansner2004:
   - Koren, Yehuda
   - North, Stephen
   date: 2004
-  page-range: ''
+  page-range: 239-250
   serial-number:
     doi: 10.1007/978-3-540-31843-9_25
     isbn: 978-3-540-24528-5
   parent:
     type: proceedings
+    title: Graph Drawing
+    publisher:
+      name: Springer Berlin Heidelberg
+      location: Berlin, Heidelberg
     volume: 3383
 
 hall1970:
@@ -2145,7 +2077,7 @@ koren2002:
 
 
 mcinnes2020umap:
-  type: misc
+  type: article
   title: 'UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction'
   author:
   - McInnes, Leland
@@ -2155,6 +2087,9 @@ mcinnes2020umap:
   url: https://arxiv.org/abs/1802.03426
   serial-number:
     arxiv: '1802.03426'
+  parent:
+    type: repository
+    title: arXiv
 
 vandermaaten2014:
   type: article
@@ -2172,7 +2107,7 @@ vandermaaten2014:
     issue: 93
     volume: 15
 
-linderman2017fitsne:
+linderman2019fitsne:
   type: article
   title: Fast Interpolation-based t-SNE for Improved Visualization of Single-Cell RNA-Seq Data
   author:
@@ -2181,12 +2116,15 @@ linderman2017fitsne:
   - Hoskins, Jeremy G.
   - Steinerberger, Stefan
   - Kluger, Yuval
-  date: 2017
+  date: 2019-03
   page-range: 243-245
-  url: https://api.semanticscholar.org/CorpusID:34472149
+  serial-number:
+    doi: 10.1038/s41592-018-0308-4
+    issn: 1548-7091, 1548-7105
   parent:
     type: periodical
-    title: Nature methods
+    title: Nature Methods
+    issue: 3
     volume: 16
 
 jacomy2014fa2:
@@ -2197,26 +2135,32 @@ jacomy2014fa2:
   - Venturini, Tommaso
   - Heymann, Sebastien
   - Bastian, Mathieu
-  date: 2014
-  url: https://api.semanticscholar.org/CorpusID:14763635
+  date: 2014-06
+  editor: Muldoon, Mark R.
+  page-range: e98679
+  serial-number:
+    doi: 10.1371/journal.pone.0098679
+    issn: 1932-6203
   parent:
     type: periodical
     title: PLoS ONE
+    issue: 6
     volume: 9
 
-gansner2003graphviz:
+gansner2000graphviz:
   type: article
   title: An Open Graph Visualization System and Its Applications to Software Engineering
   author:
-  - Gansner, Emden
-  - North, Stephen
-  date: 2003
-  page-range: ''
+  - Gansner, Emden R.
+  - North, Stephen C.
+  date: 2000-09
+  page-range: 1203-1233
   serial-number:
-    doi: 10.1002/1097-024X(200009)30:113.3.CO;2-E
+    doi: '10.1002/1097-024X(200009)30:11<1203::AID-SPE338>3.0.CO;2-N'
   parent:
     type: periodical
     title: 'Software: Practice and Experience'
+    issue: 11
     volume: 30
 
 bastian2009gephi:
@@ -2238,7 +2182,7 @@ bastian2009gephi:
     volume: 3
 
 smelser2025:
-  type: misc
+  type: article
   title: '"Normalized Stress" is Not Normalized: How to Interpret Stress Correctly'
   author:
   - Smelser, Kiran
@@ -2248,9 +2192,12 @@ smelser2025:
   url: https://arxiv.org/abs/2408.07724
   serial-number:
     arxiv: '2408.07724'
+  parent:
+    type: repository
+    title: arXiv
 
 ahmed2024:
-  type: misc
+  type: article
   title: 'Size Should not Matter: Scale-invariant Stress Metrics'
   author:
   - Ahmed, Reyan
@@ -2263,6 +2210,9 @@ ahmed2024:
   url: https://arxiv.org/abs/2408.04688
   serial-number:
     arxiv: '2408.04688'
+  parent:
+    type: repository
+    title: arXiv
 
 tutte1963:
   type: article
@@ -2270,13 +2220,14 @@ tutte1963:
   author: Tutte, W. T.
   date: 1963
   page-range: 743-767
-  url: https://londmathsoc.onlinelibrary.wiley.com/doi/abs/10.1112/plms/s3-13.1.743
+  url: https://www.cs.jhu.edu/~misha/Fall09/Tutte63.pdf
   serial-number:
-    doi: https://doi.org/10.1112/plms/s3-13.1.743
+    doi: 10.1112/plms/s3-13.1.743
   parent:
     type: periodical
     title: Proceedings of the London Mathematical Society
     issue: 1
+    volume: s3-13
 
 ahmed2020gd2:
   type: article
@@ -2317,3 +2268,64 @@ bohm2025:
     type: periodical
     title: Transactions on Machine Learning Research
 
+
+gansner2007circular:
+  type: anthos
+  title: Improved Circular Layouts
+  author:
+  - Gansner, Emden R.
+  - Koren, Yehuda
+  date: 2007
+  editor:
+  - Kaufmann, Michael
+  - Wagner, Dorothea
+  page-range: 386-398
+  serial-number:
+    doi: 10.1007/978-3-540-70904-6_37
+  parent:
+    type: anthology
+    title: Graph Drawing
+    publisher:
+      name: Springer Berlin Heidelberg
+      location: Berlin, Heidelberg
+    volume: 4372
+
+miller2024noneuclidean:
+  type: article
+  title: State of the Art of Graph Visualization in Non-{Euclidean} Spaces
+  author:
+  - Miller, Jacob
+  - Bhatia, Dhruv
+  - Kobourov, Stephen
+  date: 2024
+  page-range: e15113
+  serial-number:
+    doi: 10.1111/cgf.15113
+  parent:
+    type: periodical
+    title: Computer Graphics Forum
+    issue: 3
+    volume: 43
+
+frick1995adaptive:
+  type: anthos
+  title: A Fast Adaptive Layout Algorithm for Undirected Graphs
+  author:
+  - Frick, Arne
+  - Ludwig, Andreas
+  - Mehldau, Heiko
+  date: 1995
+  editor:
+  - Tamassia, Roberto
+  - Tollis, Ioannis G.
+  page-range: 388-403
+  serial-number:
+    doi: 10.1007/3-540-58950-3_393
+    isbn: 978-3-540-49155-2
+  parent:
+    type: anthology
+    title: Graph Drawing
+    publisher:
+      name: Springer Berlin Heidelberg
+      location: Berlin, Heidelberg
+    volume: 894

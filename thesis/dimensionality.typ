@@ -140,7 +140,7 @@ pairs of points. For this reason, the dominant computational cost in large-scale
 @vandermaaten2014 uses a spatial tree to approximate distant repulsive forces and
 reduces the overall complexity to approximately $BigO(n log n)$, while also computing
 a sparse approximation of $P$ from nearest-neighbor relations.
-FIt-SNE @linderman2017fitsne accelerates the repulsive term further by 
+FIt-SNE @linderman2019fitsne accelerates the repulsive term further by 
 interpolating the interaction kernel onto a regular grid and using the 
 Fast Fourier Transform to evaluate the resulting convolution efficiently, 
 together with approximate nearest-neighbor methods for constructing the sparse 
@@ -204,7 +204,7 @@ the dense repulsive term through permutations and memory-aware access patterns
 tailored to modern hierarchical memory architectures.
 
 #sgtsnepi additionally enables efficient computation of 3D embeddings,
-something not previously possible even for the accelerated #tsne methods
+which had been impractical at scale even for the accelerated #tsne methods
 like BH-#tsne and FIt-#sne. The higher dimensionality enables the embedding
 to capture more complex structural relationships in the data. 
 

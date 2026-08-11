@@ -30,8 +30,9 @@ and is determined by a network layout algorithm.
 
 
 The surface $Sigma$ is called the embedding space and is commonly $RR^2$,
-but sometimes $RR^3$ or even restricted to $SS^1$ or $SS^2$
-@WS @miller2023 @lu2019DoublyStochastic.
+but sometimes $RR^3$ @bruss1996layout @kwon2016immersive
+or even restricted to $SS^1$ or $SS^2$
+@gansner2007circular @miller2024noneuclidean @lu2019DoublyStochastic.
 For the purposes of visualization $Sigma$ is low-dimensional.
 
 Existing software packages for scientific network visualization differ

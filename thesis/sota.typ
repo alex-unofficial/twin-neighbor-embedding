@@ -19,11 +19,11 @@ global vertex separation through repulsive forces. We use the _NetworkX_
 @hagberg2008networkx implementation via the `spring_layout` method.
 
 ==== Yifan Hu
-The Yifan Hu method @yifanhu2006layout is a scalable force-directed layout
+The Yifan Hu method @yifanhu2005layout is a scalable force-directed layout
 algorithm that combines a multilevel strategy with Barnes-Hut approximation of
 repulsive forces. It belongs to the spring-electrical family, but is designed
 specifically for efficient layout of large graphs. We use the _GraphViz_
-@gansner2003graphviz implementation `sfdp`.
+@gansner2000graphviz implementation `sfdp`.
 
 ==== ForceAtlas2
 ForceAtlas2 @jacomy2014fa2 is a force-directed layout method with a force model
@@ -44,7 +44,7 @@ _NetworkX_ @hagberg2008networkx implementation via the `kamada_kawai_layout`
 method.
 
 ==== Stress Majorization (MDS-style)
-The _GraphViz_ @gansner2003graphviz engine `neato` implements a stress-based
+The _GraphViz_ @gansner2000graphviz engine `neato` implements a stress-based
 layout approach closely related to multidimensional scaling, using stress
 majorization @gansner2004 for more stable optimization of the stress objective.
 Compared to classical Kamada-Kawai, this typically yields more robust
@@ -55,8 +55,8 @@ Spectral layout, as described in @conventional, uses eigenvectors of the graph
 Laplacian to embed the graph in Euclidean space. It emphasizes adjacency
 preservation and tends to produce smooth, globally structured layouts, but does
 not explicitly optimize a force or stress objective. We use a custom
-Python implementation which computes the $d$ dominant eigenvectors of
-the graph Laplacian.
+Python implementation which computes the eigenvectors corresponding to
+the $d$ smallest non-zero eigenvalues of the graph Laplacian.
 
 ==== #sgtsnepi
 This method is described in detail in @conventional. It is a stochastic graph

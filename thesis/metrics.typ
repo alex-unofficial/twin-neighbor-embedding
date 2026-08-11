@@ -254,7 +254,7 @@ of distance preservation.
 Borrowing from #mds and the Stress model defined in @force-based,
 we can use the Raw Stress function as a crude metric for
 global distance deviation
-$ "Stress"(X ; G) = sqrt(sum_(i < j) (d_(i j) - ||vec(x)_i - vec(x)_j||)^2) $
+$ "Stress"(X ; G) = sum_(i < j) (d_(i j) - ||vec(x)_i - vec(x)_j||)^2 $
 This function does indeed penalize non-matching distances between $d_(i j)$
 and $||vec(x)_i - vec(x)_j||$, however it is too strict in that sense. 
 There are two main issues with using Raw Stress as a metric, and
@@ -406,8 +406,8 @@ to another community than to its assigned community,
 and values near $0$ indicate that the vertex is close to the
 border between the communities.
 Notably, this score is not well defined for singleton communities
-where $|C_i| = 1$, so in our implementation we set the score for 
-these vertices as $0$.
+where $|C_i| = 1$, so, following Rousseeuw's own convention
+@rousseeuw1987, we set the score for these vertices as $0$.
 
 The global score is given as the mean of the scores for each point
 $ "Sil"(X ; cal(l)) = 1/n sum_(i in V) "Sil"_i (X ; cal(l)) $
@@ -429,7 +429,8 @@ Then the global score $"Sil"^* (G ; cal(l))$ is defined as above.
 Another metric corresponding to the same criterion is to measure the accuracy
 of using a #knn based classifier in its recovery of the initial labels, an
 approach used to quantify embedding quality since the original #tsne paper
-@tsne and in more recent graph-embedding evaluations @bohm2025.
+@tsne (there with $k = 1$) and in more recent graph-embedding evaluations
+@bohm2025.
 In contrast to Silhouette score, which is a global score of separation
 and compactness, this metric measures instead local label-homogeneity.
 This is based on the principle that a label-preserving layout should place each
@@ -563,7 +564,7 @@ the overall size of the drawing.
 Larger values indicate that vertices are better separated locally and
 are therefore easier to distinguish visually.
 
-A closely related graph-drawing aesthetic is node resolution @purchase2002,
+A closely related graph-drawing aesthetic is node resolution,
 which measures whether distinct vertices are sufficiently separated in the
 drawing. A common global form of this criterion, used for example by
 @ahmed2020gd2, compares the smallest pairwise vertex distance against the
@@ -652,10 +653,10 @@ frequency should be measured and compared across layouts.
 Furthermore, not every edge crossing has the same effect on the visual quality
 of a layout. Cognitive studies of graph readability support the general
 principle that crossings are not uniformly disruptive: in path-tracing tasks,
-Ware et al. @ware2002 found that edge crossings degrade performance more
-strongly when they occur along long paths traced through the drawing, in
-addition to the separate and dominant effect of path continuity. Motivated by
-this context-dependence, we make an analogous distinction based on edge length
+Ware et al. @ware2002 found that, after path length, continuity and edge
+crossings were the two strongest predictors of path-tracing cost. Motivated by
+the fact that crossing cost is not the whole story and that path extent
+matters, we make an analogous distinction based on edge length
 rather than path length: crossings between short edges in locally dense
 regions may have a limited effect on the interpretation of the global
 structure, since their visual impact is confined to a small part of the
@@ -675,13 +676,16 @@ $vec(p)_(i j)(1) = vec(x)_j$ such that $ cal(P)_(i j) = {vec(p)_(i j)(t), t in [
 
 Then for two such edges $e_(i j)$ and $e_(k l)$ and their curves
 $cal(P)_(i j)$ and $cal(P)_(k l)$, we say that $e_(i j)$ and $e_(k l)$ cross
-iff there exists some $vec(p) in RR^d$ with $vec(p) eq.not vec(x)_i$ and 
-$vec(p) eq.not vec(x)_j$, such that $vec(p) in cal(P)_(i j)$ and $vec(p) in cal(P)_(k l)$.
+iff there exists some $vec(p) in RR^d$ with $vec(p) eq.not vec(x)_i$,
+$vec(p) eq.not vec(x)_j$, $vec(p) eq.not vec(x)_k$ and
+$vec(p) eq.not vec(x)_l$, such that $vec(p) in cal(P)_(i j)$ and $vec(p) in cal(P)_(k l)$.
 Equivalently, $e_(i j)$ and $e_(k l)$ cross when
-$ (cal(P)_(i j) inter cal(P)_(k l) backslash {vec(x)_i, vec(x)_j}) eq.not emptyset $
+$ (cal(P)_(i j) inter cal(P)_(k l) backslash
+  {vec(x)_i, vec(x)_j, vec(x)_k, vec(x)_l}) eq.not emptyset $
 
 The number of crossings between $e_(i j)$ and $e_(k l)$ is given as 
-$ "cr"(e_(i j), e_(k l)) = |cal(P)_(i j) inter cal(P)_(k l) backslash {vec(x)_i, vec(x)_j}| $
+$ "cr"(e_(i j), e_(k l)) = |cal(P)_(i j) inter cal(P)_(k l) backslash
+  {vec(x)_i, vec(x)_j, vec(x)_k, vec(x)_l}| $
 which might be more than $1$ since we are working with curves and not straight lines.
 
 Since the sets $cal(P)_(i j)$ are uncountably infinite, it is useful to work instead with 
@@ -708,7 +712,7 @@ This is not exactly accurate with regards to the previous problem, but especiall
 number of segments used for each polyline increases, this method becomes a sufficiently good
 approximation for the purposes of our metrics.
 Note that for a uniform augmentation of $m$ edges into polylines, each with $s$ line segments,
-the time complexity to detect all intersections becomes $BigO(s^2 n^2)$.
+the time complexity to detect all intersections becomes $BigO(s^2 m^2)$.
 
 Having established how individual crossings are detected, we can now define the
 two global metrics introduced at the start of this subsection. Let

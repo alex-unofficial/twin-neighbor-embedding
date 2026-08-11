@@ -53,11 +53,11 @@ This model was first introduced by Peter Eades in 1984 @eades1984.
 In this first approach, each edge in $G$ was modeled as a spring
 whose attractive force grew logarithmically with distance, 
 while non-adjacent vertices were subject to a repulsive force 
-inversely proportional to their distance.
+inversely proportional to the square of their distance.
 A physical simulation was then used to find a stable layout starting
 from an initial configuration.
 
-Later, Fruchterman and Reingold @FRlayout suggested a model in which 
+Later, Fruchterman and Reingold @fruchterman1991 suggested a model in which 
 attractive spring forces are proportional to the squared distance 
 between adjacent vertices, while repulsive electrical forces act between 
 all vertex pairs and are inversely proportional to their distance.
@@ -71,7 +71,9 @@ and the repulsive force is
 $ vec(F)_r (i, j) = (K^2)/(||vec(x)_i - vec(x)_j||) med uvec(r)_(i j) quad i eq.not j $
 where the parameter $K$ represents the desired edge length in the final layout.
 
-These forces correspond to the following energy function @noack2004:
+These forces correspond to the following energy function, obtained by
+integrating the attractive and repulsive forces above; cf.
+@fruchterman1991 @noack2004:
 $ cal(E)_"FR" (X) = sum_(i ~ j) 1/(3K) ||vec(x)_i - vec(x)_j||^3
   - sum_(i < j) K^2 log||vec(x)_i - vec(x)_j|| $ <energy-fr>
 
@@ -85,7 +87,8 @@ the vertex position is updated by moving in the direction of
 $uvec(f)_i$ with decreasing step length $h^((j))$
 $ vec(x)_i^((j + 1)) <- vec(x)_i^((j)) + h^((j)) med vec(f)_i $
 until the layout stabilizes at an equilibrium point.
-Later refinements introduce adaptive step-length schemes @bru1995layout @yifanhu2006layout. 
+Later refinements introduce adaptive step-length schemes
+@frick1995adaptive @bruss1996layout @yifanhu2005layout. 
 
 Despite the physical interpretation, the algorithm does not simulate 
 particle dynamics according to classical mechanics. 
@@ -102,7 +105,7 @@ The time complexity can be improved by using a spatial partitioning technique
 such as the Barnes-Hut algorithm @barneshut1986, widely used in physics
 for $n$-body simulations, which can approximate the forces in 
 $BigO(n log n)$ time with good accuracy. Such an approach is taken
-in @tunkelang1999 @quigley2001 and @yifanhu2006layout.
+in @tunkelang1999 @quigley2001 and @yifanhu2005layout.
 
 _Multilevel Methods._
 To address the problem of the solution becoming trapped in local minima, 
@@ -166,9 +169,9 @@ A specific algorithm to find the minima is not described, but
 standard optimization methods in conjunction with
 multilevel approaches may be used in practice.
 
-LinLog has better separation of clusters with small diameter
-compared to Fruchterman-Reingold, but sacrifices edge length
-uniformity as a result.
+LinLog has better separation of clusters in graphs whose diameter is
+small relative to the number of nodes, compared to Fruchterman-Reingold,
+but sacrifices edge length uniformity as a result.
 
 Noack also introduces the generalized $r$-PolyLog class of energy
 models with corresponding energy functions
@@ -180,7 +183,9 @@ uniform edge lengths.
 
 Notice that $1$-PolyLog is equivalent to LinLog @energy-linlog, while
 the $3$-PolyLog energy is the same as Fruchterman-Reingold @energy-fr,
-up to a constant scaling factor.
+up to a constant scaling factor, a rescaling of the layout by $K$, and an
+additive constant arising from the logarithmic term (the two coincide
+exactly at $K = 1$).
 
 ==== The Stress model
 A limitation of Spring-Electrical models like those described above is

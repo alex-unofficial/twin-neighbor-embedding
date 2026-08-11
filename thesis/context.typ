@@ -1,7 +1,7 @@
 #import "commenting.typ": *
 
 Network diagrams have been used for centuries to analyze complex relationships, 
-appearing as early as the 14th century @knuth2013combinatorics,
+appearing as early as the 13th century @knuth2013combinatorics,
 long before the formal development of graph theory.
 
 Early work in graph theory was closely related to properties of drawings of
