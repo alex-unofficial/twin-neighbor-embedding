@@ -1,6 +1,46 @@
+"""Layout quality metrics.
+
+Every layout array here is ``(n_points, d)``. Conversion from the ``(d, n)`` orientation the
+embedding layer returns happens exactly once, in ``twin.results.LayoutResult.from_raw``; see
+CLAUDE.md. Orientation is asserted at entry, never inferred from ``shape`` — inference silently
+picks the wrong axis whenever ``n == d`` or the input is square (spec §1.3).
+"""
+
 import numpy as np
 import networkx as nx
 from sklearn.neighbors import NearestNeighbors, KNeighborsClassifier
+
+
+def require_n_by_d(X: np.ndarray, n_expected: int, name: str = "X") -> np.ndarray:
+    """Assert that ``X`` is ``(n_expected, d)``. Never reorients.
+
+    Args:
+        X: the layout array.
+        n_expected: the number of points the caller's graph or label vector implies.
+        name: used in the error message.
+
+    Returns:
+        ``X`` as a 2-D float array.
+
+    Raises:
+        ValueError: if ``X`` is not 2-D or its first axis is not ``n_expected``. If the
+            transpose would have fitted, the message says so — that is the common call-site
+            mistake and it should be fixed at the boundary, not here.
+    """
+    X = np.asarray(X)
+    if X.ndim != 2:
+        raise ValueError(f"{name} must be 2-D (n_points, d), got shape {X.shape}")
+    if X.shape[0] != n_expected:
+        hint = ""
+        if X.shape[1] == n_expected:
+            hint = (
+                f" -- {name}.T would fit, so this is probably a (d, n) array. Convert it once "
+                "at the boundary via LayoutResult.from_raw rather than here."
+            )
+        raise ValueError(
+            f"{name} must be (n_points, d) with n_points={n_expected}, got {X.shape}{hint}"
+        )
+    return X
 
 
 def knn_classification_accuracy(X: np.ndarray, target: np.ndarray, n_neighbors):
@@ -10,10 +50,7 @@ def knn_classification_accuracy(X: np.ndarray, target: np.ndarray, n_neighbors):
 
         return accuracies
 
-    # Ensure X has shape (n_samples, d) matching target shape
-    n_samples = len(target)
-    if X.shape[0] != n_samples and X.shape[1] == n_samples:
-        X = X.T
+    X = require_n_by_d(X, len(target), "X")
 
     knn_classifier = KNeighborsClassifier(n_neighbors=n_neighbors, weights="distance")
     knn_classifier.fit(X, target)
@@ -46,10 +83,7 @@ def knn_neighbor_preservation_accuracy(X: np.ndarray, G: nx.Graph, n_neighbors, 
             "mode must be one of 'recall', 'weighted recall', 'jaccard' or 'precision'"
         )
 
-    # Ensure X has shape (n_vertices, d) matching graph size
-    n_vertices = G.number_of_nodes()
-    if X.shape[0] != n_vertices and X.shape[1] == n_vertices:
-        X = X.T
+    X = require_n_by_d(X, G.number_of_nodes(), "X")
 
     knn = NearestNeighbors(n_neighbors=n_neighbors)
     knn.fit(X)

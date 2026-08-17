@@ -8,6 +8,7 @@ from twin import embedding as emb
 from twin import dataset as data
 from twin.batching import *
 from twin.metrics import *
+from twin.results import LayoutResult
 
 from typeguard import typechecked
 import textwrap
@@ -188,6 +189,22 @@ def graph_embedding_all(
     return dict_result
 
 
+def _result_from(Gm, Y, G, representation, E_in, seed) -> LayoutResult:
+    """Split a raw ``(d, n_points)`` layout and cross the orientation boundary once."""
+    y_v, y_e, y_s = Gm.vertex_and_edge_embeddings(Y)
+    return LayoutResult.from_raw(
+        V=y_v,
+        E=y_e,
+        slopes=y_s,
+        G=G,
+        representation=representation,
+        embedding=getattr(E_in, "method_name", type(E_in).__name__),
+        point_provenance=Gm.point_provenance,
+        seed=seed,
+        n_points=Gm.get_adj().shape[0],
+    )
+
+
 def embedding_metrics_all(
     G: nx.Graph,
     embedding=emb.SpringLayout,
@@ -240,24 +257,25 @@ def embedding_metrics_all(
         Y = E_in.embed(Ge_in, y0=y0e)
         Z = E_in.embed(Gtw_in, y0=y0tw)
 
-        X_v, X_e, _ = Gv_in.vertex_and_edge_embeddings(X)
-        Y_v, Y_e, _ = Ge_in.vertex_and_edge_embeddings(Y)
-        Z_v, Z_e, _ = Gtw_in.vertex_and_edge_embeddings(Z)
+        # Cross the (d, n) -> (n, d) boundary exactly once, here (spec §1.3, §3.1).
+        res_v = _result_from(Gv_in, X, G, "vertex", E_in, seed)
+        res_e = _result_from(Ge_in, Y, G, "edge", E_in, seed)
+        res_tw = _result_from(Gtw_in, Z, G, "twin", E_in, seed)
 
         neighbor_preservation_metric_v += knn_neighbor_preservation_accuracy(
-            X_v, G, n_neighbors, mode=mode
+            res_v.V, G, n_neighbors, mode=mode
         )
         neighbor_preservation_metric_e += knn_neighbor_preservation_accuracy(
-            Y_v, G, n_neighbors, mode=mode
+            res_e.V, G, n_neighbors, mode=mode
         )
         neighbor_preservation_metric_tw += knn_neighbor_preservation_accuracy(
-            Z_v, G, n_neighbors, mode=mode
+            res_tw.V, G, n_neighbors, mode=mode
         )
 
         if target is not None:
-            classification_metric_v += knn_classification_accuracy(X_v, target, n_neighbors)
-            classification_metric_e += knn_classification_accuracy(Y_v, target, n_neighbors)
-            classification_metric_tw += knn_classification_accuracy(Z_v, target, n_neighbors)
+            classification_metric_v += knn_classification_accuracy(res_v.V, target, n_neighbors)
+            classification_metric_e += knn_classification_accuracy(res_e.V, target, n_neighbors)
+            classification_metric_tw += knn_classification_accuracy(res_tw.V, target, n_neighbors)
 
     neighbor_preservation_metric_v = neighbor_preservation_metric_v / n_samples
     neighbor_preservation_metric_e = neighbor_preservation_metric_e / n_samples
