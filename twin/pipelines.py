@@ -12,6 +12,20 @@ from twin.results import LayoutResult
 
 from typeguard import typechecked
 import textwrap
+import time
+import tracemalloc
+
+
+def _require_provenance(Gm) -> dict[str, str]:
+    """Read the point provenance a representation declares, or say clearly that it must."""
+    provenance = getattr(Gm, "point_provenance", None)
+    if not provenance:
+        raise TypeError(
+            f"{type(Gm).__name__} does not declare point_provenance. Every "
+            "GraphMatrixMethod must state, per point set, whether its points were laid out "
+            "directly or reconstructed from the other set (spec §0.5 decision 5)."
+        )
+    return provenance
 
 
 def graph_embedding(
@@ -24,29 +38,78 @@ def graph_embedding(
     embedding_kw: dict = {},
     representation_kw: dict = {},
     normalize: bool = False,
-    return_dict: bool = False,
-):
-    """Runs the embedding pipeline given a Graph Representation and Embedding algorithm"""
+    representation_name: str | None = None,
+    embedding_name: str | None = None,
+    measure_memory: bool = False,
+) -> LayoutResult:
+    """Run the embedding pipeline for one representation and one layout method.
 
+    Args:
+        G: the graph to lay out.
+        representation: a :class:`~twin.graphmatrix.GraphMatrixMethod` subclass.
+        embedding: a :class:`~twin.embedding.GraphEmbeddingMethod` subclass.
+        y0: initial positions, ``(d, n_points)``, or None.
+        seed, d: passed to the layout method.
+        embedding_kw, representation_kw, normalize: constructor arguments.
+        representation_name, embedding_name: registry names for the result record. Default to
+            the class names.
+        measure_memory: track peak Python-side allocation during the embed. Off by default:
+            :mod:`tracemalloc` roughly doubles allocation cost, which would corrupt the
+            ``runtime_s`` measurement sitting next to it, and it cannot see allocations made
+            inside a C extension such as ``sgtsnepi`` anyway. Enable it deliberately, for a
+            memory run, rather than leaving it on during a timing run.
+
+    Returns:
+        A :class:`~twin.results.LayoutResult` in the canonical ``(n, d)`` orientation.
+
+    Note:
+        Timing is split per spec §3.2: ``representation_s`` covers building the matrix (for
+        A_tne that is the (n+m) construction, a first-order reported cost) and ``runtime_s``
+        covers the embed alone.
+    """
     E = embedding(seed=seed, d=d, **embedding_kw)
+
+    t0 = time.perf_counter()
     Gm = representation(G, normalize=normalize, **representation_kw)
+    representation_s = time.perf_counter() - t0
 
-    n = Gm.adj.shape[0]
+    tracing = measure_memory and not tracemalloc.is_tracing()
+    if tracing:
+        tracemalloc.start()
+    baseline = tracemalloc.get_traced_memory()[0] if measure_memory else 0
 
+    t0 = time.perf_counter()
     Y = E.embed(Gm, y0)
+    runtime_s = time.perf_counter() - t0
+
+    peak_mem_mb = None
+    if measure_memory:
+        peak_mem_mb = max(tracemalloc.get_traced_memory()[1] - baseline, 0) / 1e6
+        if tracing:
+            tracemalloc.stop()
 
     y_v, y_e, y_s = Gm.vertex_and_edge_embeddings(Y)
 
-    if return_dict:
-        dict_result = {
-            "V": y_v, "E": y_e, "S": y_s,
-            "OriginalGraph": G,
-            "GraphMatrix": Gm,
-        }
-
-        return dict_result
-    else:
-        return y_v, y_e, y_s
+    return LayoutResult.from_raw(
+        V=y_v,
+        E=y_e,
+        slopes=y_s,
+        G=G,
+        representation=representation_name or representation.__name__,
+        embedding=embedding_name or embedding.__name__,
+        point_provenance=_require_provenance(Gm),
+        params={
+            "d": d,
+            "normalize": normalize,
+            "representation_kw": dict(representation_kw),
+            "embedding_kw": dict(embedding_kw),
+        },
+        seed=seed,
+        runtime_s=runtime_s,
+        representation_s=representation_s,
+        n_points=Gm.get_adj().shape[0],
+        peak_mem_mb=peak_mem_mb,
+    )
 
 
 batch_registries = {
@@ -87,13 +150,18 @@ def batch_graph_embedding(
     seed: int = 0,
     d: int = 2,
     normalize: bool = False,
-    return_dict: bool = False,
+    measure_memory: bool = False,
     duplicate_policy: str = "error",
     progress: bool = False,
     progress_every: int = 1,
     progress_verbose: bool = False,
     progress_fn=print,
-) -> dict[BatchKey, object]:
+) -> dict[BatchKey, LayoutResult]:
+    """Run ``graph_embedding`` over the expanded batch spec.
+
+    Returns:
+        One :class:`~twin.results.LayoutResult` per case, keyed by ``BatchKey``.
+    """
 
     def runner(case: BatchCase):
         c = BatchCaseView(case)
@@ -111,7 +179,9 @@ def batch_graph_embedding(
             representation_kw=c.kwargs("representation"),
             embedding_kw=c.kwargs("embedding"),
             normalize=normalize,
-            return_dict=return_dict,
+            representation_name=c.name("representation"),
+            embedding_name=c.name("embedding"),
+            measure_memory=measure_memory,
         )
 
     return run_batch(
