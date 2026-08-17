@@ -24,6 +24,7 @@ dependencies = [
     "networkx>=3.6.1",
     "numpy>=2.4.1",
     "pandas>=3.0.3",
+    "pyarrow>=21.0.0",
     "pydot>=4.0.1",
     "python-dotenv>=1.2.1",
     "python-igraph>=1.0.0",
@@ -39,6 +40,11 @@ dependencies = [
 
 [project.optional-dependencies]
 jupyter = ["jupyter>=1.1.1"]
+test = ["pytest>=8.0.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["error::DeprecationWarning:twin.*"]
 
 [tool.black]
 line-length = 99

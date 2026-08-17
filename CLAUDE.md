@@ -2,7 +2,8 @@
 
 Twin Neighbor Embedding: a pre-embedding transform that builds a graph containing both the
 vertices and the edges of the input graph as nodes, then hands it to a standard layout method.
-See `EXPERIMENT_SETUP_SPEC.md` for the full background.
+See `docs/EXPERIMENT_SETUP_SPEC.md` for the full background, and its §0.5 for the errata and
+decisions that supersede the rest of that document.
 
 ## Non-negotiable conventions
 
