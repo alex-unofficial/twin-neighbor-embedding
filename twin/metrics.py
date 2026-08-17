@@ -6,9 +6,11 @@ CLAUDE.md. Orientation is asserted at entry, never inferred from ``shape`` — i
 picks the wrong axis whenever ``n == d`` or the input is square (spec §1.3).
 """
 
+from dataclasses import dataclass
+
 import numpy as np
 import networkx as nx
-from sklearn.neighbors import NearestNeighbors, KNeighborsClassifier
+from sklearn.neighbors import NearestNeighbors
 
 
 def require_n_by_d(X: np.ndarray, n_expected: int, name: str = "X") -> np.ndarray:
@@ -43,25 +45,166 @@ def require_n_by_d(X: np.ndarray, n_expected: int, name: str = "X") -> np.ndarra
     return X
 
 
-def knn_classification_accuracy(X: np.ndarray, target: np.ndarray, n_neighbors):
-    # Handle both scalar and iterable inputs
-    if isinstance(n_neighbors, (list, np.ndarray)):
-        accuracies = np.array([knn_classification_accuracy(X, target, n) for n in n_neighbors])
+@dataclass
+class KnnAccuracyReport:
+    """Score plus the diagnostics needed to read it (spec §2.3).
 
-        return accuracies
+    Attributes:
+        k: the neighbourhood sizes evaluated.
+        accuracy: one score per ``k``.
+        majority_class_rate: the chance floor — the rate obtained by always predicting the
+            most common label. Accuracy on imbalanced labels is misleading without it.
+        n_ties: per ``k``, how many vertices had more than one label tied for the argmax.
+        n_zero_distance: per ``k``, how many neighbour distances were clamped to ``eps``.
+            Non-zero means coincident points, which is what crowding produces.
+    """
 
-    X = require_n_by_d(X, len(target), "X")
+    k: np.ndarray
+    accuracy: np.ndarray
+    majority_class_rate: float
+    n_ties: np.ndarray
+    n_zero_distance: np.ndarray
 
-    knn_classifier = KNeighborsClassifier(n_neighbors=n_neighbors, weights="distance")
-    knn_classifier.fit(X, target)
 
-    # Generate target prediction from kNN classifier
-    knn_prediction = knn_classifier.predict(None)
+def majority_class_rate(labels: np.ndarray) -> float:
+    """The chance floor: the accuracy of always predicting the most frequent label."""
+    labels = np.asarray(labels)
+    _, counts = np.unique(labels, return_counts=True)
+    return float(counts.max() / labels.size)
 
-    # Compare predicted targets vs true targets to compute accuracy
-    prediction_accuracy = np.mean(knn_prediction == target)
 
-    return prediction_accuracy
+def _loo_neighbors(X: np.ndarray, k_max: int):
+    """Indices and distances of the ``k_max`` nearest *other* points, per point.
+
+    Queries ``k_max + 1`` and drops the self column. With coincident points the self entry is
+    not guaranteed to sort first, so it is removed by index identity rather than by position.
+    """
+    n = X.shape[0]
+    knn = NearestNeighbors(n_neighbors=k_max + 1).fit(X)
+    dist, idx = knn.kneighbors(X, n_neighbors=k_max + 1)
+
+    drop = idx == np.arange(n)[:, None]
+    # A row can miss its own index only under exact duplicates; drop its furthest entry so
+    # every row contributes exactly k_max neighbours.
+    missing = ~drop.any(axis=1)
+    drop[missing, -1] = True
+
+    # Stable sort on the drop flag: False (keep) sorts first, in original distance order.
+    order = np.argsort(drop, axis=1, kind="stable")[:, :k_max]
+    return (
+        np.take_along_axis(dist, order, axis=1),
+        np.take_along_axis(idx, order, axis=1),
+    )
+
+
+def knn_accuracy_report(
+    X: np.ndarray,
+    labels: np.ndarray,
+    k=10,
+    weighting: str = "uniform",
+    tie_rule: str = "fractional",
+    eps: float = 1e-12,
+) -> KnnAccuracyReport:
+    """Leave-one-out $k$-NN label accuracy of a layout, with diagnostics.
+
+    Implements thesis eqs. (57)-(60) directly rather than via ``KNeighborsClassifier``, so that
+    the tie rule is under our control. Reimplementation for control, not a bug fix: the previous
+    ``predict(None)`` call was valid sklearn and already left each point out of its own
+    neighbour set (spec §0.5).
+
+    Args:
+        X: ``(n, d)`` layout.
+        labels: ``(n,)`` integer-coded labels.
+        k: neighbourhood size, scalar or array-like. Queried once at ``max(k)`` and sliced.
+        weighting: ``"uniform"`` (eq. 57) or ``"distance"``, $f(d) = 1/d$ (eq. 58).
+        tie_rule: ``"fractional"`` — a vertex with $p$ labels tied for the argmax contributes
+            $1/p$ if its true label is among them, else 0. This is the expected accuracy under
+            uniform random tie-breaking, in closed form: no variance, no seed, and therefore
+            **an expectation over tie-breakings rather than a literal fraction of vertices**.
+            ``"first"`` breaks toward the lowest label, matching ``KNeighborsClassifier``.
+        eps: distances below this are clamped before inversion, so coincident points do not
+            produce infinite weights. Occurrences are counted, not silently absorbed.
+
+    Returns:
+        A :class:`KnnAccuracyReport`.
+
+    Note:
+        The clamp differs from sklearn, which gives an exactly-coincident neighbour weight 1
+        and every other neighbour weight 0. The two agree whenever no distance is zero.
+    """
+    if weighting not in {"uniform", "distance"}:
+        raise ValueError("weighting must be 'uniform' or 'distance'")
+    if tie_rule not in {"fractional", "first"}:
+        raise ValueError("tie_rule must be 'fractional' or 'first'")
+
+    labels = np.asarray(labels)
+    X = require_n_by_d(X, labels.size, "X")
+    n = labels.size
+
+    ks = np.atleast_1d(np.asarray(k, dtype=int))
+    if ks.min() < 1:
+        raise ValueError(f"k must be >= 1, got {ks.min()}")
+    if ks.max() > n - 1:
+        raise ValueError(f"k={ks.max()} exceeds n-1={n - 1}; there are not that many neighbours")
+
+    classes, codes = np.unique(labels, return_inverse=True)
+    dist, idx = _loo_neighbors(X, int(ks.max()))
+    neighbor_codes = codes[idx]
+
+    accuracy = np.empty(ks.size)
+    n_ties = np.zeros(ks.size, dtype=int)
+    n_zero = np.zeros(ks.size, dtype=int)
+
+    rows = np.arange(n)[:, None]
+    for i, kk in enumerate(ks):
+        d_k = dist[:, :kk]
+        if weighting == "uniform":
+            w = np.ones_like(d_k)
+        else:
+            n_zero[i] = int((d_k <= eps).sum())
+            w = 1.0 / np.maximum(d_k, eps)
+
+        # Per-vertex vote mass for each label.
+        scores = np.zeros((n, classes.size))
+        np.add.at(scores, (np.broadcast_to(rows, d_k.shape), neighbor_codes[:, :kk]), w)
+
+        # Exact equality: under uniform weighting the scores are integer counts, and under
+        # distance weighting a near-tie is not a tie.
+        tied = scores == scores.max(axis=1, keepdims=True)
+        p = tied.sum(axis=1)
+        n_ties[i] = int((p > 1).sum())
+
+        if tie_rule == "fractional":
+            correct = np.where(tied[rows.ravel(), codes], 1.0 / p, 0.0)
+        else:
+            correct = (np.argmax(scores, axis=1) == codes).astype(float)
+
+        accuracy[i] = float(correct.mean())
+
+    return KnnAccuracyReport(
+        k=ks,
+        accuracy=accuracy,
+        majority_class_rate=majority_class_rate(labels),
+        n_ties=n_ties,
+        n_zero_distance=n_zero,
+    )
+
+
+def knn_accuracy(
+    X: np.ndarray,
+    labels: np.ndarray,
+    k=10,
+    weighting: str = "uniform",
+    tie_rule: str = "fractional",
+    eps: float = 1e-12,
+):
+    """Score only — see :func:`knn_accuracy_report` for the diagnostics and full docstring.
+
+    Returns a float for scalar ``k`` and an array for array-like ``k``, matching the metric
+    signature shape declared in spec §2.
+    """
+    report = knn_accuracy_report(X, labels, k, weighting, tie_rule, eps)
+    return report.accuracy if np.ndim(k) else float(report.accuracy[0])
 
 
 def knn_neighbor_preservation_accuracy(X: np.ndarray, G: nx.Graph, n_neighbors, mode="recall"):

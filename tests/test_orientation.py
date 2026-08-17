@@ -4,11 +4,7 @@ import networkx as nx
 import numpy as np
 import pytest
 
-from twin.metrics import (
-    knn_classification_accuracy,
-    knn_neighbor_preservation_accuracy,
-    require_n_by_d,
-)
+from twin.metrics import knn_accuracy, knn_neighbor_preservation_accuracy, require_n_by_d
 
 
 def test_require_n_by_d_accepts_canonical_orientation():
@@ -38,9 +34,9 @@ def test_require_n_by_d_does_not_sniff_square_input():
     "metric",
     [
         lambda X, G, labels: knn_neighbor_preservation_accuracy(X, G, 5),
-        lambda X, G, labels: knn_classification_accuracy(X, labels, 5),
+        lambda X, G, labels: knn_accuracy(X, labels, 5),
     ],
-    ids=["neighbor_preservation", "classification"],
+    ids=["neighbor_preservation", "knn_accuracy"],
 )
 def test_metrics_reject_d_by_n_layouts(karate, karate_labels, karate_random_layout, metric):
     """Previously these silently transposed. They must now refuse."""

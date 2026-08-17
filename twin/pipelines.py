@@ -273,9 +273,9 @@ def embedding_metrics_all(
         )
 
         if target is not None:
-            classification_metric_v += knn_classification_accuracy(res_v.V, target, n_neighbors)
-            classification_metric_e += knn_classification_accuracy(res_e.V, target, n_neighbors)
-            classification_metric_tw += knn_classification_accuracy(res_tw.V, target, n_neighbors)
+            classification_metric_v += knn_accuracy(res_v.V, target, n_neighbors)
+            classification_metric_e += knn_accuracy(res_e.V, target, n_neighbors)
+            classification_metric_tw += knn_accuracy(res_tw.V, target, n_neighbors)
 
     neighbor_preservation_metric_v = neighbor_preservation_metric_v / n_samples
     neighbor_preservation_metric_e = neighbor_preservation_metric_e / n_samples
