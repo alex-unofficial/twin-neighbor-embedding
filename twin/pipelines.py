@@ -201,15 +201,16 @@ def embedding_metrics_all(
     common_init: bool = True,
     normalize: bool = False,
 ):
-    """Calculates all metric types given a graph and embedding"""
+    """Calculates all metric types given a graph and embedding
 
-    vertex_point_dist_metric_v = 0.0
-    vertex_point_dist_metric_e = 0.0
-    vertex_point_dist_metric_tw = 0.0
+    Note:
+        The ``VertexPointDistance`` / ``EdgePointDistance`` entries were dropped with
+        ``point_distance_metric`` (spec §1.2). ADR (spec §2.1) fills the same slot once it
+        lands; nothing stands in for it meanwhile.
 
-    edge_point_dist_metric_v = 0.0
-    edge_point_dist_metric_e = 0.0
-    edge_point_dist_metric_tw = 0.0
+        This whole function is the old hardcoded vertex/edge/twin triple that bypasses the
+        batch engine, and is superseded by ``batch_layout_metrics`` (spec §3.7).
+    """
 
     neighbor_preservation_metric_v = 0.0
     neighbor_preservation_metric_e = 0.0
@@ -227,8 +228,6 @@ def embedding_metrics_all(
     nv = Gtw_in.incidence.shape[0]
     ne = Gtw_in.incidence.shape[1]
 
-    G_line = nx.line_graph(G)
-
     for seed in range(n_samples):
         E_in = embedding(seed=seed, d=d, **embedding_kw)
         y0 = E_in.init_embedding(nv + ne, d)
@@ -245,14 +244,6 @@ def embedding_metrics_all(
         Y_v, Y_e, _ = Ge_in.vertex_and_edge_embeddings(Y)
         Z_v, Z_e, _ = Gtw_in.vertex_and_edge_embeddings(Z)
 
-        vertex_point_dist_metric_v += point_distance_metric(X_v, G, d)
-        vertex_point_dist_metric_e += point_distance_metric(Y_v, G, d)
-        vertex_point_dist_metric_tw += point_distance_metric(Z_v, G, d)
-
-        edge_point_dist_metric_v += point_distance_metric(X_e, G_line, d)
-        edge_point_dist_metric_e += point_distance_metric(Y_e, G_line, d)
-        edge_point_dist_metric_tw += point_distance_metric(Z_e, G_line, d)
-
         neighbor_preservation_metric_v += knn_neighbor_preservation_accuracy(
             X_v, G, n_neighbors, mode=mode
         )
@@ -268,14 +259,6 @@ def embedding_metrics_all(
             classification_metric_e += knn_classification_accuracy(Y_v, target, n_neighbors)
             classification_metric_tw += knn_classification_accuracy(Z_v, target, n_neighbors)
 
-    vertex_point_dist_metric_v = vertex_point_dist_metric_v / n_samples
-    vertex_point_dist_metric_e = vertex_point_dist_metric_e / n_samples
-    vertex_point_dist_metric_tw = vertex_point_dist_metric_tw / n_samples
-
-    edge_point_dist_metric_v = edge_point_dist_metric_v / n_samples
-    edge_point_dist_metric_e = edge_point_dist_metric_e / n_samples
-    edge_point_dist_metric_tw = edge_point_dist_metric_tw / n_samples
-
     neighbor_preservation_metric_v = neighbor_preservation_metric_v / n_samples
     neighbor_preservation_metric_e = neighbor_preservation_metric_e / n_samples
     neighbor_preservation_metric_tw = neighbor_preservation_metric_tw / n_samples
@@ -288,16 +271,6 @@ def embedding_metrics_all(
     metrics_dict = {
         "n_neighbors": n_neighbors,
         "n_samples": n_samples,
-        "VertexPointDistance": {
-            "Vertex": vertex_point_dist_metric_v,
-            "Edge": vertex_point_dist_metric_e,
-            "Twin": vertex_point_dist_metric_tw,
-        },
-        "EdgePointDistance": {
-            "Vertex": edge_point_dist_metric_v,
-            "Edge": edge_point_dist_metric_e,
-            "Twin": edge_point_dist_metric_tw,
-        },
         "KNeighborsPreservation": {
             "Vertex": neighbor_preservation_metric_v,
             "Edge": neighbor_preservation_metric_e,
@@ -316,6 +289,16 @@ def embedding_metrics_all(
 
 
 def metrics_to_typ(metrics):
+    """Emit Typst tables for whichever metric families are present.
+
+    Note:
+        The point-distance table is emitted only if the key is present; it went away with
+        ``point_distance_metric`` (spec §1.2) and returns as ADR in spec §2.1. This whole
+        function is rewritten against the long DataFrame in spec §5.2.
+    """
+    has_point_distance = any(
+        "VertexPointDistance" in m and "EdgePointDistance" in m for m in metrics.values()
+    )
 
     point_dist_tab = (
         textwrap.dedent("""
@@ -346,8 +329,8 @@ def metrics_to_typ(metrics):
                                 )
                             ])
                         }"
-                        if (vdist := metric["VertexPointDistance"])
-                        and (edist := metric["EdgePointDistance"])
+                        if (vdist := metric.get("VertexPointDistance"))
+                        and (edist := metric.get("EdgePointDistance"))
                         else ""
                     )
                     for graph_label, metric in metrics.items()
@@ -355,7 +338,7 @@ def metrics_to_typ(metrics):
             )
         )
         .expandtabs(2)
-    )
+    ) if has_point_distance else None
 
     knn_adj_tab = (
         textwrap.dedent("""
@@ -428,10 +411,7 @@ def metrics_to_typ(metrics):
     else:
         knn_class_tab = None
 
-    if knn_class_tab is not None:
-        return (point_dist_tab, knn_adj_tab, knn_class_tab)
-    else:
-        return (point_dist_tab, knn_adj_tab)
+    return tuple(tab for tab in (point_dist_tab, knn_adj_tab, knn_class_tab) if tab is not None)
 
 
 def metrics_to_df(metrics: dict, graph_label: str = None):
@@ -456,17 +436,22 @@ def metrics_to_df(metrics: dict, graph_label: str = None):
     """
     embedding_types = ["Vertex", "Edge", "Twin"]
 
-    # 1. Point Distance DataFrame
-    point_dist_data = {
-        emb_type: [
-            metrics["VertexPointDistance"][emb_type],
-            metrics["EdgePointDistance"][emb_type],
-        ]
-        for emb_type in embedding_types
-    }
+    result = {}
 
-    df_point_dist = pd.DataFrame(point_dist_data, index=["Vertex", "Edge"])
-    df_point_dist.index.name = "Point type"
+    # 1. Point Distance DataFrame -- present only if the caller supplied it. Removed with
+    #    `point_distance_metric` (spec §1.2); returns as ADR in spec §2.1.
+    if "VertexPointDistance" in metrics and "EdgePointDistance" in metrics:
+        point_dist_data = {
+            emb_type: [
+                metrics["VertexPointDistance"][emb_type],
+                metrics["EdgePointDistance"][emb_type],
+            ]
+            for emb_type in embedding_types
+        }
+
+        df_point_dist = pd.DataFrame(point_dist_data, index=["Vertex", "Edge"])
+        df_point_dist.index.name = "Point type"
+        result["PointDistance"] = df_point_dist
 
     # 2. KNeighbors Preservation DataFrame
     knn_pres_data = {
@@ -475,8 +460,7 @@ def metrics_to_df(metrics: dict, graph_label: str = None):
 
     df_knn_preservation = pd.DataFrame(knn_pres_data, index=metrics["n_neighbors"])
     df_knn_preservation.index.name = "k"
-
-    result = {"PointDistance": df_point_dist, "KNeighborsPreservation": df_knn_preservation}
+    result["KNeighborsPreservation"] = df_knn_preservation
 
     # 3. KNeighbors Classifier DataFrame (if present)
     if "KNeighborsClassifier" in metrics:

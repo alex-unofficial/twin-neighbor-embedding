@@ -1,7 +1,6 @@
 import numpy as np
 import networkx as nx
 from sklearn.neighbors import NearestNeighbors, KNeighborsClassifier
-from sklearn.metrics.pairwise import euclidean_distances
 
 
 def knn_classification_accuracy(X: np.ndarray, target: np.ndarray, n_neighbors):
@@ -87,26 +86,9 @@ def knn_neighbor_preservation_accuracy(X: np.ndarray, G: nx.Graph, n_neighbors, 
     return mean_accuracy
 
 
-def point_distance_metric(X: np.ndarray, G: nx.Graph, dim=2, adjacency=False):
-    # Ensure X has shape (n_points, d)
-    if X.shape[1] != dim and X.shape[0] == dim:
-        X = X.T
-
-    all_point_distances = euclidean_distances(X)
-
-    if adjacency:
-        adj = nx.adjacency_matrix(G, weight=None)
-        adj_point_distances = adj.multiply(all_point_distances)
-
-        distances = adj_point_distances.data
-        distances = adj_point_distances / all_point_distances.max()
-    else:
-        np.fill_diagonal(all_point_distances, np.nan)
-
-        distances = all_point_distances.flatten()
-        distances = distances[~np.isnan(distances)]
-        distances = distances / distances.max()
-
-    mean_distance = np.nanmean(distances)
-
-    return mean_distance
+# `point_distance_metric` lived here. Removed per spec §1.2: its `adjacency=True` branch
+# raised (a sparse matrix reached `np.nanmean`) and was unreachable, and its `adjacency=False`
+# branch normalised by the maximum pairwise distance rather than the mean, so it was a rough
+# ancestor of ADR rather than ADR itself. Superseded by
+# `twin.metrics.structural.adjacency_distance_ratio` (spec §2.1, step 3); until that lands the
+# point-distance tables are simply absent rather than filled with a stand-in.
