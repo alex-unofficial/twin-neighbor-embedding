@@ -6,6 +6,7 @@ Description: This module contains classes for extracting graph matrices.
 
 import networkx as nx
 from dataclasses import dataclass
+from typing import ClassVar
 import scipy.sparse as sp
 import numpy as np
 from twin.twin_embedding import twin_adjacency
@@ -46,6 +47,13 @@ class GraphMatrixMethod:
     incidence_weighted: sp.csc_matrix = None
     normalize: bool = False
 
+    #: Per point set, whether ``vertex_and_edge_embeddings`` returns points that were laid out
+    #: directly ("primary") or reconstructed from the other set ("derived"). Declarative only —
+    #: it changes no computation. Consumed by ``LayoutResult`` so that the asymmetry between
+    #: representations stays visible in the metric rows (spec §0.5 decision 5). Subclasses must
+    #: override; ``None`` means undeclared and is an error at the ``LayoutResult`` boundary.
+    point_provenance: ClassVar[dict[str, str] | None] = None
+
     def __init__(self, graph: nx.Graph):
         """Initialize the GraphMatrixMethod with a graph."""
         self.adj = self.preprocess(graph)
@@ -84,6 +92,9 @@ class GraphMatrixMethod:
 @dataclass
 class VertexMatrix(GraphMatrixMethod):
     """Preprocessing that operates on vertices (e.g., feature extraction)."""
+
+    # Vertices are laid out; edge points are a degree-weighted convex combination of endpoints.
+    point_provenance: ClassVar[dict[str, str]] = {"V": "primary", "E": "derived"}
 
     adj: sp.csc_matrix = None
     incidence: sp.csc_matrix = None
@@ -165,6 +176,9 @@ class VertexMatrix(GraphMatrixMethod):
 class EdgeMatrix(GraphMatrixMethod):
     """Preprocessing that operates on edges (e.g., edge sampling)."""
 
+    # Edge points are laid out; vertices are the centroid of their incident edge points.
+    point_provenance: ClassVar[dict[str, str]] = {"V": "derived", "E": "primary"}
+
     adj: sp.csc_matrix = None
     incidence: sp.csc_matrix = None
     incidence_weighted: sp.csc_matrix = None
@@ -232,6 +246,9 @@ class EdgeMatrix(GraphMatrixMethod):
 @dataclass
 class TwinEmbeddingMatrix(GraphMatrixMethod):
     """Preprocessing using a twin embedding technique (e.g., creating two separate graphs)."""
+
+    # Both sets are laid out directly — that is the point of the transform.
+    point_provenance: ClassVar[dict[str, str]] = {"V": "primary", "E": "primary"}
 
     adj: sp.csc_matrix = None
     incidence: sp.csc_matrix = None
