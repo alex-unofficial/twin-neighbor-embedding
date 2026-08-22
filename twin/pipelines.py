@@ -13,7 +13,8 @@ from twin.results import LayoutResult
 from typeguard import typechecked
 import textwrap
 import time
-import tracemalloc
+
+from twin.instrumentation import RSSSampler
 
 
 def _require_provenance(Gm) -> dict[str, str]:
@@ -40,7 +41,7 @@ def graph_embedding(
     normalize: bool = False,
     representation_name: str | None = None,
     embedding_name: str | None = None,
-    measure_memory: bool = False,
+    measure_memory: bool = True,
 ) -> LayoutResult:
     """Run the embedding pipeline for one representation and one layout method.
 
@@ -53,11 +54,13 @@ def graph_embedding(
         embedding_kw, representation_kw, normalize: constructor arguments.
         representation_name, embedding_name: registry names for the result record. Default to
             the class names.
-        measure_memory: track peak Python-side allocation during the embed. Off by default:
-            :mod:`tracemalloc` roughly doubles allocation cost, which would corrupt the
-            ``runtime_s`` measurement sitting next to it, and it cannot see allocations made
-            inside a C extension such as ``sgtsnepi`` anyway. Enable it deliberately, for a
-            memory run, rather than leaving it on during a timing run.
+        measure_memory: sample process RSS during the embed and record the peak above the
+            entry baseline. On by default — it is cheap (one ``/proc`` read per 10 ms on a
+            background thread) and it sees allocations made inside ``sgtsnepi``, which is a C
+            extension and therefore invisible to :mod:`tracemalloc`. See
+            :class:`~twin.instrumentation.RSSSampler` for what the number does and does not
+            mean; in particular it is process-wide, so batches should run single-threaded when
+            the memory column matters.
 
     Returns:
         A :class:`~twin.results.LayoutResult` in the canonical ``(n, d)`` orientation.
@@ -73,20 +76,10 @@ def graph_embedding(
     Gm = representation(G, normalize=normalize, **representation_kw)
     representation_s = time.perf_counter() - t0
 
-    tracing = measure_memory and not tracemalloc.is_tracing()
-    if tracing:
-        tracemalloc.start()
-    baseline = tracemalloc.get_traced_memory()[0] if measure_memory else 0
-
-    t0 = time.perf_counter()
-    Y = E.embed(Gm, y0)
-    runtime_s = time.perf_counter() - t0
-
-    peak_mem_mb = None
-    if measure_memory:
-        peak_mem_mb = max(tracemalloc.get_traced_memory()[1] - baseline, 0) / 1e6
-        if tracing:
-            tracemalloc.stop()
+    with RSSSampler(enabled=measure_memory) as mem:
+        t0 = time.perf_counter()
+        Y = E.embed(Gm, y0)
+        runtime_s = time.perf_counter() - t0
 
     y_v, y_e, y_s = Gm.vertex_and_edge_embeddings(Y)
 
@@ -108,7 +101,7 @@ def graph_embedding(
         runtime_s=runtime_s,
         representation_s=representation_s,
         n_points=Gm.get_adj().shape[0],
-        peak_mem_mb=peak_mem_mb,
+        peak_mem_mb=mem.delta_mb if measure_memory else None,
     )
 
 
@@ -150,7 +143,7 @@ def batch_graph_embedding(
     seed: int = 0,
     d: int = 2,
     normalize: bool = False,
-    measure_memory: bool = False,
+    measure_memory: bool = True,
     duplicate_policy: str = "error",
     progress: bool = False,
     progress_every: int = 1,

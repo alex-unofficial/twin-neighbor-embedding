@@ -52,11 +52,43 @@ def test_timings_are_split_between_representation_and_embed(karate):
     assert res.representation_s != res.runtime_s
 
 
-def test_memory_is_not_measured_unless_asked(karate):
-    assert graph_embedding(karate, embedding=emb.SpringLayout).peak_mem_mb is None
-
-    res = graph_embedding(karate, embedding=emb.SpringLayout, measure_memory=True)
+def test_memory_is_measured_by_default(karate):
+    """RSS sampling is on by default: it is cheap and it sees into the C backend."""
+    res = graph_embedding(karate, embedding=emb.SGtSNELayout)
     assert res.peak_mem_mb is not None and res.peak_mem_mb >= 0
+
+    assert graph_embedding(karate, embedding=emb.SGtSNELayout, measure_memory=False).peak_mem_mb is None
+
+
+def test_rss_sampler_sees_allocation_outside_python_bookkeeping():
+    """The property tracemalloc could not provide: a large allocation shows up as RSS."""
+    from twin.instrumentation import RSSSampler
+
+    with RSSSampler(interval=0.001) as mem:
+        block = np.ones(12_000_000, dtype=np.float64)  # ~96 MB, touched
+        block[::1000] = 2.0
+    del block
+
+    assert mem.n_samples >= 2
+    assert mem.peak_mb >= mem.baseline_mb
+    assert mem.delta_mb > 50, f"expected to observe the ~96 MB allocation, saw {mem.delta_mb:.1f}"
+
+
+def test_rss_sampler_brackets_even_a_very_short_block():
+    from twin.instrumentation import RSSSampler
+
+    with RSSSampler(interval=10.0) as mem:
+        pass
+    assert mem.n_samples == 2, "entry and exit samples must always be taken"
+    assert mem.delta_mb >= 0
+
+
+def test_rss_sampler_can_be_disabled():
+    from twin.instrumentation import RSSSampler
+
+    with RSSSampler(enabled=False) as mem:
+        pass
+    assert mem.n_samples == 0 and mem.delta_mb == 0.0
 
 
 def test_records_identity_and_parameters(karate):
