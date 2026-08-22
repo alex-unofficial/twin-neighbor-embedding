@@ -70,6 +70,18 @@ Each returns **one type unconditionally**:
 - `as_affinity() -> sp.sparray`, which is what the representations and `sgtsnepi` consume.
 - `as_distance_matrix()` added only if a dense form is ever actually needed.
 
+**A distance source may be measured rather than derived.** `Dataset` carries an optional
+`distance_source` that is *not* a transform of the weights, with its own provenance fields
+(`distance_space`, `distance_metric`, `knn_k`). When present, `as_distance()` returns it and the
+`weight_kind` transform is not consulted; the manifest records which path was taken.
+
+This exists because tabula has both directions measured independently — `A` is a UMAP membership
+and `D` is the Euclidean distance in `X_scvi` that `A` was built from — and because `A` is
+**not invertible to distances at all**: UMAP's per-point $\rho_i$ and $\sigma_i$ are not stored,
+so no global transform recovers $d$. That is true of any per-point-adaptive kernel. See
+[DATASET_PROVENANCE.md](DATASET_PROVENANCE.md#tabula-liver); it is also worth a line in thesis
+§3.1.1, which currently lists global transforms as interchangeable options.
+
 The spec types both as `nx.Graph | sp.spmatrix`, which pushes a branch into every consumer. The
 `none` weight kind *requires* absent non-edges so shortest paths are hop counts, and a graph
 expresses absence naturally where a matrix has to encode it. Different types for the two
