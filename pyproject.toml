@@ -39,7 +39,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-jupyter = ["jupyter>=1.1.1"]
+# nbstripout-fast backs the `jupyter` clean filter in .gitattributes. Without it on PATH, git
+# cannot run the filter and every notebook shows as permanently modified.
+jupyter = ["jupyter>=1.1.1", "nbstripout-fast>=1.0.5"]
 test = ["pytest>=8.0.0"]
 
 [tool.pytest.ini_options]

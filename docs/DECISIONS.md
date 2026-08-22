@@ -7,6 +7,27 @@ that step, not something already built.
 
 ---
 
+## (2) Where the last `(d, n)` surface converges — tracked
+
+Two orientations are live, and CLAUDE.md's "the single conversion point" is not yet literally
+true. The exception is bounded and named here so it is tracked rather than assumed away.
+
+**The legacy surface:** `pipelines.graph_embedding_all` returns the pre-`LayoutResult` dict of
+`(d, n)` arrays. Its only consumer is `paper_figures.py`, which passes those arrays to
+`plots.count_intersections`, `plots.drawedges` and `plots.draw_curved_edges` — all of which index
+as `y[:, i]` and so require `(d, n)`.
+
+This is safe today because `require_n_by_d` fails loudly rather than silently reorienting, so a
+`(d, n)` array cannot leak into a metric. It is still a convention violation with a deadline:
+
+| Step | What converges |
+|---|---|
+| **5** (`crossings.py`) | `count_intersections` is reimplemented on Layer 2 and takes `(n, d)`; `paper_figures` adapts at the call. |
+| **10** (plotting refactor, §3.6) | `graph_embedding_all` and the bespoke figure functions are replaced by `layout_grid` over `LayoutResult`. Renderers convert at their own boundary per spec §0.5 (3). The legacy surface is deleted here. |
+
+**Until then:** do not add callers of `graph_embedding_all`, and do not mix orientations within a
+function. When step 10 lands, this section and the CLAUDE.md warning both come out.
+
 ## (5) Argument order in `crossings.py`
 
 **Every function in `crossings.py` takes `(G, V, E=None, *, ...)`** — graph, vertex points, edge

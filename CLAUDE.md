@@ -7,9 +7,17 @@ decisions that supersede the rest of that document.
 
 ## Non-negotiable conventions
 
-- **Array orientation.** Layout arrays are `(d, n)` in `twin/embedding.py` and `(n, d)`
-  everywhere in `twin/metrics/`. The single conversion point is `LayoutResult.from_raw()`.
-  Never re-derive orientation by inspecting `shape` — it is wrong when `n == d`.
+- **Array orientation.** Layout arrays are `(d, n)` up to and including the `embed` call in
+  `twin/embedding.py`, and `(n, d)` from `LayoutResult` onwards — which is everything in
+  `twin/metrics/`. `LayoutResult.from_raw()` is the conversion point. Never re-derive
+  orientation by inspecting `shape` — it is wrong when `n == d`.
+  - ⚠️ **One legacy `(d, n)` surface remains**, tracked in `docs/DECISIONS.md` (2):
+    `pipelines.graph_embedding_all` still returns the old dict of `(d, n)` arrays, and
+    `paper_figures.py` plus `plots.py` (`count_intersections`, `drawedges`,
+    `draw_curved_edges`) consume it. It converges in two steps: `count_intersections` is
+    reimplemented on `crossings.py` at spec step 5, and the rest disappears with the plotting
+    refactor at step 10. Until then that path is `(d, n)` end to end — do not mix the two, and
+    do not add new callers of `graph_embedding_all`.
 - **Twin block ordering.** `twin_adjacency` produces `[[0, Bᵀ], [B, 0]]`, so rows are
   **[edges (m); vertices (n)]**. Vertices are `X[:, ne:]`, edge points are `X[:, :ne]`.
 - **Representations consume affinities.** `VertexMatrix`, `EdgeMatrix` and
@@ -42,6 +50,17 @@ pytest                       # test suite
 python -m twin.report        # dataset connectivity / weight / label report
 python batches/<name>.py     # run an experiment batch
 ```
+
+**One-time setup per clone.** Git filters live in `.git/config` and cannot be set from the
+repository, so a fresh clone must point the notebook filter at the installed binary:
+
+```bash
+git config filter.jupyter.clean venv/bin/nbstripout-fast
+```
+
+Without it git cannot run the `jupyter` clean filter from `.gitattributes`, every notebook shows
+as permanently modified, and the "start a results run only from a clean working tree" rule below
+becomes unenforceable.
 
 ## Version control
 
