@@ -8,10 +8,10 @@ from dataclasses import dataclass
 import networkx as nx
 import numpy as np
 import scipy.sparse as sp
-from sgtsnepi import sgtsnepi
 from fa2 import ForceAtlas2
 
 import twin.graphmatrix as gm
+from twin.sgtsne_compat import sgtsnepi
 
 @dataclass
 class GraphEmbeddingMethod:
