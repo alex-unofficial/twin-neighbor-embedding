@@ -31,7 +31,9 @@ dependencies = [
     "scikit-learn>=1.8.0",
     "scipy>=1.17.0",
     "seaborn>=0.13.2",
-    "sgtsnepi",
+    # 0.7 fixes silent mode closing fd 2 without restoring it, which broke stderr (and so
+    # loguru) for the rest of the process. Do not downgrade; tests/test_sgtsne_stdio.py pins it.
+    "sgtsnepi>=0.7",
     "Shapely>=2.1.2",
     "tqdm>=4.67.1",
     "typeguard>=4.4.4",

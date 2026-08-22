@@ -1,8 +1,7 @@
 import scipy.sparse as sparse
+from sgtsnepi import sgtsnepi
 import networkx as nx
 import numpy as np
-
-from twin.sgtsne_compat import sgtsnepi
 
 
 def twin_embedding(inc_matrix, alpha=0.85, n=2, **kwargs):
