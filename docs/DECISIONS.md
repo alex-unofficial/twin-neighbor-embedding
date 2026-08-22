@@ -7,6 +7,25 @@ that step, not something already built.
 
 ---
 
+## Spec §1.8 — resolved upstream, workaround removed
+
+§1.8 of the spec describes `sgtsnepi(silent=True)` closing fd 2 without restoring it, and calls
+for a save/`dup`/restore guard. That guard existed briefly as `twin/sgtsne_compat.py`.
+
+**Fixed in `sgtsnepi` 0.7; the wrapper is gone and both call sites import the library directly.**
+Verified against the raw library, bypassing any wrapper: no descriptor damage in any mode across
+repeated calls, silent mode still emits zero bytes to stdout, and no standard descriptor is freed
+during a call, so the race window that made concurrent sampling unsafe is closed at the source.
+
+`pyproject.toml` pins `sgtsnepi>=0.7` and `tests/test_sgtsne_stdio.py` pins the requirement in
+both directions — descriptors survive a silent embed, *and* silent mode stays silent. Reading §1.8
+in the spec without this note would suggest an unimplemented item.
+
+The one design choice the bug prompted that is **kept**:
+`twin.instrumentation.RSSSampler` holds a single descriptor and `pread`s it rather than opening
+per sample. That is better regardless — fewer syscalls in a polling loop — and the same hazard
+applies to any C extension that closes descriptors.
+
 ## (2) Where the last `(d, n)` surface converges — tracked
 
 Two orientations are live, and CLAUDE.md's "the single conversion point" is not yet literally

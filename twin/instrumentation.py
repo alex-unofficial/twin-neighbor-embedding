@@ -6,14 +6,16 @@ Memory is sampled as process RSS from a background thread rather than tracked wi
 place the "TNE embeds n+m points" cost claim needs one. It also roughly doubles allocation cost,
 which would corrupt the ``runtime_s`` measurement sitting beside it.
 
-**The sampler must never allocate a file descriptor while sampling.** ``sgtsnepi(silent=True)``
-closes fd 2 (spec §1.8), and a sampler that opened a file during the call would be handed that
-freed number; the restore in :func:`twin.sgtsne_compat.preserved_std_fds` would then close the
-sampler's file, and the sampler closing it again would take out the *restored* stderr. That race
-corrupts stdout and stderr and is not hypothetical — it was observed. So ``/proc/self/statm`` is
-opened once, before the guarded call, and read with :func:`os.pread` thereafter.
+**The sampler does not allocate a file descriptor while sampling.** ``/proc/self/statm`` is
+opened once, on entry, and read with :func:`os.pread` thereafter; ``psutil`` is avoided because
+it opens and closes ``/proc`` entries per call.
 
-For the same reason ``psutil`` is not used: it opens and closes ``/proc`` entries per call.
+That started as a fix for a specific hazard — ``sgtsnepi(silent=True)`` used to close fd 2, and a
+sampler opening a file mid-call could be handed the freed number, after which the descriptor
+restore took stdout and stderr down with it. That bug is fixed upstream in ``sgtsnepi`` 0.7 and
+the guard it required has been removed. The design is kept anyway: sampling a tight loop should
+not churn descriptors, one ``pread`` beats an ``open``/``read``/``close`` per sample, and the
+same hazard applies to any C extension that closes descriptors.
 
 What RSS sampling measures, and what it does not:
 
