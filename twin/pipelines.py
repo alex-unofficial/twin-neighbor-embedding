@@ -123,15 +123,9 @@ batch_registries = {
         "twin": gm.TwinEmbeddingMatrix,
     },
 
-    "embedding": {
-        "spring": emb.SpringLayout,
-        "yifanhu": emb.YifanHuLayout,
-        "forceatlas2": emb.ForceAtlas2Layout,
-        "kamada-kawai": emb.KamadaKawaiLayout,
-        "neato": emb.NeatoLayout,
-        "spectral": emb.SpectralLayout,
-        "sgtsne": emb.SGtSNELayout,
-    },
+    # One source of truth: the specs carry `expects`, `stochastic` and `has_lambda` for the
+    # manifest and the run planner, and the batch axis is just their classes.
+    "embedding": {name: spec.cls for name, spec in emb.EMBEDDING_REGISTRY.items()},
 }
 
 

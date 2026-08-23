@@ -30,12 +30,10 @@ batch_input = [{
             ("forceatlas2", {
                 "linlog": [False, True],
             }),
-            ("kamada-kawai", {
-                "mode": ['distance', 'similarity'],
-            }),
-            ("neato", {
-                "mode": ['distance', 'similarity'],
-            }),
+            # `mode` is gone: which side a method consumes is a property of the graph, not a
+            # knob on the layout class (spec §3.5). Both now read `LayoutGraph.distance`.
+            "kamada-kawai",
+            "neato",
             "spectral",
         ]
     }, {

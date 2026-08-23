@@ -61,6 +61,30 @@ class GraphMatrixMethod:
     def get_adj(self):
         return self.adj
 
+    # ------------------------------------------------------------------------ #
+    # The `LayoutGraph` interface, so that `embed` has one signature while these
+    # classes survive (they are used by `graph_embedding_all` and `paper_figures`
+    # until the plotting refactor, spec §3.6 step 10).
+    #
+    # `distance` reproduces exactly what `mode="distance"` — the default — did:
+    # the adjacency read as if its entries were lengths. That is not a principled
+    # distance form, which is the whole reason `LayoutGraph` exists; it is kept
+    # bit-identical so that removing `mode=` moves nothing on the legacy path.
+    # New code builds a `LayoutGraph` and gets the dataset's real distance side.
+    # ------------------------------------------------------------------------ #
+
+    @property
+    def affinity(self) -> sp.sparray:
+        return self.adj
+
+    @property
+    def distance(self) -> nx.Graph:
+        return nx.from_scipy_sparse_array(self.adj)
+
+    @property
+    def n_points(self) -> int:
+        return self.adj.shape[0]
+
     def get_incidence(self):
         return self.incidence
 
