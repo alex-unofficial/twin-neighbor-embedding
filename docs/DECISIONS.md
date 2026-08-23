@@ -128,6 +128,44 @@ a representation touches no dataset — and avoids forcing `Dataset` to carry `a
 `normalize`, which are method knobs. Caching an expensive $A_{tne}$ across a λ sweep belongs in
 the runner.
 
+## Step 2 decisions the plan did not cover
+
+Six choices forced during the implementation of spec §7 step 2, recorded because a later reader
+would otherwise have to reconstruct them.
+
+**`LayoutGraph` lives in `twin/layoutgraph.py`, not `graphmatrix.py`.** The plan said
+`graphmatrix:`. That file holds the pre-restructure classes, which `paper_figures` needs until
+step 10; keeping the new layer separate makes that deletion a file removal rather than a
+bisection of a mixed file. `compute_slopes` is imported from there, not duplicated.
+
+**Plan commits 5 and 7 are one commit, and it comes after commit 6.** There is no green state in
+between: `graph_embedding` is `LayoutResult`'s only constructor and `batch_registries` is its
+only source of graphs, so `LayoutResult` cannot hold a `Dataset` before the registry supplies
+one. Bridging with a placeholder `Dataset` would mean declaring stored sources for a graph whose
+provenance is unknown, which is the guess the layering exists to remove.
+
+**`GraphMatrixMethod` gains `.affinity` / `.distance` / `.n_points`.** Deleting `mode=` would
+otherwise break `graph_embedding_all`, which is step-10 work. The shim's `distance` is
+`nx.from_scipy_sparse_array(adj)` — bit-identical to what `mode="distance"`, the default, did —
+so removing the flag moves nothing on the legacy path. It is not a principled distance form, and
+a test pins it as the shim it is. Nothing new may route through it.
+
+**`digits` defaults to `n_neighbors=12`, not 100.** The old `dataset.mnist` default was 100,
+giving a 1797-vertex graph with mean degree 125; nothing ever ran it that way — the batch passed
+12, and `DATASET_PROVENANCE.md` describes 12. Making the default the value that is actually used
+means a bare `load_dataset("digits")` reproduces the roster.
+
+**No Leiden label set on tabula, yet.** `DATASET_PROVENANCE.md` notes that the teaser's Leiden
+partition is a `derivation="detected:leiden"` label set that belongs on the dataset. It is not
+registered here because computing it on every load costs time for every consumer — the report,
+every batch case — for something only one figure uses. It moves with the figure at step 10, where
+the consumer and the cost land together.
+
+**`sbm_er_3modes` is registered; `polblogs`, `lfr`, `homer`, `football`, `mycielski` and
+`stick_sculpture` are not.** Only sbm-er-3modes has a provenance record (`DATASET_PROVENANCE.md`:
+one constant weight, hence `Unweighted()` on both sides), so only it can have its stored sides
+declared honestly. Registering another means writing down where its weights came from first.
+
 ## Ideal distances: one source, one owner
 
 > Ideal distances come from **`vertex_graph(dataset).distance`**, computed once per dataset per
@@ -189,6 +227,29 @@ row $j$'s $\rho_j,\sigma_j$ and within-row monotonicity is not guaranteed a prio
 median is not exactly $-1$, record symmetrisation as the cause rather than treating it as a data
 fault; a materially weaker correlation (worse than $\approx -0.9$) is the genuine signal. Do not
 hardcode $-1$ into a test that later gets "fixed" by loosening it.
+
+### Measured — and neither expectation held
+
+| Statistic | Expected | Measured on tabula |
+|---|---|---|
+| Global Spearman over shared pairs | "strongly negative" | **−0.2364** |
+| Median per-row Spearman | $-1$ | **−0.7820** over 5007 rows |
+| Median per-row over one-directional pairs | *(not anticipated)* | **exactly −1.0** over 3819 rows |
+
+The first two are weaker than the argument predicted, and the second is past the $\approx -0.9$
+line that was supposed to signal genuine inconsistency. So a third statistic was added to settle
+what the first two could not.
+
+`check_weight_consistency` restricts to pairs the **raw** stored matrix recorded in one direction
+only — where fuzzy union cannot have mixed row $j$'s parameters into row $i$, so `A[i,j]` is
+$\mu_{ij}$ exactly. There the within-row correlation is $-1$ in *every* scored row. The
+relationship is exact wherever it can be seen unmixed; the degradation is symmetrisation, and the
+weak global figure is per-row $\sigma_i$ variation decoupling membership from distance across
+rows, which was anticipated. Tabula's two sides do **not** disagree.
+
+All four numbers are pinned in `tests/test_datasets_registry.py` and printed by
+`python -m twin.report`. The $\approx -0.9$ threshold should be read against the *unmixed*
+column, not the raw per-row one.
 
 ## `LabelSet` carries scoring and display roles separately
 

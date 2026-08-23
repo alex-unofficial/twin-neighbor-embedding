@@ -174,6 +174,21 @@ def test_an_adaptive_kernel_without_a_stored_distance_raises():
         vertex_graph(ds)
 
 
+@pytest.mark.skipif(not TABULA.exists(), reason="tabula-liver.mat not present")
+def test_dropping_tabulas_D_makes_the_mapping_raise_rather_than_transform():
+    """The concrete case the refusal exists for — not a synthetic one.
+
+    Applying `-log(w/w_max)` to tabula's UMAP memberships would assign ideal distance exactly 0
+    to one edge per vertex, requiring 93.1% of its vertices to coincide
+    (`docs/DATASET_PROVENANCE.md`). It must fail loudly instead.
+    """
+    ds = load_dataset("tabula")
+    ds.distance = None
+
+    with pytest.raises(ValueError, match="must supply a stored distance side"):
+        vertex_graph(ds)
+
+
 def test_a_stored_side_that_does_not_span_the_edge_set_raises():
     G = nx.path_graph(4)
     partial = sp.csr_array(np.array([[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], float))
