@@ -38,6 +38,7 @@ def digits(n_neighbors: int = DEFAULT_N_NEIGHBORS) -> Dataset:
                 display_role="hue",
             )
         },
+        source_points=raw.data,
         sparsity=KNearest(k=n_neighbors, symmetrise="or", space="raw 8x8 pixels"),
         style=DatasetStyle(palette="husl", palette_seed=0),
         params={"n_neighbors": n_neighbors},

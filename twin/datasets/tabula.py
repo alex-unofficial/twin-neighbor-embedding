@@ -91,6 +91,7 @@ def tabula(organ: str = "liver") -> Dataset:
         # Shipped sparse: the export is an exact 14-NN graph, so nothing is computed here and
         # the edge set must not be touched. Declared so the report can verify it survives a
         # re-export.
+        source_points=np.asarray(mat["X_scvi"], dtype=float),
         sparsity=KNearest(k=14, symmetrise="or", space="X_scvi"),
         # `custom_cmap(13, seed=7)` with rows 0 and 5 exchanged is what the teaser draws today;
         # the swap is hand-tuned and is declared here rather than repeated in the figure.

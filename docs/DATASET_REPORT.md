@@ -130,6 +130,31 @@ exactly −1 wherever it can be seen unmixed.
 
 Not comparable, because a side is an indicator or a single constant weight and so carries no ranks — nothing could disagree: `ring_of_cliques`, `tree_of_cliques`, `small_world`, `barabasi_albert`, `karate`, `football_2023`, `sbm_er_3modes`.
 
+## What sparsification costs
+
+For a point-cloud-derived dataset the graph is the **stipulated ground truth**, and
+a layout is not expected to recover distances the method was never shown. That is a
+deliberate stipulation rather than a limitation of the data — the unsparsified
+source is available for both of these and is declined — so what it costs is
+measured here rather than merely acknowledged.
+
+| dataset | rank ρ | stress | stress after rescaling | d_geo/d_full median | max | edge weight error |
+|---|---|---|---|---|---|---|
+| `digits` | 0.6955 | 1.784 | 0.2027 | 2.625 | 5.761 | 0 |
+| `tabula` | 0.7876 | 1.489 | 0.2102 | 2.188 | 5.892 | 3.5e-07 |
+
+Graph geodesics are exact on the *k*-NN edges and overestimate strictly elsewhere,
+so the ratio is >= 1 everywhere and the distortion is a one-sided inflation of
+*long-range* distances. Local metrics — kNN recall, NND, edge lengths — are
+therefore undistorted; the global ones score against a proxy.
+
+**Read the rescaled column for SNS.** It fits its own global scale, so a uniform
+inflation costs it nothing; most of the raw stress here is exactly that. What
+remains is the ordering, and the rank correlation is what says how much of it
+survives. All of these improve monotonically with *k*, which is the same knob that
+makes the twin transform tractable — the trade is explicit and both ends are in
+this report.
+
 ## Why each dataset is in the roster
 
 **`ring_of_cliques`** — 10 cliques of 4 vertices joined in a ring. The cleanest case where the twin transform should separate dense groups from the sparse links between them.

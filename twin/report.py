@@ -22,7 +22,14 @@ import networkx as nx
 import numpy as np
 import scipy.sparse as sp
 
-from twin.datasets import DATASET_REGISTRY, WeightConsistencyReport, check_weight_consistency, load_dataset
+from twin.datasets import (
+    DATASET_REGISTRY,
+    DistortionReport,
+    WeightConsistencyReport,
+    check_weight_consistency,
+    load_dataset,
+    sparsification_distortion,
+)
 from twin.layoutgraph import vertex_graph
 
 
@@ -61,6 +68,7 @@ class DatasetRow:
     labels: list[tuple[str, int, str, str, str]] = field(default_factory=list)
     composites: list[str] = field(default_factory=list)
     consistency: WeightConsistencyReport | None = None
+    distortion: DistortionReport | None = None
     description: str = ""
 
 
@@ -146,6 +154,7 @@ def describe_dataset(name: str, **params) -> DatasetRow:
         ],
         composites=sorted(dataset.composite_of),
         consistency=check_weight_consistency(dataset),
+        distortion=sparsification_distortion(dataset, vg.distance),
         description=dataset.description,
     )
 
@@ -367,6 +376,48 @@ def to_markdown(rows: list[DatasetRow]) -> str:
             " carries no ranks — nothing could disagree: "
             + ", ".join(f"`{r.name}`" for r in skipped)
             + ".",
+            "",
+        ]
+
+    distorted = [r for r in rows if r.distortion is not None]
+    out += ["## What sparsification costs", ""]
+    if not distorted:
+        out += ["No dataset in this selection retains the point cloud it was built from.", ""]
+    else:
+        out += [
+            "For a point-cloud-derived dataset the graph is the **stipulated ground truth**, and",
+            "a layout is not expected to recover distances the method was never shown. That is a",
+            "deliberate stipulation rather than a limitation of the data — the unsparsified",
+            "source is available for both of these and is declined — so what it costs is",
+            "measured here rather than merely acknowledged.",
+            "",
+            _table(
+                ["dataset", "rank ρ", "stress", "stress after rescaling", "d_geo/d_full median", "max", "edge weight error"],
+                [
+                    [
+                        f"`{r.name}`",
+                        _fmt(r.distortion.spearman),
+                        _fmt(r.distortion.relative_stress),
+                        _fmt(r.distortion.scaled_relative_stress),
+                        _fmt(r.distortion.median_ratio),
+                        _fmt(r.distortion.max_ratio),
+                        _fmt(r.distortion.edge_weight_max_error, 2),
+                    ]
+                    for r in distorted
+                ],
+            ),
+            "",
+            "Graph geodesics are exact on the *k*-NN edges and overestimate strictly elsewhere,",
+            "so the ratio is >= 1 everywhere and the distortion is a one-sided inflation of",
+            "*long-range* distances. Local metrics — kNN recall, NND, edge lengths — are",
+            "therefore undistorted; the global ones score against a proxy.",
+            "",
+            "**Read the rescaled column for SNS.** It fits its own global scale, so a uniform",
+            "inflation costs it nothing; most of the raw stress here is exactly that. What",
+            "remains is the ordering, and the rank correlation is what says how much of it",
+            "survives. All of these improve monotonically with *k*, which is the same knob that",
+            "makes the twin transform tractable — the trade is explicit and both ends are in",
+            "this report.",
             "",
         ]
 

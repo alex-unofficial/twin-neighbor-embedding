@@ -297,6 +297,11 @@ class Dataset:
             (spec §3.4).
         reference_layouts: published 2-d embeddings shipped with the data (tabula's ``X_umap``),
             in ``(n, d)``.
+        source_points: the point cloud the graph was sparsified from, ``(n, d)``, when the
+            dataset has one. Retained so that the *cost* of sparsification is measurable rather
+            than merely acknowledged — see
+            :func:`~twin.datasets.distortion.sparsification_distortion`. It is never used to
+            lay out or to score; the graph is the stipulated ground truth.
         sparsity: how the graph got its edge set, when that was a choice rather than the data.
             None for a graph that *is* the data — a football season, a karate club — where
             nothing was discarded and there is nothing to declare.
@@ -317,6 +322,7 @@ class Dataset:
     label_sets: dict[str, LabelSet] = field(default_factory=dict)
     composite_of: dict[str, tuple[str, ...]] = field(default_factory=dict)
     reference_layouts: dict[str, np.ndarray] = field(default_factory=dict)
+    source_points: np.ndarray | None = None
     sparsity: SparsityModel | None = None
 
     style: DatasetStyle | None = None
