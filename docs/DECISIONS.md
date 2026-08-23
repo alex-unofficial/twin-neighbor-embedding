@@ -128,6 +128,49 @@ a representation touches no dataset — and avoids forcing `Dataset` to carry `a
 `normalize`, which are method knobs. Caching an expensive $A_{tne}$ across a λ sweep belongs in
 the runner.
 
+## Ideal distances: one source, one owner
+
+> Ideal distances come from **`vertex_graph(dataset).distance`**, computed once per dataset per
+> run by the **runner**, and shared by every representation of that dataset.
+
+`vertex_graph`'s distance form is by construction the least-derived one available: the stored
+distance side if there is one, otherwise the single derivation from the stored affinity. Never the
+generic fallback that `edge_graph` and `twin_graph` expose.
+
+**The reason is the central ablation, not tidiness.** SNS and Sil\* score a layout against the
+graph's ideal distances. If those came from whichever `LayoutGraph` produced the layout, $A_V$,
+$A_E$ and $A_{tne}$ would each be scored against a *different* target — and the comparison between
+them, which is the point of the whole experiment, would mean nothing. One target per dataset is
+what makes it legitimate.
+
+Ownership is the runner's because the alternatives are both wrong: `Dataset` holds no derived
+information (see (11)), and the metric would redo an $O(n^2)$ expansion on every call. The
+`max_n` guard (default 20000) lives in `common.ideal_distances`, so there is exactly one place it
+can be forgotten.
+
+## `largest_component()` is not built
+
+Dropped from the `Dataset` interface. Subsetting a dataset means subsetting the graph, *every*
+label vector and *every* stored matrix — tabula has two, ~50k edges each — while keeping all of
+them index-consistent, and **every registered dataset is connected**, so none of that code would
+execute.
+
+Same reasoning as `disconnected="components"` (§0.5 decision 3): untested code for a case that
+does not occur is worse than an honest absence, and a method that exists will get written in a
+hurry at step 3 when SNS turns out to want it. `is_connected()` stays — it is cheap and the
+connectivity report uses it.
+
+## `expects` must be asserted, since nothing branches on it
+
+`EmbeddingSpec.expects` survives the §3.5 rewrite as declared metadata for the manifest and
+report, but the runner no longer converts at the boundary, so no code path depends on it being
+right. Metadata nothing depends on drifts.
+
+One parametrised test over the embedding registry: hand each method a `LayoutGraph` that records
+which of `.affinity` / `.distance` was touched, embed a small graph, assert the accessed set
+matches the declaration. It costs almost nothing and fails the moment a method starts reading the
+other side.
+
 ## Weight-source consistency
 
 Two independently stored sides can disagree about which pairs are close, and the failure is silent

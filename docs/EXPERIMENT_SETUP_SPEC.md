@@ -534,14 +534,30 @@ Transform options per the thesis: `identity` ($f(w)=w$), `inverse` ($1/w$),
 `one_minus` ($1-w$), `neg_log` ($-\log w$). For unweighted graphs all edge lengths are 1.
 Non-adjacent pairs get the shortest-path distance under those edge lengths.
 
-Disconnected graphs: the thesis says to restrict to finite pairs, or per connected component.
-**Implement both** as `disconnected="mask"` (drop infinite pairs from the sum) and
-`disconnected="components"` (compute per component, aggregate weighted by component size), and
-record which was used in the manifest. Default `"mask"`.
+Disconnected graphs: `disconnected="lcc"` is the default and `"mask"` is available;
+`"components"` raises `NotImplementedError` (§0.5 decision 3, decision 4).
 
 Cost warning: this is $O(n^2)$ memory. Guard it — `ideal_distances` should raise unless
 `n <= max_n` (default 20000, overridable), so SNS and Sil\* fail loudly rather than exhausting
-memory on the large graphs.
+memory on the large graphs. **The guard lives in this primitive**, so there is exactly one place
+it can be forgotten.
+
+**Which graph the ideal distances come from, and who owns the result.** This is not a free choice:
+
+> Ideal distances are computed from **`vertex_graph(dataset).distance`**, once per dataset per
+> run, and **shared by every representation of it**.
+
+`vertex_graph`'s distance form is by construction the *least derived* one available — the stored
+distance side if there is one, otherwise the single derivation from the stored affinity (§3.4).
+Never the generic fallback exposed by `edge_graph` or `twin_graph`.
+
+The reason is the central ablation. SNS and Sil\* compare a layout against the graph's ideal
+distances; if those distances were taken from whichever `LayoutGraph` produced the layout, then
+$A_V$, $A_E$ and $A_{tne}$ would each be scored against a *different* target, and comparing their
+scores would mean nothing. One target per dataset is what makes the comparison legitimate.
+
+Ownership: the **runner** computes it once and holds it. Not `Dataset`, which holds no derived
+information (§3.4), and not the metric, which would recompute an $O(n^2)$ expansion per call.
 
 **Pairwise distances.** One cached helper; several metrics need the full condensed pairwise
 distance vector and the mean $\bar d$ (eq. 66). Use `scipy.spatial.distance.pdist` and keep the
@@ -907,8 +923,15 @@ class Dataset:
 
     def labels(self, name: str) -> np.ndarray: ...
     def is_connected(self) -> bool: ...
-    def largest_component(self) -> "Dataset": ...
 ```
+
+`largest_component()` was in an earlier draft of this sketch and is **deliberately not built**.
+Subsetting a dataset means subsetting the graph, *every* label vector, and *every* stored matrix
+(tabula has two, ~50k edges each) while keeping all of them index-consistent — and every currently
+registered dataset is connected, so none of that code would ever run. Same reasoning as
+`disconnected="components"` (§0.5 decision 3): untested code for a case that does not occur is
+worse than an honest absence. Add it when a disconnected dataset arrives, not before, and not
+under time pressure at step 3 because SNS turned out to want it.
 
 **`Dataset` holds no derived information.** It declares which sides are *stored*; the
 `Dataset → LayoutGraph` mapping that builds the vertex graph is the single place a missing side
@@ -1213,6 +1236,12 @@ class EmbeddingSpec:
 `expects` is retained so the report can state what each method consumes and so the driver can
 size a run, but **the runner no longer branches on it** — nothing converts at the boundary.
 
+Because nothing branches on it, nothing keeps it honest either: it can drift from what a method
+actually reads and no test would notice. **Assert it.** Pass each method a `LayoutGraph` that
+records which of `.affinity` / `.distance` was touched, embed a small graph, and check the
+accessed set matches the declaration. One parametrised test over the embedding registry covers
+every method, costs almost nothing, and fails the moment a method starts reading the other side.
+
 **Derived graphs are built from affinities, or they are nonsense.** $A_E = B^{\top}B$ and
 $A_{tne} = \sum_k \alpha^k \tilde A^k$ are affinity algebra: larger entry means stronger coupling.
 The polynomial accumulates multi-step coupling strength, so feeding it distances inverts the
@@ -1496,6 +1525,13 @@ runs/<run_id>/
   interrupted overnight batch continues rather than restarting.
 - Layouts are persisted because recomputing them to add one metric later is the expensive
   mistake this whole structure exists to avoid.
+- ⚠️ **`layouts/<key>.npz` stores a dataset *reference*, never the `Dataset` object.**
+  `LayoutResult` holds a `Dataset` (§3.1), which holds the graph, every label vector, the style,
+  and — for tabula — two stored matrices of ~50k edges each. Serialising it would write all of
+  that into every layout file, once per representation, per seed, per λ. Persist the registry
+  `name` plus the factory `params` and rehydrate through `DATASET_REGISTRY` on load; the batch key
+  already carries exactly that pair, so nothing new has to be recorded. The `npz` payload is
+  `V`, `E`, `slopes` and the scalar instrumentation, and nothing else.
 
 ### 4.7 Dataset selection, including an adversarial case
 

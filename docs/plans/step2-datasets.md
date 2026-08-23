@@ -24,6 +24,13 @@ Each commit green and separable; none mixes a refactor with a behaviour change. 
 2. **`datasets:` package skeleton.** `Dataset`, `LabelSet`, `DatasetStyle`, and the stored source
    types (`Stored`, `StoredMatrix`, `Unweighted`). Pure addition, no consumers.
 
+   **Do not add `largest_component()`.** It appeared in an earlier §3.4 sketch and is now
+   explicitly dropped: it would have to subset the graph, every label vector and every stored
+   matrix (tabula has two, ~50k edges each) index-consistently, and no registered dataset is
+   disconnected, so none of it would run. Same call as `disconnected="components"`. Add it when a
+   disconnected dataset arrives — not in a hurry at step 3 because SNS turned out to want it.
+   `is_connected()` stays; it is cheap and the report uses it.
+
 3. **`datasets:` one file per dataset + `DATASET_REGISTRY`.** The `karate` / `karate_weighted`
    split, the `mnist` → `digits` rename, and tabula loading `A`, `D` **and** all four label fields
    (`cell_ontology_class`, `compartment`, `donor`, `method`) plus `X_umap`. Add
@@ -36,6 +43,13 @@ Each commit green and separable; none mixes a refactor with a behaviour change. 
    `parent` link and `is_faithful`, and build the incidence matrix **once** on the vertex graph
    rather than three times.
 
+   **Leave a docstring on `vertex_graph().distance` saying it is the ideal-distance source.**
+   Step 3 needs to know this without rediscovering it: ideal distances come from
+   `vertex_graph(dataset).distance` — the least-derived form — once per dataset, shared by every
+   representation, owned by the runner. Never from `edge_graph`/`twin_graph`'s generic fallback,
+   which would score $A_V$, $A_E$ and $A_{tne}$ against three *different* targets and make the
+   central ablation meaningless. Spec §2.0 now states this; the docstring is so it is seen.
+
 5. **`results:` `LayoutResult` holds the `Dataset`.** `G` becomes a property. Small and mechanical,
    but it is session-1 code changing, so keep it its own commit and let the existing
    `tests/test_results.py` prove nothing else moved.
@@ -44,13 +58,36 @@ Each commit green and separable; none mixes a refactor with a behaviour change. 
    (normalise, **symmetrise**, then `-log` — decision (12); the un-symmetrised version in
    `KamadaKawaiLayout(mode="similarity")` today is a live bug).
 
+   Add the **`expects` conformance test** here: pass each method a `LayoutGraph` that records
+   which of `.affinity` / `.distance` was touched, embed a small graph, assert the accessed set
+   matches the declaration. Nothing branches on `expects` any more, so without this it can drift
+   from what the methods actually read and no test would notice. One parametrised test over the
+   embedding registry covers all of them.
+
    ⚠️ **Behaviour change.** This is where bug §1.6 actually closes: digits stops being fed
-   distances as if they were affinities, so its layouts and figures move. Declare it in the commit
-   message and regenerate any affected pins in the *same* commit. Nothing has been written to
-   `runs/` yet, so no results are invalidated — say so.
+   distances as if they were affinities. Declare it in the commit message and regenerate any
+   affected pins in the *same* commit. Nothing has been written to `runs/` yet, so no results are
+   invalidated — say so. **No figure renders digits** (verified: `paper_figures.py` contains no
+   reference to it), so the figure pins are unaffected.
+
+   **Measure the change; do not just declare it.** Generate a digits layout at a fixed seed and
+   `y0` before the fix and after, and record the **Procrustes disparity** between them in the
+   commit message. Otherwise the single most consequential correction in the spec lands invisibly.
+   "Correcting the weight-sign inversion moved the digits layout by *X*" is concrete evidence that
+   the bug mattered and is what justifies the restructure in the write-up. Re-measure it in
+   quality terms once step 3 lands and kNN recall and ADR exist — Procrustes says the layout
+   *changed*, not that it improved.
 
 7. **`pipelines:` registry swap.** `batch_registries["graph"]` → `DATASET_REGISTRY`;
    `graph_embedding` takes a `Dataset` and builds the `LayoutGraph`.
+
+   ⚠️ **Serialisation hazard, worth heading off now rather than at step 7.** `LayoutResult` holds a
+   `Dataset`, which holds the graph, every label vector, the style and — for tabula — two stored
+   matrices of ~50k edges each. `layouts/<key>.npz` must persist a **reference**: the registry
+   `name` plus the factory `params`, rehydrated through `DATASET_REGISTRY` on load. The batch key
+   already carries that pair, so nothing new needs recording. Serialising the object instead would
+   write the whole dataset into every layout file, once per representation, per seed, per λ — and
+   it would be found the expensive way, mid-run.
 
 8. **`figures:` source labels from `Dataset`, delete `metadata.py`.** A refactor — the label
    vectors and colour arrays pinned in commit 1 must not move. The plotting refactor proper is
@@ -77,6 +114,9 @@ Each commit green and separable; none mixes a refactor with a behaviour change. 
   the `Dataset` object.
 - Derived graphs must expose **no** labels. A length-`n` label vector reaching a length-`m` node
   set is the failure mode the layering exists to prevent.
+- `paper_figures.py` has a ninth figure function, `barabasi_albert`, **commented out inside a
+  `"""` block** at line 839. It is not live and does not render; do not count it, and do not
+  revive it here (spec §3.6 is step 10).
 
 ## Verification
 
@@ -103,6 +143,8 @@ Then:
 - Kamada–Kawai on `vertex_graph(tabula)` uses the measured `D`; on `twin_graph(...)` the generic
   fallback, with the chain recoverable by walking `parent`.
 - The incidence matrix is constructed once per vertex graph, not once per representation.
+- Every layout method touches exactly the side its `EmbeddingSpec.expects` declares.
+- `Dataset` exposes no `largest_component()`; `is_connected()` works.
 - All eight `paper_figures` functions render: the six fast ones, plus `tabula_sapiens_teaser`
   (~3 min), which internally calls `tabula_sapiens_blockadj` and so covers both.
 - `git status --short` clean — if notebooks appear modified, the `jupyter` filter is unset
