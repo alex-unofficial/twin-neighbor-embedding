@@ -1,6 +1,10 @@
 # Data
 /data/
 
+# Experiment output. Batch definitions in batches/ are source and ARE committed; runs/ is what
+# they produce — layouts, metric shards, manifests — and is reproducible from a tagged commit.
+/runs/
+
 # Mac OS-specific storage files
 .DS_Store
 
