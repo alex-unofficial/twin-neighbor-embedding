@@ -7,6 +7,14 @@ from twin import graphmatrix as gm
 from twin import embedding as emb
 from twin import dataset as data
 from twin.batching import *
+from twin.datasets import DATASET_REGISTRY, Dataset
+from twin.layoutgraph import (
+    REPRESENTATION_REGISTRY,
+    edge_graph,
+    twin_graph,
+    vertex_graph,
+    vertex_representation,
+)
 from twin.metrics import *
 from twin.results import LayoutResult
 
@@ -17,21 +25,21 @@ import time
 from twin.instrumentation import RSSSampler
 
 
-def _require_provenance(Gm) -> dict[str, str]:
+def _require_provenance(layout_graph) -> dict[str, str]:
     """Read the point provenance a representation declares, or say clearly that it must."""
-    provenance = getattr(Gm, "point_provenance", None)
+    provenance = getattr(layout_graph, "point_provenance", None)
     if not provenance:
         raise TypeError(
-            f"{type(Gm).__name__} does not declare point_provenance. Every "
-            "GraphMatrixMethod must state, per point set, whether its points were laid out "
+            f"{type(layout_graph).__name__} does not declare point_provenance. Every "
+            "representation must state, per point set, whether its points were laid out "
             "directly or reconstructed from the other set (spec §0.5 decision 5)."
         )
     return provenance
 
 
 def graph_embedding(
-    G: nx.Graph,
-    representation=gm.VertexMatrix,
+    dataset: Dataset,
+    representation=vertex_representation,
     embedding=emb.SpringLayout,
     y0=None,
     seed: int = 0,
@@ -46,14 +54,18 @@ def graph_embedding(
     """Run the embedding pipeline for one representation and one layout method.
 
     Args:
-        G: the graph to lay out.
-        representation: a :class:`~twin.graphmatrix.GraphMatrixMethod` subclass.
-        embedding: a :class:`~twin.embedding.GraphEmbeddingMethod` subclass.
+        dataset: a :class:`~twin.datasets.Dataset`. It arrives whole — labels, style and
+            weight semantics included — and is carried into the `LayoutResult`, which is what
+            makes a metric a function of the points *plus a dataset*.
+        representation: a ``Dataset -> LayoutGraph`` builder from
+            :data:`~twin.layoutgraph.REPRESENTATION_REGISTRY`.
+        embedding: a :class:`~twin.embedding.GraphEmbeddingMethod` subclass. It reads whichever
+            of the layout graph's two forms it declares; nothing is converted here.
         y0: initial positions, ``(d, n_points)``, or None.
         seed, d: passed to the layout method.
         embedding_kw, representation_kw, normalize: constructor arguments.
         representation_name, embedding_name: registry names for the result record. Default to
-            the class names.
+            the builder's and class's names.
         measure_memory: sample process RSS during the embed and record the peak above the
             entry baseline. On by default — it is cheap (one ``/proc`` read per 10 ms on a
             background thread) and it sees allocations made inside ``sgtsnepi``, which is a C
@@ -73,55 +85,45 @@ def graph_embedding(
     E = embedding(seed=seed, d=d, **embedding_kw)
 
     t0 = time.perf_counter()
-    Gm = representation(G, normalize=normalize, **representation_kw)
+    layout_graph = representation(dataset, normalize=normalize, **representation_kw)
     representation_s = time.perf_counter() - t0
 
     with RSSSampler(enabled=measure_memory) as mem:
         t0 = time.perf_counter()
-        Y = E.embed(Gm, y0)
+        Y = E.embed(layout_graph, y0)
         runtime_s = time.perf_counter() - t0
 
-    y_v, y_e, y_s = Gm.vertex_and_edge_embeddings(Y)
+    y_v, y_e, y_s = layout_graph.vertex_and_edge_points(Y)
 
     return LayoutResult.from_raw(
         V=y_v,
         E=y_e,
         slopes=y_s,
-        G=G,
+        dataset=dataset,
         representation=representation_name or representation.__name__,
         embedding=embedding_name or embedding.__name__,
-        point_provenance=_require_provenance(Gm),
+        point_provenance=_require_provenance(layout_graph),
         params={
             "d": d,
             "normalize": normalize,
             "representation_kw": dict(representation_kw),
             "embedding_kw": dict(embedding_kw),
         },
+        derivation_chain=layout_graph.chain(),
         seed=seed,
         runtime_s=runtime_s,
         representation_s=representation_s,
-        n_points=Gm.get_adj().shape[0],
+        n_points=layout_graph.n_points,
         peak_mem_mb=mem.delta_mb if measure_memory else None,
     )
 
 
 batch_registries = {
-    "graph": {
-        "ring_of_cliques": data.ring_of_cliques,
-        "tree_of_cliques": data.tree_of_cliques,
-        "karate_club": nx.karate_club_graph,
-        "football_2023": data.football_2023,
-        "small_world": data.small_world,
-        "barabasi_albert": data.barabasi_albert,
-        "mnist": data.mnist,
-        "tabula": data.tabula,
-    },
-
-    "representation": {
-        "vertex": gm.VertexMatrix,
-        "edge": gm.EdgeMatrix,
-        "twin": gm.TwinEmbeddingMatrix,
-    },
+    # The runner receives a `Dataset`, so labels and weight semantics arrive with the graph
+    # instead of being looked up separately. Batch specs keep the same syntax; the axis is
+    # still called "graph".
+    "graph": DATASET_REGISTRY,
+    "representation": REPRESENTATION_REGISTRY,
 
     # One source of truth: the specs carry `expects`, `stochastic` and `has_lambda` for the
     # manifest and the run planner, and the batch axis is just their classes.
@@ -154,10 +156,10 @@ def batch_graph_embedding(
         c = BatchCaseView(case)
         c.require("graph", "representation", "embedding")
 
-        G = resolve_object_choice(c.choice("graph"))
+        dataset = resolve_object_choice(c.choice("graph"))
 
         return graph_embedding(
-            G,
+            dataset,
             representation=c.obj("representation"),
             embedding=c.obj("embedding"),
             y0=y0,
@@ -246,24 +248,25 @@ def graph_embedding_all(
     return dict_result
 
 
-def _result_from(Gm, Y, G, representation, E_in, seed) -> LayoutResult:
+def _result_from(layout_graph, Y, dataset, representation, E_in, seed) -> LayoutResult:
     """Split a raw ``(d, n_points)`` layout and cross the orientation boundary once."""
-    y_v, y_e, y_s = Gm.vertex_and_edge_embeddings(Y)
+    y_v, y_e, y_s = layout_graph.vertex_and_edge_points(Y)
     return LayoutResult.from_raw(
         V=y_v,
         E=y_e,
         slopes=y_s,
-        G=G,
+        dataset=dataset,
         representation=representation,
         embedding=getattr(E_in, "method_name", type(E_in).__name__),
-        point_provenance=Gm.point_provenance,
+        point_provenance=layout_graph.point_provenance,
+        derivation_chain=layout_graph.chain(),
         seed=seed,
-        n_points=Gm.get_adj().shape[0],
+        n_points=layout_graph.n_points,
     )
 
 
 def embedding_metrics_all(
-    G: nx.Graph,
+    dataset: Dataset,
     embedding=emb.SpringLayout,
     d: int = 2,
     n_samples: int = 1,
@@ -275,7 +278,7 @@ def embedding_metrics_all(
     common_init: bool = True,
     normalize: bool = False,
 ):
-    """Calculates all metric types given a graph and embedding
+    """Calculates all metric types given a dataset and embedding
 
     Note:
         The ``VertexPointDistance`` / ``EdgePointDistance`` entries were dropped with
@@ -295,12 +298,13 @@ def embedding_metrics_all(
         classification_metric_e = 0.0
         classification_metric_tw = 0.0
 
-    Gv_in = gm.VertexMatrix(G, normalize=False)
-    Ge_in = gm.EdgeMatrix(G, normalize=False)
-    Gtw_in = gm.TwinEmbeddingMatrix(G, normalize=normalize, **twinmatrix_kw)
+    G = dataset.graph
 
-    nv = Gtw_in.incidence.shape[0]
-    ne = Gtw_in.incidence.shape[1]
+    Gv_in = vertex_graph(dataset, normalize=False)
+    Ge_in = edge_graph(Gv_in)
+    Gtw_in = twin_graph(vertex_graph(dataset, normalize=normalize), **twinmatrix_kw)
+
+    nv, ne = Gtw_in.n_vertices, Gtw_in.n_edges
 
     for seed in range(n_samples):
         E_in = embedding(seed=seed, d=d, **embedding_kw)
@@ -315,9 +319,9 @@ def embedding_metrics_all(
         Z = E_in.embed(Gtw_in, y0=y0tw)
 
         # Cross the (d, n) -> (n, d) boundary exactly once, here (spec §1.3, §3.1).
-        res_v = _result_from(Gv_in, X, G, "vertex", E_in, seed)
-        res_e = _result_from(Ge_in, Y, G, "edge", E_in, seed)
-        res_tw = _result_from(Gtw_in, Z, G, "twin", E_in, seed)
+        res_v = _result_from(Gv_in, X, dataset, "vertex", E_in, seed)
+        res_e = _result_from(Ge_in, Y, dataset, "edge", E_in, seed)
+        res_tw = _result_from(Gtw_in, Z, dataset, "twin", E_in, seed)
 
         neighbor_preservation_metric_v += knn_neighbor_preservation_accuracy(
             res_v.V, G, n_neighbors, mode=mode

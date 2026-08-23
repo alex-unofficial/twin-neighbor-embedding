@@ -327,6 +327,25 @@ def test_the_mappings_reproduce_the_legacy_point_derivations(kind):
         np.testing.assert_allclose(a, b, rtol=1e-12, atol=1e-15)
 
 
+def test_the_legacy_classes_still_satisfy_the_embed_interface():
+    """`graph_embedding_all` and `paper_figures` keep working until step 10 (spec §3.6).
+
+    The shim must stay bit-identical to the old `mode="distance"` default, which is what makes
+    deleting `mode=` a no-op on the legacy path. It is not a principled distance form — that is
+    the whole reason `LayoutGraph` exists — so nothing new may route through it.
+    """
+    ds = load_dataset("karate_weighted")
+    legacy = gm.VertexMatrix(ds.graph)
+
+    assert legacy.affinity is legacy.adj
+    assert legacy.n_points == ds.n
+
+    shim = legacy.distance
+    expected = nx.from_scipy_sparse_array(legacy.adj)
+    assert shim.number_of_edges() == expected.number_of_edges()
+    np.testing.assert_array_equal(edge_weights(shim), edge_weights(expected))
+
+
 def test_point_provenance_is_declared_per_representation(strength_dataset):
     """Scoring derived point sets is correct; the asymmetry must stay visible (§0.5 (5))."""
     vg = vertex_graph(strength_dataset)

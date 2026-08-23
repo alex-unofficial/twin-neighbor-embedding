@@ -14,6 +14,8 @@ from typing import Literal
 import networkx as nx
 import numpy as np
 
+from twin.datasets import Dataset
+
 PointProvenance = Literal["primary", "derived"]
 
 #: Point sets a layout can carry. "V" is the original graph's vertices, "E" its edges.
@@ -38,13 +40,19 @@ class LayoutResult:
     """One layout of one graph by one method.
 
     Attributes:
-        V: ``(n, d)`` vertex positions.
+        V: ``(n, d)`` vertex positions, in the **original** vertex indexing.
         E: ``(m, d)`` edge-point positions, or None for a method that produces none.
         slopes: ``(m,)`` edge orientations, or None.
-        G: the graph that was laid out.
-        representation: registry name of the ``GraphMatrixMethod`` used.
+        dataset: the :class:`~twin.datasets.Dataset` this is a layout of. Carrying it rather
+            than a bare graph is what makes a metric or a figure a function of the embedded
+            points *plus a dataset* — labels, style and weight semantics arrive with the
+            points. ``G`` remains available as a property.
+        representation: registry name of the representation mapping used.
         embedding: registry name of the layout method used.
         params: the parameters of both, for the manifest.
+        derivation_chain: how this representation's affinity was arrived at, root first. The
+            chain is read off the `LayoutGraph`'s `parent` link rather than maintained by hand
+            (spec §3.5).
         seed: the seed passed to the layout method, or None if it takes none.
         point_provenance: per point set, whether those points were laid out directly
             ("primary") or reconstructed from the other set ("derived"). See spec §0.5
@@ -59,10 +67,11 @@ class LayoutResult:
     V: np.ndarray
     E: np.ndarray | None
     slopes: np.ndarray | None
-    G: nx.Graph
+    dataset: Dataset
     representation: str
     embedding: str
     params: dict = field(default_factory=dict)
+    derivation_chain: list[str] = field(default_factory=list)
     seed: int | None = None
     point_provenance: dict[str, PointProvenance] = field(default_factory=dict)
     runtime_s: float | None = None
@@ -92,6 +101,11 @@ class LayoutResult:
             raise ValueError(f"point_provenance values must be primary/derived, got {bad}")
 
     # ----------------------------------------------------------------- shapes
+
+    @property
+    def G(self) -> nx.Graph:
+        """The graph that was laid out. Shorthand for ``self.dataset.graph``."""
+        return self.dataset.graph
 
     @property
     def n(self) -> int:
@@ -124,7 +138,7 @@ class LayoutResult:
         V: np.ndarray,
         E: np.ndarray | None,
         slopes: np.ndarray | None,
-        G: nx.Graph,
+        dataset: Dataset,
         representation: str,
         embedding: str,
         point_provenance: dict[str, PointProvenance],
@@ -135,12 +149,12 @@ class LayoutResult:
         This is the one and only transpose. ``V`` must be ``(d, n)`` and ``E`` ``(d, m)``;
         anything else raises rather than being silently reoriented.
         """
-        n, m = G.number_of_nodes(), G.number_of_edges()
+        n, m = dataset.n, dataset.m
         return cls(
             V=_as_n_by_d(V, n, "V"),
             E=None if E is None else _as_n_by_d(E, m, "E"),
             slopes=None if slopes is None else np.asarray(slopes).ravel(),
-            G=G,
+            dataset=dataset,
             representation=representation,
             embedding=embedding,
             point_provenance=dict(point_provenance),

@@ -5,7 +5,15 @@ import numpy as np
 import pytest
 
 import twin.graphmatrix as gm
+from twin.datasets import Dataset, Unweighted
 from twin.results import LayoutResult
+
+VERTEX_PROVENANCE = {"V": "primary", "E": "derived"}
+
+
+def _dataset(G) -> Dataset:
+    """Wrap a bare graph so a shape test does not have to reach for a registered dataset."""
+    return Dataset(name="fixture", graph=G, affinity=Unweighted(), distance=Unweighted())
 
 
 def _raw(G, d=2, seed=0):
@@ -24,10 +32,10 @@ def _make(G, **kw):
         V=V,
         E=E,
         slopes=S,
-        G=G,
+        dataset=_dataset(G),
         representation="vertex",
         embedding="sgtsne",
-        point_provenance=gm.VertexMatrix.point_provenance,
+        point_provenance=VERTEX_PROVENANCE,
         **kw,
     )
 
@@ -53,10 +61,10 @@ def test_from_raw_rejects_already_transposed_input(karate):
             V=V.T,
             E=E,
             slopes=S,
-            G=karate,
+            dataset=_dataset(karate),
             representation="vertex",
             embedding="sgtsne",
-            point_provenance=gm.VertexMatrix.point_provenance,
+            point_provenance=VERTEX_PROVENANCE,
         )
 
 
@@ -68,10 +76,10 @@ def test_square_input_is_not_sniffed():
         V=V,
         E=None,
         slopes=None,
-        G=G,
+        dataset=_dataset(G),
         representation="vertex",
         embedding="spring",
-        point_provenance=gm.VertexMatrix.point_provenance,
+        point_provenance=VERTEX_PROVENANCE,
     )
     assert np.array_equal(r.V, V.T), "from_raw must transpose unconditionally, not conditionally"
 
@@ -83,10 +91,10 @@ def test_rejects_wrong_edge_count(karate):
             V=V,
             E=E[:, :10],
             slopes=S,
-            G=karate,
+            dataset=_dataset(karate),
             representation="vertex",
             embedding="sgtsne",
-            point_provenance=gm.VertexMatrix.point_provenance,
+            point_provenance=VERTEX_PROVENANCE,
         )
 
 
@@ -96,7 +104,7 @@ def test_edge_points_may_be_absent(karate):
         V=V,
         E=None,
         slopes=None,
-        G=karate,
+        dataset=_dataset(karate),
         representation="vertex",
         embedding="spring",
         point_provenance={"V": "primary"},
@@ -104,10 +112,18 @@ def test_edge_points_may_be_absent(karate):
     assert r.E is None
 
 
+def test_the_result_carries_the_dataset_not_just_the_graph(karate):
+    """A metric or a figure is a function of the embedded points plus a `Dataset` (§3.4)."""
+    r = _make(karate)
+    assert r.dataset.name == "fixture"
+    assert r.G is r.dataset.graph
+
+
 # ---------------------------------------------------------------- provenance
 
 
 def test_provenance_per_representation():
+    """The pre-restructure classes, which `paper_figures` uses until step 10."""
     assert gm.VertexMatrix.point_provenance == {"V": "primary", "E": "derived"}
     assert gm.EdgeMatrix.point_provenance == {"V": "derived", "E": "primary"}
     assert gm.TwinEmbeddingMatrix.point_provenance == {"V": "primary", "E": "primary"}
@@ -124,7 +140,7 @@ def test_provenance_lookup_and_validation(karate):
             V=r.V,
             E=None,
             slopes=None,
-            G=karate,
+            dataset=_dataset(karate),
             representation="x",
             embedding="y",
             point_provenance={"V": "laid-out"},
@@ -136,7 +152,7 @@ def test_provenance_missing_key_raises_clearly(karate):
         V=_raw(karate)[0].T,
         E=None,
         slopes=None,
-        G=karate,
+        dataset=_dataset(karate),
         representation="x",
         embedding="y",
         point_provenance={"V": "primary"},

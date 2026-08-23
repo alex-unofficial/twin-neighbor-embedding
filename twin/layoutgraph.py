@@ -440,6 +440,35 @@ def _derived(
     )
 
 
+# --------------------------------------------------------------------------- #
+#                        Dataset -> LayoutGraph, by name                        #
+# --------------------------------------------------------------------------- #
+#
+# The batch's "representation" axis. Each builder is `Dataset -> LayoutGraph` with the method
+# knobs as keyword arguments, so the three read the same at the call site even though A_E and
+# A_tne are two-step derivations. Caching an expensive A_tne across a lambda sweep belongs in
+# the runner, not here.
+
+
+def vertex_representation(dataset, **kw) -> LayoutGraph:
+    return vertex_graph(dataset, **kw)
+
+
+def edge_representation(dataset, **kw) -> LayoutGraph:
+    return edge_graph(vertex_graph(dataset, **kw))
+
+
+def twin_representation(dataset, *, alpha: float = 0.85, k: int = 2, **kw) -> LayoutGraph:
+    return twin_graph(vertex_graph(dataset, **kw), alpha=alpha, k=k)
+
+
+REPRESENTATION_REGISTRY = {
+    "vertex": vertex_representation,
+    "edge": edge_representation,
+    "twin": twin_representation,
+}
+
+
 def _require_vertex_graph(graph: LayoutGraph, where: str) -> None:
     if graph.kind != "vertex":
         raise ValueError(

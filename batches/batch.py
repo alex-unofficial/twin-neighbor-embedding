@@ -1,7 +1,6 @@
 from loguru import logger
 
 import networkx as nx
-import twin.dataset as data
 import twin.graphmatrix as gm
 import twin.embedding as emb
 
@@ -13,7 +12,8 @@ batch_input = [{
         "graph": [
             ("ring_of_cliques", {"n": 10, "k": 4}),
             ("tree_of_cliques", {"h": 3, "n": 4, "k": 3}),
-            "karate_club",
+            "karate",
+            "karate_weighted",
             "football_2023",
             ("small_world", {"n": 150, "k": 12, "p": 0.01}),
         ]
@@ -50,7 +50,7 @@ batch_input = [{
     "common": {
         "graph": [
             ("barabasi_albert", {"n": 1000, "k": 7}),
-            ("mnist", {"n_neighbors": 12}),
+            "digits",
             ("tabula", {
                 "organ": 'liver'
             }),

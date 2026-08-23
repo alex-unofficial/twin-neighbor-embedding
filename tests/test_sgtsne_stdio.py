@@ -18,8 +18,8 @@ import time
 
 import pytest
 
-import twin.graphmatrix as gm
 from twin import embedding as emb
+from twin.layoutgraph import vertex_graph
 
 
 def _fd_is_open(fd: int) -> bool:
@@ -40,9 +40,9 @@ def test_installed_sgtsnepi_is_at_least_0_7():
     )
 
 
-def test_silent_embed_leaves_the_standard_streams_usable(karate):
+def test_silent_embed_leaves_the_standard_streams_usable(karate_dataset):
     """The original failure: stderr unusable after a silent embed, so logging died."""
-    emb.SGtSNELayout(silent=True).embed(gm.VertexMatrix(karate))
+    emb.SGtSNELayout(silent=True).embed(vertex_graph(karate_dataset))
 
     assert _fd_is_open(1), "sgtsnepi(silent=True) closed fd 1"
     assert _fd_is_open(2), "sgtsnepi(silent=True) closed fd 2"
@@ -54,13 +54,13 @@ def test_silent_embed_leaves_the_standard_streams_usable(karate):
     logger.info("stderr is usable after a silent SG-t-SNE embed")
 
 
-def test_silent_mode_is_still_silent(karate):
+def test_silent_mode_is_still_silent(karate_dataset):
     """Guards the other direction: a descriptor fix that stopped suppressing output."""
     read_fd, write_fd = os.pipe()
     saved = os.dup(1)
     try:
         os.dup2(write_fd, 1)
-        emb.SGtSNELayout(silent=True).embed(gm.VertexMatrix(karate))
+        emb.SGtSNELayout(silent=True).embed(vertex_graph(karate_dataset))
     finally:
         os.dup2(saved, 1)
         os.close(saved)
@@ -71,22 +71,22 @@ def test_silent_mode_is_still_silent(karate):
     assert captured == b"", f"silent=True wrote {len(captured)} bytes to stdout"
 
 
-def test_silent_embed_still_produces_a_layout(karate):
-    Y = emb.SGtSNELayout(silent=True).embed(gm.VertexMatrix(karate))
-    assert Y.shape == (2, karate.number_of_nodes())
+def test_silent_embed_still_produces_a_layout(karate_dataset):
+    Y = emb.SGtSNELayout(silent=True).embed(vertex_graph(karate_dataset))
+    assert Y.shape == (2, karate_dataset.n)
     assert not (Y == 0).all()
 
 
 @pytest.mark.parametrize("silent", [True, False])
-def test_repeated_embeds(karate, silent):
-    Gm = gm.VertexMatrix(karate)
+def test_repeated_embeds(karate_dataset, silent):
+    Gm = vertex_graph(karate_dataset)
     first = emb.SGtSNELayout(silent=silent).embed(Gm)
     second = emb.SGtSNELayout(silent=silent).embed(Gm)
-    assert first.shape == second.shape == (2, karate.number_of_nodes())
+    assert first.shape == second.shape == (2, karate_dataset.n)
     assert _fd_is_open(1) and _fd_is_open(2)
 
 
-def test_rss_sampling_across_a_silent_embed_is_safe(karate):
+def test_rss_sampling_across_a_silent_embed_is_safe(karate_dataset):
     """Integration property: instrumenting an embed must not disturb the standard streams.
 
     When silent mode freed fd 2, a sampler that opened a file during the call could be handed
@@ -99,10 +99,10 @@ def test_rss_sampling_across_a_silent_embed_is_safe(karate):
 
     for _ in range(5):
         with RSSSampler(interval=0.0005):
-            emb.SGtSNELayout(silent=True).embed(gm.VertexMatrix(karate))
+            emb.SGtSNELayout(silent=True).embed(vertex_graph(karate_dataset))
         assert _fd_is_open(1) and _fd_is_open(2)
 
-    res = graph_embedding(karate, embedding=emb.SGtSNELayout)
+    res = graph_embedding(karate_dataset, embedding=emb.SGtSNELayout)
     assert res.peak_mem_mb is not None
     assert _fd_is_open(1) and _fd_is_open(2)
     sys.stdout.write("")
