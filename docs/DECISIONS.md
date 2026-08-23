@@ -166,6 +166,95 @@ the consumer and the cost land together.
 one constant weight, hence `Unweighted()` on both sides), so only it can have its stored sides
 declared honestly. Registering another means writing down where its weights came from first.
 
+## Three forms, not two — and what reaches the backend
+
+A `LayoutGraph` is **one support carrying up to three valuations**: combinatorial (1), affinity
+($w$), distance ($d$). The third was missing, and its absence produced a wrong-sign bug.
+
+**Yifan Hu is not a distance method.** Hu's is a multilevel combinatorial force method —
+attractive $d^2/K$ along edges, repulsive $-CK^2/d$ between all pairs, with $K$ a *global*
+constant. There is no per-edge target length in the formulation. It declares
+`expects="combinatorial"` and receives a graph with no edge attributes.
+
+**`expects` being right is not sufficient.** Both graphviz methods go through `nx.nx_pydot`,
+which writes edge attributes into the dot source as `weight=`; graphviz reads `weight` as a
+spring-strength multiplier and `len` as the desired edge length. So a distance passed as `weight`
+means *far apart, pull harder*. The step-2 commit that switched both methods to `.distance`
+introduced exactly that; before it they received the affinity as `weight`, which was at least the
+right sign. `neato` now writes `len=`.
+
+The conformance test cannot catch this class of error — it checks *which form* was read, not what
+the backend then takes it to mean. Three separate tests cover the plumbing: the sfdp input
+carries no attributes, the neato input carries `len` and not `weight`, and neato's output moves
+when the lengths change. **Any new backend that serialises its input needs the same treatment.**
+
+## Sparsity is the operating regime, and it is declared in the factory
+
+**Not a compromise for speed.** The twin transform *requires* sparse input: on a complete graph
+over tabula's 5007 vertices, $A_E$ would carry $\sum_v \deg(v)(\deg(v)-1)\approx 10^{11}$
+nonzeros and $A_{tne}$ would span $n+m\approx 12.5$ M nodes. A dense-input comparison is not an
+experiment that could be run at any budget, so the dense metric is not a yardstick any of these
+methods could be *built* to serve. Argue it there — at n ≈ 5000 a dense distance matrix is only
+200 MB, so the general "dense is slow" version is attackable and the transform-level version is
+not.
+
+**Sparsification happens in the dataset factory**, before any representation exists. Two reasons:
+the graph's edge set defines the *original edge indexing* that `vertex_and_edge_points` returns
+into, so a layout-layer knob must not be able to change it; and $k$ then sweeps through the
+existing batch axis for free as `("digits", {"n_neighbors": [5, 12, 30]})`, which is right
+semantically — a different $k$ is a different dataset, not a different view of one.
+
+$k$-NN over $r$-neighbourhoods: it bounds degree and cannot isolate a vertex. Sparsify on the
+**distance** side only — for a globally monotone derivation like $\exp(-d/d_{\text{scale}})$,
+the $k$ nearest by distance and the $k$ largest by affinity are the same set. And $k$ is
+**declared, not derived from a target density**: §4.2's λ criterion is defined at $k$ = mean
+degree, so it is already a first-class experimental quantity, and choosing it through a density
+proxy would hide the axis one most wants visible.
+
+`KNearest.check()` verifies the declaration against the graph: after or-symmetrisation every
+vertex has degree at least $k$, and $nk/2 \le m \le nk$. Both hold exactly (minimum degree 12 for
+digits, 14 for tabula). Neither is implied by $n$ and $m$, so neither would show up in the
+existing pins — which is the point.
+
+A general sparsifier for a dense stored distance is **not built**. No dataset has one; same call
+as `largest_component()`.
+
+## The graph is the stipulated ground truth, and what that costs is measured
+
+Sparsifying to a $k$-NN graph means the target SNS and Sil\* score against is the shortest-path
+closure of that graph — a **graph geodesic** (Isomap distance, for Euclidean edge weights), not
+the ambient metric. It is *exact* on the $k$-NN edges, since an edge's weight is the ambient
+distance and no path can beat it, and strictly larger elsewhere. So the distortion is a one-sided
+inflation of **long-range** distances: local metrics (kNN recall, NND, edge lengths) are
+undistorted, and the global ones score against a proxy. It is monotone in $k$.
+
+**A layout is therefore not expected to recover distances the method was never shown, and is not
+scored as though it should be.** Every method sees the same graph, so the comparison between
+$A_V$, $A_E$ and $A_{tne}$ — which is the point of the experiment — is internally valid. Two
+things worth stating rather than leaving to be discovered:
+
+- Sparsification does not *disadvantage* stress methods inside the comparison. It relocates their
+  advantage: KK and neato optimise approximately the functional SNS measures, so **SNS on a KK
+  layout is closer to a measure of optimiser success than of the representation.** Report it
+  alongside metrics that are not KK's objective.
+- The equal constraint is on what each method is *given*, not on what it spends. KK and neato
+  expand to all-pairs internally regardless. That asymmetry is not assumed away — `runtime_s`,
+  `representation_s` and `peak_mem_mb` measure it per case.
+
+**Measured, not merely acknowledged.** For `digits` and `tabula` the unsparsified source is
+available and is declined, so `sparsification_distortion` quantifies the stipulation's cost:
+
+| | rank ρ | stress | stress after optimal rescaling | median $d_{geo}/d_{full}$ |
+|---|---|---|---|---|
+| digits ($k$=12) | 0.6955 | 1.784 | **0.2027** | 2.63 |
+| tabula ($k$=14) | 0.7876 | 1.489 | **0.2102** | 2.19 |
+
+**Quote the rescaled column for SNS.** It fits its own global scale, so a uniform inflation costs
+it nothing, and roughly nine tenths of the raw stress here is exactly that. What remains is the
+ordering. On digits at $k = 5/12/30/60$ the rank correlation rises 0.61 → 0.85 and the median
+ratio falls 3.78 → 1.74, so fidelity and tractability are the same knob and both ends of it are
+in `docs/DATASET_REPORT.md`.
+
 ## Ideal distances: one source, one owner
 
 > Ideal distances come from **`vertex_graph(dataset).distance`**, computed once per dataset per
@@ -185,6 +274,38 @@ Ownership is the runner's because the alternatives are both wrong: `Dataset` hol
 information (see (11)), and the metric would redo an $O(n^2)$ expansion on every call. The
 `max_n` guard (default 20000) lives in `common.ideal_distances`, so there is exactly one place it
 can be forgotten.
+
+**Two distinct objects, and only one of them belongs on `LayoutGraph`.** The *edge-level*
+distance model — one weight per existing edge — is `LayoutGraph.distance`, an `nx.Graph`, and it
+stays sparse: that is what the layout methods consume, and `Unweighted`'s hop counts *require*
+non-edges to be absent. The *all-pairs* ideal distances are its shortest-path closure, and they
+belong in `common.ideal_distances`, **not** as a `LayoutGraph` property, even though that would
+read better. Hanging them there invites `twin_graph(...).ideal_distances`, which is precisely
+what one target per dataset forbids. Making the correct thing easy to reach and the wrong thing
+require an import is worth the asymmetry.
+
+The redundancy this leaves is real and cheap: `nx.kamada_kawai_layout` and graphviz `neato` both
+expand to all-pairs internally, so a KK run does the expansion twice. Two Dijkstra sweeps against
+a multi-minute SG-*t*-SNE is not worth coupling the layers to save.
+
+## (5) A metric needs the vertex graph, not just labels
+
+"A metric is a function of the embedded points plus a `Dataset`" is not sufficient. Metrics need
+graph structure (kNN recall, crossings, edge lengths), ideal distances (SNS, Sil\*, ADR) and
+sometimes affinities (weighted recall). Accurately:
+
+> A metric is a function of the embedded points, the `Dataset`, and the **vertex** `LayoutGraph`.
+
+Nothing is lost, because the vertex graph is a pure function of the dataset — it just has to be
+*reachable*, and it must be the un-normalised faithful one rather than whatever the case was laid
+out with.
+
+**Build it as an evaluation context, not as a field on `LayoutResult`.** A bundle of
+`(dataset, vertex_graph, ideal_distances)` constructed once per dataset and threaded through
+`evaluate_layout` shares the expensive parts across every case of that dataset and gives the
+`max_n`-guarded expansion a natural owner. Attaching the vertex graph to each `LayoutResult`
+would duplicate it per case and re-couple the layers. Step 3/7 work; recorded here so it is not
+reinvented.
 
 ## `largest_component()` is not built
 

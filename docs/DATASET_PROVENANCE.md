@@ -96,6 +96,14 @@ non-invertibility above shows does not apply.
 Provenance to record in the manifest: `distance_space="X_scvi"`, `distance_metric="euclidean"`,
 `knn_k=14`, `affinity="umap_connectivities"`.
 
+**Sparsity** is declared as `KNearest(k=14, space="X_scvi")` — shipped sparse, so nothing is
+computed and the edge set must not be touched — and checked: minimum degree is exactly 14, and
+m = 49368 sits inside the implied [35049, 70098]. `X_scvi` is retained as `source_points`, which
+makes the cost of that sparsification measurable: rank ρ 0.7876 against the ambient metric,
+relative stress 1.489, or **0.2102** after the optimal uniform rescaling. The stored edge weights
+agree with ambient distances in `X_scvi` to 3.5e-07, which is the precondition for any of that
+meaning anything.
+
 **Both sides stored is the ideal; derivation is the degraded fallback.** Most datasets ship one
 weight vector and a guess for the other side, and that guess is a modelling assumption however
 well argued. Tabula shipped both, which is why its measured distances can drive a Kamada–Kawai
@@ -174,6 +182,12 @@ commit that closed it.
 Note the contrast with tabula, which is the same kind of object built better: both were derived
 from a point cloud, but tabula persisted the distance matrix *and* the affinities, while digits
 persists only distances and must derive the rest.
+
+**Sparsity** is declared, `KNearest(k=12, space="raw 8x8 pixels")`, and checked: minimum degree
+is exactly 12 and m = 14732 sits inside the implied [10782, 21564]. The raw pixels are retained
+as `source_points` so the cost of that sparsification is measurable — rank ρ 0.6955 between
+graph geodesic and ambient distance, relative stress 1.784, or **0.2027** after the optimal
+uniform rescaling that SNS performs anyway.
 
 ## sbm-er-3modes
 

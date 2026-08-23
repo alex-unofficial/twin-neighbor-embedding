@@ -2,7 +2,8 @@
 
 Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
-**Last updated:** end of session 2 (2026-08-23). Branch `experiment-setup`.
+**Last updated:** end of session 2 (2026-08-23), including the step-2b follow-up. Branch
+`experiment-setup`.
 
 ---
 
@@ -11,7 +12,7 @@ Read `CLAUDE.md` first, then this. Updated at the end of each session.
 | Step | State |
 |---|---|
 | **1. Correctness and conventions groundwork** | **Done** — merged `b220cb8`, `e0428de` |
-| **2. `Dataset` and `LayoutGraph` (§3.4, §3.5)** | **Done** — session 2; plan: [`docs/plans/step2-datasets.md`](plans/step2-datasets.md) |
+| **2. `Dataset` and `LayoutGraph` (§3.4, §3.5)** | **Done** — session 2, plus the step-2b follow-up; plan: [`docs/plans/step2-datasets.md`](plans/step2-datasets.md) |
 | **3. `common.py` + `structural.py` — ADR, kNN family, SNS** | **Next** |
 | 4. `visual.py` — NND, NR/VNR, distributions, edge lengths | not started |
 | 5. `crossings.py` — curves, detection, Cr/LWCr, detour | not started |
@@ -60,6 +61,23 @@ eleven commits; 268 tests (was 94), all eight `paper_figures` functions still re
 - **`twin/report.py`** — `python -m twin.report`; output committed as `docs/DATASET_REPORT.md`.
 - **Bug §1.6 closed.** Digits stops being fed distances as if they were affinities.
 
+### The step-2b follow-up
+
+Five commits after the step-2 merge, prompted by four caveats raised on review.
+
+- **`LayoutGraph.combinatorial`** — the third form. A `LayoutGraph` is one support carrying up
+  to three valuations, derived structurally rather than by thresholding the affinity.
+- **Yifan Hu is a combinatorial method**, not a distance one, and the graphviz plumbing was
+  inverted: `nx_pydot` writes `weight=`, which graphviz reads as a spring strength. Step 2's
+  `expects="distance"` therefore had both graphviz methods reading *far apart means pull
+  harder*. sfdp now gets a graph with no edge attributes; neato gets `len=`. The `expects`
+  conformance test structurally cannot catch this, so three tests cover the plumbing directly.
+- **Sparsity is declared and checked** — `KNearest` on the `Dataset`, verified against the graph
+  (minimum degree at least *k*, nk/2 ≤ m ≤ nk; both hold exactly). The report gains a Sparsity
+  section including the raw stored-matrix nnz.
+- **The cost of sparsification is measured** for the two point-cloud datasets, whose source
+  clouds are retained but never used to lay out or score.
+
 ### What the measurements said, where they contradicted the plan
 
 - **Tabula's two stored sides do not disagree.** Global Spearman is −0.236 and per-row −0.782,
@@ -73,6 +91,12 @@ eleven commits; 268 tests (was 94), all eight `paper_figures` functions still re
   the same configuration* moves it 0.46–0.83 — so the correction moves the layout less than seed
   noise does, and Procrustes cannot show that the bug mattered. Re-measure in quality terms
   (kNN recall, ADR) once step 3 lands.
+- **Sparsification costs less than it appears to, for SNS specifically.** Raw relative stress
+  between graph geodesics and the ambient metric is ~1.8 on digits and ~1.5 on tabula, which
+  would be alarming to quote; after the optimal uniform rescaling — the same thing SNS's
+  closed-form α\* does — it is ~0.20 for both. Nine tenths of the apparent distortion is a
+  uniform inflation SNS absorbs. What is left is the ordering: rank ρ 0.70 and 0.79. All of it
+  improves monotonically with *k* (digits at k = 5/12/30/60: ρ 0.61 → 0.85).
 - **No dataset in the roster has a coincident vertex pair.** §0.5's zero-ideal-distance concern
   is inert for the current roster; the report has the column to catch a future dataset that
   reintroduces it.
@@ -103,7 +127,7 @@ eleven commits; 268 tests (was 94), all eight `paper_figures` functions still re
 ## Health check
 
 ```bash
-venv/bin/python -m pytest -q     # 268 passing
+venv/bin/python -m pytest -q     # 299 passing
 python -m twin.report            # the roster table; regenerates docs/DATASET_REPORT.md with -o
 git status --short               # clean; if notebooks appear modified, the filter is unset
 ```
@@ -120,6 +144,8 @@ All eight render as of the session-2 merge.
 |---|---|
 | Ideal distances have a single owner but no consumer yet: `common.ideal_distances` and its `max_n` guard do not exist. Take them from `vertex_graph(dataset).distance` | **step 3** |
 | The `exp_decay` vs `exp_decay_sq` affinity rule is selectable but has never been compared. Spec §3.4 asks for one comparison on digits | **step 3**, alongside kNN recall |
+| A metric needs the **vertex** `LayoutGraph`, not just points + `Dataset`. Build it as an evaluation context per dataset, not as a field on `LayoutResult` — `DECISIONS.md` (5) | **step 3** |
+| SNS on a Kamada-Kawai layout is close to a measure of optimiser success, since KK optimises approximately what SNS measures. Report it beside metrics that are not KK's objective | **step 3**, and the write-up |
 | Re-measure the §1.6 fix in quality terms — Procrustes said the layout *changed*, not that it improved | **step 3** |
 | Memory runs need **one case per process**: `peak_mem_mb` is a delta from the entry baseline, and glibc does not always return freed memory, so later cases in a batch measure from a higher floor | step 7 |
 | A persisted layout must store the dataset's registry **name and params**, never the `Dataset` object | step 7 |
@@ -139,6 +165,10 @@ All eight render as of the session-2 merge.
 - **A `Dataset` is never laid out and a `LayoutGraph` is never labelled.** If a metric or figure
   needs a special case to score $A_E$ or $A_{tne}$ against the dataset's labels, the layering has
   been broken somewhere — `vertex_and_edge_points` returns points in the **original** indexing.
+- **Declaring which form a method reads is not the same as it arriving intact.** The graphviz
+  regression passed the `expects` conformance test the whole time, because the test checks which
+  form was *read*, not what the backend took it to mean. Any new backend that serialises its
+  input needs its plumbing tested separately.
 - **Pin derived data before refactoring it.** The step-2 pins (`tests/fixtures/step2_labels.npz`
   plus the digest table in `tests/test_step2_characterisation.py`) are what made the label and
   colour move provably behaviour-preserving. Regenerating the fixture without updating the
