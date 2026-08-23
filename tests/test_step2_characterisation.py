@@ -27,6 +27,7 @@ import pytest
 
 import twin.dataset as legacy
 from twin.config import REAL_WORLD_DIR
+from twin.datasets import load_dataset
 
 FIXTURE = Path(__file__).parent / "fixtures" / "step2_labels.npz"
 TABULA = REAL_WORLD_DIR / "tabula-liver.mat"
@@ -147,7 +148,7 @@ def test_football_label_arrays_match_the_pins(pins):
     """
     from twin.paper_figures import football_label_arrays
 
-    got = football_label_arrays(legacy.football_2023())
+    got = football_label_arrays(load_dataset("football_2023"))
 
     np.testing.assert_array_equal(got["vertex_labels"], pins["football_conference"])
     np.testing.assert_array_equal(got["stand_labels"], pins["football_division"])
@@ -189,7 +190,7 @@ def test_tabula_label_arrays_match_the_pins(pins):
     """Guards the move of the second ad-hoc ``loadmat`` into the dataset definition."""
     from twin.paper_figures import tabula_label_arrays
 
-    got = tabula_label_arrays(legacy.tabula("liver"), "liver")
+    got = tabula_label_arrays(load_dataset("tabula"))
 
     np.testing.assert_array_equal(got["vertex_labels"], pins["tabula_cell_type"])
     np.testing.assert_array_equal(got["edge_labels"], pins["tabula_edge_labels"])

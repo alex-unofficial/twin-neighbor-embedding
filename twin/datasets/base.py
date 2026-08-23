@@ -257,6 +257,21 @@ class DatasetStyle:
             base[[i, j]] = base[[j, i]]
         return base
 
+    def hue_shade_palette(self, n_hues: int) -> np.ndarray:
+        """``(n_hues * n_shades + n_shades, 3)``: each hue at each shade, then the noise rows.
+
+        Indexed by :meth:`shade_index`. The trailing noise rows sit at the end so that a
+        ``noise_label`` of ``-1`` reaches them by wrapping round, which is what the football
+        figure's ``3*l + 1 + s`` arithmetic relies on.
+        """
+        base = self.hue_table(n_hues)
+        shaded = [np.clip(colour * factor, 0, 1) for colour in base for factor in self.shade_factors]
+        return np.vstack(shaded + len(self.shade_factors) * [np.array(self.noise_color, float)])
+
+    def shade_index(self, hue_code: int, shade_code: int, min_shade: int = -1) -> int:
+        """Row of :meth:`hue_shade_palette` for one (hue, ordered shade) pair."""
+        return len(self.shade_factors) * int(hue_code) + int(shade_code) - min_shade
+
 
 # --------------------------------------------------------------------------- #
 #                                  Dataset                                     #

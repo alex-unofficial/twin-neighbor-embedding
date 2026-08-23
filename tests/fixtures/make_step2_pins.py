@@ -5,8 +5,8 @@ Run from the repository root with the project interpreter::
     venv/bin/python tests/fixtures/make_step2_pins.py
 
 The arrays come from ``twin.paper_figures.football_label_arrays`` /
-``tabula_label_arrays``, which were lifted **verbatim** out of the figure functions and verified
-bit-for-bit against the pre-lift code. Regenerating this file is therefore only ever correct in
+``tabula_label_arrays``, which read them off the `Dataset`. They were originally lifted
+**verbatim** out of the figure functions and verified bit-for-bit against the pre-lift code. Regenerating this file is therefore only ever correct in
 a commit that *intends* to change the derived labels or colours and says so (CLAUDE.md, "Commit
 granularity"). The point of the fixture is that the restructure in spec §3.4 cannot move these
 numbers without a test failing.
@@ -17,18 +17,15 @@ from pathlib import Path
 import numpy as np
 from sklearn.datasets import load_digits
 
-import twin.dataset as legacy
+from twin.datasets import load_dataset
 from twin.paper_figures import football_label_arrays, tabula_label_arrays
 
 OUT = Path(__file__).with_name("step2_labels.npz")
 
 
 def build() -> dict[str, np.ndarray]:
-    football = legacy.football_2023()
-    fb = football_label_arrays(football)
-
-    tabula = legacy.tabula("liver")
-    tb = tabula_label_arrays(tabula, "liver")
+    fb = football_label_arrays(load_dataset("football_2023"))
+    tb = tabula_label_arrays(load_dataset("tabula"))
 
     arrays = {
         # --- football_2023: conference / division, and the 3*l+1+s palette -------------
