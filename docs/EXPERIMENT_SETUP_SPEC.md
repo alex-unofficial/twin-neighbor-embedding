@@ -214,20 +214,20 @@ logging still works following a silent embed.
 
 - **`mnist` is not MNIST.** It is `sklearn.datasets.load_digits()` — 1797 samples of 8×8 digits,
   giving $n=1797$, $m=14732$ at `n_neighbors=12`. It is neither large nor MNIST. **Rename it
-  `digits`** throughout the code, and describe it accurately. The `weight_kind="distance"`
-  finding is confirmed: weights range 5.3–37.8.
+  `digits`** throughout the code, and describe it accurately. The stored side is the **distance**
+  side, confirmed: weights range 5.3–37.8, so the affinity form is the derived one.
 - **Two different karates exist.** `batch_registries["graph"]["karate_club"]` is
   `nx.karate_club_graph` with weights 1–7 (Zachary interaction strengths); `dataset.karate()`
   reads `karate.mat` and is unweighted. The §3.4 table's "karate → `none`" is true of the
   unregistered one only.
-- **football_2023 is effectively unweighted** — 732 of 735 edges weigh 1, three weigh 2. Set
-  `weight_kind="none"`. This closes the corresponding question in §8.
+- **football_2023 is effectively unweighted** — 732 of 735 edges weigh 1, three weigh 2. Declare
+  it `Unweighted()` on both sides. This closes the corresponding question in §8.
 - **Every currently registered dataset is connected**, single component, no self-loops. §4.4's
   policy machinery is inert until the roster changes.
 - `polblogs`, `sbm-er-3modes`, `lfr` and `homer` exist in `dataset.py` but are **not** in
   `batch_registries`, so they are unreachable from the batch path. `sbm-er-3modes` carries a
-  single constant weight $8.691\times10^{-5}$ on all edges — a case the weight-kind table does
-  not cover; treat a constant weight as `none`.
+  single constant weight $8.691\times10^{-5}$ on all edges — a case the kind table does not cover;
+  treat a constant weight as `Unweighted()`.
 - `twin/features.py` is dead cookiecutter scaffolding. Delete it.
 
 ### Decisions on the flagged questions
@@ -239,10 +239,9 @@ $d = -\log(w/(w_{\max}(1+\varepsilon)))$. **Do not implement that.** It patches 
 modelling problem: `affinity` was covering two situations that need different treatment, and the
 clamp is only ever right for a third situation that no transform can actually fix.
 
-Each `weight_kind` must name a model under which the distance form is *derived*, not merely
-monotone:
+Each kind must name a model under which the distance form is *derived*, not merely monotone:
 
-| `weight_kind` | What $w$ is | $d$ | Justification |
+| kind | What $w$ is | $d$ | Justification |
 |---|---|---|---|
 | `probability` | $P(\text{same event / transition})$ | $-\log w$ | surprisal; $d=0$ at $w=1$ is **correct**, not a defect |
 | `kernel` | evaluation of a similarity kernel | $-\log(w/w_{\max})$ | recovers the latent metric; $d=0$ means genuinely coincident |
@@ -250,8 +249,14 @@ monotone:
 | `distance` | a metric | identity | — |
 | `none` | indicator | hop count | — |
 
-`count` becomes an alias of `strength`. `affinity` is **retired as a `weight_kind`** — it named a
-property of the sign of the relationship, not a model, which is exactly why it needed a clamp.
+`count` becomes an alias of `strength`. `affinity` is **retired as a kind** — it named a property
+of the sign of the relationship, not a model, which is exactly why it needed a clamp.
+
+> **Superseded in form, not in substance — see the §3.4/§3.5 rewrite entry below.** This
+> vocabulary survives as the `meaning` of a **stored** source; what changed is that it no longer
+> doubles as a prescription for deriving the other side, because a dataset with both sides stored
+> needs no derivation at all. `adaptive_kernel` was added for the case this table cannot express:
+> a kernel with per-point parameters, which is globally non-invertible.
 
 Two consequences worth stating in the code and in the write-up:
 
@@ -284,9 +289,9 @@ report, the fraction of **vertex pairs** at $d=0$ under the chosen transform —
 fraction of edges at $w_{\max}$. If that fraction is small the question is academic; if it is
 large, it is evidence about the data rather than a reason to reach for a clamp.
 
-**2. Karate — adopt the split.** Register `karate` as `dataset.karate()` (the `.mat`,
-unweighted, `weight_kind="none"`) and register `nx.karate_club_graph` separately as
-`karate_weighted` with `weight_kind="count"`. Its 1–7 interaction strengths make it the
+**2. Karate — adopt the split.** Register `karate` as `dataset.karate()` (the `.mat`, unweighted,
+`Unweighted()` on both sides) and register `nx.karate_club_graph` separately as `karate_weighted`
+with a stored affinity side, `Stored(meaning="strength")`. Its 1–7 interaction strengths make it the
 genuinely count-weighted small test case that football turned out not to be, which is worth
 having now that the `count` path exists.
 
@@ -333,6 +338,42 @@ restrict the headline composite to classes above a stated minimum size.
 
 **11. Add `pytest` and `pyarrow` to `pyproject.toml`** in the first session — steps 3–6 are all
 "+ tests" and step 7 writes parquet.
+
+**12. §1.8 resolved upstream.** `sgtsnepi` 0.7 fixes the descriptor bug; `pyproject.toml` pins
+`sgtsnepi>=0.7` and the workaround has been removed. Layouts are bit-identical to 0.5.1, so the
+upgrade is numerically neutral. Details in `docs/DECISIONS.md`.
+
+### §3.4 and §3.5 rewritten — the two-source model
+
+Those sections have been **rewritten in place** rather than corrected here, because the change is
+structural and a reader should not have to reconstruct the design from a long correction. What
+changed, and why:
+
+1. **`Dataset` and `LayoutGraph` are separate layers.** A dataset is a *source of truth plus
+   labels plus drawing instructions*; a layout graph is *an affinity form plus a distance form
+   plus a way to derive vertex/edge points*. The original §3.4 fused them, which left no answer to
+   "what are $A_E$'s labels?" — its nodes are edges, so a length-$n$ label vector does not apply.
+   Under the split, labels never reach the layout layer and are applied afterwards, because
+   `vertex_and_edge_points` returns points in the **original** indexing. A metric or figure is
+   then a function of the embedded points plus a `Dataset`.
+2. **`weight_kind` is replaced by declared stored sources.** It was doing two jobs — saying what
+   stored weights mean, and prescribing how to derive the other side — which coincide only for a
+   dataset that has one weight vector and must guess the other. Tabula has both `A` and `D`, so it
+   satisfies the interface directly and no derivation arises. `Dataset` keeps the first job; the
+   `vertex_graph` mapping does the second.
+3. **The representations are mappings, not owned objects.** `vertex_graph` is
+   `Dataset → LayoutGraph`; `edge_graph` and `twin_graph` are `LayoutGraph → LayoutGraph` off the
+   vertex graph, which matches the algebra and lets the derivation chain be read off a `parent`
+   link instead of maintained as a string. It also builds the incidence matrix once instead of
+   three times.
+4. **Layout methods ask; the runner does not convert.** Every `LayoutGraph` exposes both forms.
+   This is what lets tabula's *measured* distances drive a Kamada–Kawai vertex layout, which the
+   old "convert once at the boundary" rule could not express.
+5. **`check_weight_consistency` is new**, and is the hazard the change introduces: two
+   independently stored sides can disagree about which pairs are close, and the layout optimises
+   against one while SNS and Sil\* score against the other.
+
+§3.1, §3.7, §2.5, §4.6, §7 step 2 and the §8 table were updated to match.
 
 ### Erratum in §3.3
 
@@ -725,11 +766,11 @@ routines in the tree.
 
 ```python
 METRIC_REGISTRY = {
-    "adr":            MetricSpec(fn=adjacency_distance_ratio, kind="structural", needs=("G",)),
+    "adr":            MetricSpec(fn=adjacency_distance_ratio, kind="structural", needs=("dataset",)),
     "knn_recall":     MetricSpec(..., sweeps=("k",)),
     ...
-    "silhouette":     MetricSpec(..., kind="label",  needs=("labels",)),
-    "lwcr":           MetricSpec(..., kind="crossing", needs=("G", "V", "E"), variants=("straight","curved")),
+    "silhouette":     MetricSpec(..., kind="label",  needs=("dataset", "labels")),
+    "lwcr":           MetricSpec(..., kind="crossing", needs=("dataset", "V", "E"), variants=("straight","curved")),
     ...
 }
 ```
@@ -754,17 +795,27 @@ class LayoutResult:
     V: np.ndarray          # (n, d)  vertex layout — canonical orientation
     E: np.ndarray | None   # (m, d)  edge-point layout
     slopes: np.ndarray | None
-    G: nx.Graph
+    dataset: Dataset       # carries the graph, the labels and the style (§3.4)
     representation: str
     embedding: str
     params: dict
     seed: int | None
-    runtime_s: float
+    point_provenance: dict[str, Literal["primary", "derived"]]   # §0.5 decision 5
+    runtime_s: float           # embed only
+    representation_s: float    # matrix construction only
+    n_points: int              # n for A_V, m for A_E, n+m for A_tne
     peak_mem_mb: float | None
+
+    @property
+    def G(self) -> nx.Graph: return self.dataset.graph
 ```
 
 `graph_embedding` currently returns `(d, n)` arrays. **Transpose once, here**, and never again
 (bug 1.3). Add a `from_raw()` constructor that does the transpose and asserts shapes.
+
+It holds the **`Dataset`**, not a bare graph, because labels, style and weight provenance all
+have to reach the metric and reporting layers, and a layout of $A_E$ or $A_{tne}$ has no labels of
+its own (§3.4). `G` stays available as a property so existing shape assertions read unchanged.
 
 ### 3.2 Instrumentation
 
@@ -812,7 +863,32 @@ thesis needs to render an arbitrary layout of an arbitrary dataset. All
 three are currently blocked by dataset knowledge being scattered across `dataset.py`,
 `metadata.py`, `paper_figures.py` and the `mode=` parameters of two layout classes.
 
-Introduce `twin/datasets/` with a single object per dataset:
+#### The layering: `Dataset` and `LayoutGraph`
+
+The abstraction is **not** "a dataset is a graph plus affinities plus distances". Splitting it in
+two is what makes $A_E$ and $A_{tne}$ evaluable at all:
+
+```
+Dataset                        # stored information only. Owns identity. Never laid out.
+    affinity / distance        #   whichever sides are STORED, with what they mean
+    label_sets                 #   per ORIGINAL vertex
+    style, params, description
+
+        │  vertex_graph(dataset, normalize=False)      ← derivation happens HERE
+        ▼
+LayoutGraph(A_V)               # computational layer. Laid out. Never labelled.
+    affinity -> sp.sparray     #   SG-t-SNE, spectral, FR, ForceAtlas2 consume this
+    distance -> nx.Graph       #   Kamada-Kawai, neato, Yifan Hu consume this
+    incidence                  #   what the two derived graphs consume
+    vertex_and_edge_points(X) -> (V, E, slopes)   ← back into ORIGINAL indexing
+    n_points, point_provenance, parent
+
+        │  edge_graph(vertex_graph)        twin_graph(vertex_graph, alpha, k)
+        ▼                                  ▼
+LayoutGraph(A_E)                           LayoutGraph(A_tne)
+```
+
+Named `LayoutGraph` rather than `Graph` only so it does not read as `nx.Graph`, which it contains.
 
 ```python
 @dataclass
@@ -820,41 +896,87 @@ class Dataset:
     name: str
     graph: nx.Graph
 
-    # --- weight semantics (fixes bug 1.6) ---
-    weight_kind: Literal["none", "affinity", "distance", "count", "probability"]
-    affinity_transform: Callable | None = None   # native weight -> affinity
-    distance_transform: Callable | None = None   # native weight -> distance
+    # --- which sides are STORED, and what the numbers mean ---
+    affinity: Stored | StoredMatrix | Unweighted | None
+    distance: Stored | StoredMatrix | Unweighted | None
 
-    # --- labels ---
     label_sets: dict[str, LabelSet] = field(default_factory=dict)
-
-    # --- presentation ---
     style: DatasetStyle | None = None
-
     params: dict = field(default_factory=dict)   # generator params, for the manifest
+    description: str = ""
 
-    def as_affinity(self) -> nx.Graph | sp.spmatrix: ...
-    def as_distance(self) -> nx.Graph | sp.spmatrix: ...
     def labels(self, name: str) -> np.ndarray: ...
     def is_connected(self) -> bool: ...
     def largest_component(self) -> "Dataset": ...
 ```
 
-**Weight semantics.** `weight_kind` is declared per dataset, once. Layout wrappers and metrics
-then *request what they need* — `as_affinity()` for SG-t-SNE, spectral, FR, ForceAtlas2;
-`as_distance()` for Kamada–Kawai, neato, and `common.ideal_distances` — instead of guessing or
-exposing a `mode=` flag. Delete the `mode` parameters from `KamadaKawaiLayout` and
-`NeatoLayout`; that decision no longer lives there.
+**`Dataset` holds no derived information.** It declares which sides are *stored*; the
+`Dataset → LayoutGraph` mapping that builds the vertex graph is the single place a missing side
+is derived. **`edge_graph` and `twin_graph` are `LayoutGraph → LayoutGraph`**, built from the
+vertex graph's affinity form — which matches the algebra, since $A_E = B^{\top}B$ and
+$A_{tne} = \sum_k \alpha^k \tilde A^k$ are both functions of the affinity incidence matrix. Two
+consequences worth having:
 
-The canonical conversions, keyed by `weight_kind`:
+- **The derivation chain is structural, not a maintained string.** Walking `parent` yields
+  `Dataset → A_V → A_tne → generic distance`, which is what §3.5 requires to be recorded.
+- **The incidence matrix is built once.** All three representations construct their own today;
+  the derived graphs now reuse the vertex graph's.
 
-| `weight_kind` | `as_affinity` | `as_distance` | Datasets |
+**Why this resolves the $A_E$ / $A_{tne}$ label problem.** A derived graph's *nodes* are not the
+original's vertices — $A_E$'s are edges, $A_{tne}$'s are edges and vertices — so labels cannot
+ride along, and a length-$n$ label vector against a length-$m$ node set is a live bug. They do not
+need to ride along: `vertex_and_edge_points` returns points in the **original** indexing, so the
+dataset's labels apply after layout. Labels never touch the layout layer. Therefore:
+
+> **A metric or a figure is a function of the embedded vertex/edge points plus a `Dataset`.**
+
+**`Dataset` does not own the representations.** They are the *method*; it is the *data*. Keeping
+them mappings keeps two open sets independent: adding a dataset touches no representation, and
+adding a representation touches no dataset. Ownership would also force `Dataset` to carry
+`alpha`, `k` and `normalize`, which are method knobs, not data properties. Caching an expensive
+$A_{tne}$ across a λ sweep belongs in the runner.
+
+#### Stored sources, and what they mean
+
+An earlier draft of this section used a single `weight_kind`. That field was doing two jobs —
+describing what the stored weights *mean*, and prescribing how to derive the other side. Those
+coincide only when a dataset has one weight vector and must guess the other. `Dataset` keeps the
+first job; the mapping does the second.
+
+```python
+Stored(weight="weight", meaning=...)   # the graph's own edge weights
+StoredMatrix(key, meaning=...)         # a separate stored matrix on the same edge set
+Unweighted()                           # combinatorial, both sides
+```
+
+| Dataset | affinity | distance |
+|---|---|---|
+| tabula | `StoredMatrix("A", meaning="adaptive_kernel")` | `StoredMatrix("D")` |
+| digits (was `mnist`, see §0.5) | — | `Stored(meaning="distance")` |
+| karate_weighted (`nx.karate_club_graph`) | `Stored(meaning="strength")` | — |
+| karate (`.mat`), football_2023, sbm-er-3modes, ring/tree of cliques, small_world, barabasi_albert | `Unweighted()` | `Unweighted()` |
+
+Derivation rules, applied by `vertex_graph` to whichever side is absent:
+
+| stored | `meaning` | derives | rule |
 |---|---|---|---|
-| `none` | 1 if edge exists, else 0 | 1 if edge exists, else **absent** | karate (`.mat`), football_2023, sbm-er-3modes, ring/tree of cliques, small_world, barabasi_albert |
-| `kernel` | identity | $-\log(w/w_{\max})$ | tabula, *if* its weights are kernel evaluations — see §0.5 |
-| `strength` (alias `count`) | identity | $1/w$ | karate_weighted (`nx.karate_club_graph`); tabula *if* its weights are normalised magnitudes |
-| `distance` | $\exp(-d/d_{\text{scale}})$ | identity | **digits** (was `mnist`, see §0.5) |
-| `probability` | identity | $-\log w$ | (row-stochastic inputs) |
+| affinity | `strength` (alias `count`) | distance | $1/w$ — resistance model: weights compose in series like conductances |
+| affinity | `kernel` | distance | $-\log(w/w_{\max})$ — recovers the latent metric |
+| affinity | `probability` | distance | $-\log w$ — surprisal |
+| affinity | `adaptive_kernel` | distance | **raises** — see below |
+| distance | — | affinity | $\exp(-d/d_{\text{scale}})$, $d_{\text{scale}} = \mathrm{median}(d)$ over edges |
+
+Both sides absent is a construction error — there is nothing to derive from. `Unweighted` on both
+sides is the combinatorial case, not a derivation.
+
+**`adaptive_kernel` is a declared refusal, not a gap.** A per-point-adaptive kernel — UMAP's
+$\exp(-(d-\rho_i)/\sigma_i)$ is the case in hand — is **globally non-invertible**: $\rho_i$ and
+$\sigma_i$ are per-vertex and are not stored, so no single transform of $w$ recovers $d$. A
+dataset declaring `adaptive_kernel` must supply a stored distance side; if it does not, the
+mapping raises rather than applying a transform that does not apply. This is what stops tabula
+silently falling back to $-\log(w/w_{\max})$ if its `D` matrix is ever dropped. **[THESIS EDIT]** —
+thesis §3.1.1 lists $1/w$, $1-w$ and $-\log w$ as interchangeable options; they are all *global*,
+and for an adaptively-normalised affinity no global transform exists. That belongs in the prose.
 
 **`none` is combinatorial, and the distance case matters.** Affinity is the 0/1 indicator.
 Distance is 1 on existing edges and **infinite on non-edges** — which in implementation means
@@ -867,15 +989,41 @@ zeros. Weights that compose in series like conductances give $1/w$ a derivation,
 surprisal gives $-\log$ one. See §0.5 for why `affinity` was retired as a kind and why zero
 ideal distances are not, by themselves, a defect.
 
-*Check before relying on this:* football_2023 weights are games played, and most team pairs meet
-once. If the weight distribution is almost all 1s, the dataset is effectively `none` and the
-whole weighted treatment is moot. The connectivity report (below) must print the weight
-distribution per dataset so this is settled by inspection rather than assumption.
+*Settled by inspection, not assumption:* football_2023's weights are games played, and 732 of its
+735 edges weigh 1. It is effectively unweighted and is declared so. The connectivity report
+(below) prints the weight distribution per dataset, which is how this was answered.
 
-**`distance` → affinity: use the exponential $w = \exp(-d/d_{\text{scale}})$**, the exact
-inverse of $d = -\log(w/w_{\max})$. Three reasons, in increasing order of importance:
+#### Both sides stored: the consistency hazard
 
-1. *Round-trip consistency.* `as_affinity` and `as_distance` become exact inverses, so the
+When the two sides come from independent sources, nothing forces them to agree about which pairs
+are close. The failure is silent and severe: the layout optimises against the affinity while SNS
+and Sil\* score against the distance, so a method could look good or bad for reasons unconnected
+to the method.
+
+```python
+def check_weight_consistency(dataset) -> WeightConsistencyReport
+```
+
+Runs whenever both sides are stored. Two statistics:
+
+- **Global Spearman** over shared edges — expected strongly negative but *not* $-1$, since
+  $\rho_i$ and $\sigma_i$ vary by row.
+- **Median per-row Spearman** — the sharp test. Within a row, UMAP membership is a strictly
+  decreasing function of distance, so this should be $-1$.
+
+One caveat to handle rather than paper over: the stored `A` is the *fuzzy-union symmetrised*
+membership, so `A[i,j]` mixes in row $j$'s $\rho_j,\sigma_j$ and within-row monotonicity is not
+guaranteed a priori. **Measure it and pin the observed value**; if it is not exactly $-1$, record
+symmetrisation as the cause rather than treating it as a data fault. A materially weaker
+correlation (worse than $\approx -0.9$) is the genuine inconsistency signal. Do not hardcode $-1$
+into a test that later gets "fixed" by loosening it.
+
+#### Deriving affinity from distance
+
+**Use the exponential $w = \exp(-d/d_{\text{scale}})$**, the exact inverse of
+$d = -\log(w/w_{\max})$. Three reasons, in increasing order of importance:
+
+1. *Round-trip consistency.* The two forms on the vertex graph become exact inverses, so the
    affinities SG-*t*-SNE is given and the ideal distances SNS and Sil\* measure against describe
    the **same** geometry. With a Gaussian forward and a log reverse, the round trip returns
    $d^2/\sigma^2$ — the layout method and the metric would be working from different geometries,
@@ -902,17 +1050,18 @@ $d_{\text{scale}} = \mathrm{median}(d)$ over existing edges (robust to the few l
 $k$-NN graph produces at cluster boundaries), so the median edge lands at affinity
 $e^{-1}\approx 0.37$. Record $d_{\text{scale}}$ in the manifest.
 
-Keep $\exp(-d^2/d_{\text{scale}}^2)$ available as a selectable transform — the per-dataset
-`distance_transform` hook already allows it — and run the comparison **once** on mnist to
-confirm the choice empirically rather than leaving it as an assumption. That is a paragraph in
-§5, not a research project.
+Keep $\exp(-d^2/d_{\text{scale}}^2)$ available as a selectable rule (`exp_decay_sq`) and run the
+comparison **once** on digits, to confirm the choice empirically rather than leaving it as an
+assumption. That is a paragraph in §5, not a research project.
 
-Note that this resolves the "weight transform" open decision from §9 in a better way than
-picking one global transform: **the transform is determined by what the weight means, and the
-meaning is a property of the dataset.** Thesis §3.1.1 currently lists $1/w$, $1-w$, $-\log w$
-as interchangeable options without committing to one. **[THESIS EDIT]** — implement the
-per-dataset model above rather than a single global transform. The reporting layer should be
-able to emit a table of `weight_kind` and chosen transform per dataset.
+This resolves the "weight transform" open decision from §9 better than picking one global
+transform, and better than a single `weight_kind` would: **a stored side needs no transform at
+all, and a derived side gets one determined by what the stored weights mean.** "Both stored" is
+the ideal; derivation is the degraded fallback for datasets that shipped only one side. Thesis
+§3.1.1 currently lists $1/w$, $1-w$, $-\log w$ as interchangeable options without committing to
+one. **[THESIS EDIT]** — implement the model above rather than a single global transform. The
+reporting layer should emit, per dataset, which sides are stored, the rule used for any derived
+side, and the resulting derivation chain.
 
 **Labels.** A `LabelSet` carries the vector plus how it was derived:
 
@@ -923,28 +1072,50 @@ class LabelSet:
     values: np.ndarray                  # per-vertex, integer-coded
     display_names: dict[int, str]
     derivation: str                     # "ground truth" | "generator" | "derived:<expr>" | "detected:leiden"
-    role: Literal["primary", "sub", "auxiliary"] = "primary"
-    parent: str | None = None           # for role="sub": the label set it subdivides
+
+    # --- two roles, deliberately separate: see below ---
+    scoring_role: Literal["primary", "sub", "auxiliary"] = "primary"
+    display_role: Literal["hue", "shade", "none"] = "hue"
+
+    parent: str | None = None           # the label set this one subdivides
     ordered: bool = False               # e.g. West < None < East
     noise_label: int | None = None      # e.g. FBS independents -> -1
 ```
 
-**Label sets are hierarchical, and the hierarchy drives both scoring and colour.** football_2023
-is the worked example: `conference` is the **primary** label, and the East/West division
-(extracted from the `conference_standing` strings) is a **sub**-label that subdivides it —
-which is exactly why the existing figures pick hue from the conference and only vary *shade*
-by division. Encode that relationship in the data rather than re-deriving it in each figure:
+**Label sets are hierarchical, and the hierarchy drives both scoring and colour — but not always
+in the same direction.** football_2023 is the first worked example: `conference` is the primary
+scoring label *and* supplies hue, while the East/West division (from the `conference_standing`
+strings) subdivides it and supplies shade. That is why the existing figures pick hue from the
+conference and vary only *shade* by division.
+
+Tabula **inverts** the arrangement: the fine-grained `cell_ontology_class` (13 classes) is what
+the method claims to resolve and is therefore the scoring primary, while the coarse `compartment`
+(4 classes) is its parent and supplies hue. A single `role` field cannot express both cases, which
+is why scoring and display are separate fields:
 
 ```python
-label_sets = {
-    "conference": LabelSet(role="primary", noise_label=-1),                    # FBS independents
-    "division":   LabelSet(role="sub", parent="conference", ordered=True),     # West / None / East
-}
+# football_2023
+"conference": LabelSet(scoring_role="primary", display_role="hue", noise_label=-1)
+"division":   LabelSet(scoring_role="sub", display_role="shade",
+                       parent="conference", ordered=True)
+
+# tabula
+"compartment":         LabelSet(scoring_role="sub", display_role="hue")
+"cell_ontology_class": LabelSet(scoring_role="primary", display_role="shade",
+                                parent="compartment")
+"donor":  LabelSet(scoring_role="auxiliary", display_role="none")   # batch covariate
+"method": LabelSet(scoring_role="auxiliary", display_role="none")   # batch covariate
 ```
 
-`DatasetStyle` then derives colours by one rule everywhere — hue from the primary label, shade
-from the ordered sub-label, noise colour for `noise_label` — instead of the hand-built
-`3*l + 1 + s` index arithmetic currently repeated in `football_figure` and `football_curves`.
+**Auxiliary label sets are scored deliberately, and a low score is the good outcome.** `donor`
+and `method` are technical covariates; a layout that separates cells by donor rather than by cell
+type is displaying an artifact. Reporting their silhouette alongside the primary one is how that
+becomes visible instead of assumed away.
+
+`DatasetStyle` then derives colours by one rule everywhere — hue from the `display_role="hue"`
+set, shade from the ordered `display_role="shade"` set, noise colour for `noise_label` — instead
+of the hand-built `3*l + 1 + s` index arithmetic currently repeated in `football_figure` and
+`football_curves`.
 
 For the **metrics**, score on the primary label by default. But also compute the label metrics
 on the **composite** `(conference, division)` label, because that is a direct test of a claim
@@ -953,11 +1124,15 @@ silhouette or accuracy score that improves on the composite label while the prim
 holds steady is evidence *for* that claim; a composite score that does not move says the
 sub-structure is not actually resolved. Right now nothing in the evaluation would detect either.
 Add `composite_of: tuple[str, ...]` to the label registry so this is declared, not improvised.
+Guard it per §0.5 decision 9 — report class count and minimum/median class size alongside the
+score, since a flat composite may be class-size collapse rather than absent substructure.
 
 Three sources, all currently handled inconsistently:
 
-- **Ground truth from file** — `football_2023["conference"]`, `mnist["digit"]`, tabula cell
-  types. Move out of `metadata.py` into the dataset definition.
+- **Ground truth from file** — `football_2023["conference"]`, `digits["digit"]`, and tabula's
+  `cell_ontology_class` / `compartment` / `donor` / `method`, which are present in
+  `tabula-liver.mat` and currently loaded by a second ad-hoc `loadmat` inside a figure. Move all
+  of it out of `metadata.py` and out of `paper_figures.py` into the dataset definition.
 - **Known by construction** — ring/tree of cliques, SBM blocks, Barabási–Albert epoch. Have the
   generators *return* labels rather than reconstructing them afterwards; the clique index of a
   vertex in `ring_of_cliques(n, k)` is `i // k` and should not be re-derived by eye.
@@ -981,75 +1156,96 @@ where it does not. Design accordingly:
 - Adding a dataset means adding **one file** under `twin/datasets/` and one registry line.
   Nothing in the metric layer, batch layer, plotting layer or reporting layer may branch on a
   dataset name — no `if name == "football"` anywhere.
-- Every dataset-specific behaviour must be reachable through the `Dataset` object: weight
-  semantics, labels and their hierarchy, style, and generator parameters.
+- Every dataset-specific behaviour must be reachable through the `Dataset` object: stored weight
+  sources and their meanings, labels and their hierarchy, style, and generator parameters.
 - The registry entry is a **factory**, so parameterised generators
   (`("small_world", {"n": 150, ...})`) and file-backed datasets share one interface, as they do
   today via `resolve_object_choice`.
-- Keep the mnist rationale in the dataset definition itself as a `description` field: it is
+- **Prefer storing both sides.** A dataset that ships both an affinity and a distance needs no
+  transform and no guess; one that ships a single side forces a derivation that is, at best, a
+  modelling assumption. Any future point-cloud-derived graph should persist the distance matrix it
+  was built from rather than transforming on the fly — tabula already does, and that is why its
+  measured distances can drive a layout.
+- Keep the digits rationale in the dataset definition itself as a `description` field: it is
   retained as a representative **point-cloud-derived $k$-NN network**, present to test whether
   the twin transform improves on *t*-SNE-style point-cloud embeddings. That sentence belongs in
   the thesis's dataset table, and storing it with the dataset means the table can be generated
   rather than written by hand.
 
-**Connectivity report.** Add a one-off script that prints, for every registered dataset: $n$,
-$m$, density, connectivity, component count, largest-component fraction, `weight_kind`, the
-**weight distribution** (min / median / max / number of distinct values), and available label
-sets with their roles. Run it before anything else — the disconnected-graph policy (§4.4) cannot
-be chosen sensibly without knowing which datasets are actually disconnected, the `count`
-treatment of football depends on whether its weights are genuinely varied, and this table
-is itself a reportable artifact.
+**Connectivity report** (`twin/report.py`, `python -m twin.report`). Prints, for every registered
+dataset: $n$, $m$, density, connectivity, component count, largest-component fraction, **mean
+degree** (the λ selection criterion in §4.2 is defined at $k$ = mean degree, so it must be
+computable from this table), which sides are **stored** and the rule and chain for any derived
+side, the **weight distribution** (min / median / max / number of distinct values), available
+label sets with both their roles, the `check_weight_consistency` result where both sides are
+stored, and the **fraction of vertex pairs at $d = 0$** under the resulting distances (§0.5).
 
-### 3.5 What each layout method and representation expects
+Nothing in it may branch on a dataset name; every column comes off the `Dataset` object. Run it
+before anything else — §4.4's disconnected-graph policy cannot be chosen sensibly without knowing
+which datasets are actually disconnected — and commit its output, which is itself a reportable
+artifact and feeds the thesis's experimental-setup section.
 
-Once weight semantics are declared, every consumer must state what it wants and get it. This is
-the other half of the fix for bug §1.6.
+### 3.5 What each layout method consumes
 
-**Representations are built from affinities.** `VertexMatrix`, `EdgeMatrix` and
-`TwinEmbeddingMatrix` all construct their adjacency from $B_w B_w^{\top}$-style products, which
-is affinity algebra: larger entry means stronger coupling. In particular **the TNE matrix
-$A_{tne}$ must be built from an affinity-style incidence matrix** — the polynomial
-$\sum_k \alpha^k \tilde A^k$ accumulates multi-step coupling strength, and feeding it distances
-inverts the meaning of every term and makes the resulting matrix uninterpretable. So all three
-`GraphMatrixMethod` subclasses take `dataset.as_affinity()` as input, always.
+Every `LayoutGraph` exposes **both** forms, so a layout method asks for the side it needs rather
+than being handed one by a runner that guessed. This is the other half of the fix for bug §1.6.
 
-**Layout methods declare what they consume:**
+```python
+def embed(self, layout_graph: LayoutGraph, y0=None) -> np.ndarray:
+    A = layout_graph.affinity     # SG-t-SNE, graph t-SNE, spectral, spring (FR), ForceAtlas2
+    # or
+    G = layout_graph.distance     # Kamada-Kawai, neato, Yifan Hu
+```
+
+The `mode="distance"|"similarity"` parameters are deleted from `KamadaKawaiLayout` and
+`NeatoLayout`. That decision never belonged to the layout class, and it is not a runner decision
+either — it is a property of the graph being laid out.
 
 ```python
 @dataclass
 class EmbeddingSpec:
     cls: type
-    expects: Literal["affinity", "distance"]
+    expects: Literal["affinity", "distance"]   # declared metadata for the manifest and report
     stochastic: bool
     has_lambda: bool
 ```
 
-| Method | `expects` |
-|---|---|
-| SG-*t*-SNE, graph *t*-SNE, spectral, spring (FR), ForceAtlas2 | `affinity` |
-| Kamada–Kawai, neato, Yifan Hu | `distance` |
+`expects` is retained so the report can state what each method consumes and so the driver can
+size a run, but **the runner no longer branches on it** — nothing converts at the boundary.
 
-The runner then applies the conversion **once, at the boundary**, based on the method's
-declaration — and the `mode="distance"|"similarity"` parameters are deleted from
-`KamadaKawaiLayout` and `NeatoLayout`. That decision no longer belongs to the layout class.
+**Derived graphs are built from affinities, or they are nonsense.** $A_E = B^{\top}B$ and
+$A_{tne} = \sum_k \alpha^k \tilde A^k$ are affinity algebra: larger entry means stronger coupling.
+The polynomial accumulates multi-step coupling strength, so feeding it distances inverts the
+meaning of every term and makes the matrix uninterpretable. `edge_graph` and `twin_graph`
+therefore take the **vertex graph's affinity form**, always.
 
-**The subtlety: derived matrices need a generic conversion, not the dataset's.** The dataset's
-`distance_transform` describes its *native* weights. But $A_E$ is a line-graph adjacency derived
-from products of the incidence matrix, and $A_{tne}$ is a polynomial accumulation — neither has
-entries that are "counts" or "distances" in the dataset's original sense. Running Kamada–Kawai
-on $A_E$ therefore cannot use the dataset's transform.
+**Which distance form each graph exposes:**
 
-Provide a **generic affinity→distance fallback** for derived matrices: row-normalise, then
-$-\log$. That is precisely what `KamadaKawaiLayout(mode="similarity")` already implements
-today — lift it out, name it `affinity_matrix_to_distance()`, and apply it uniformly. Rule:
+| Graph | `affinity` | `distance` |
+|---|---|---|
+| `vertex_graph` | $A_V$ | the dataset's distance — stored, or derived once by §3.4's rules |
+| `edge_graph` | $A_E$ | generic fallback from $A_E$ |
+| `twin_graph` | $A_{tne}$ | generic fallback from $A_{tne}$ |
 
-- layout consumes the **raw graph** → use the dataset's declared transform;
-- layout consumes a **derived representation** ($A_V$ weighted, $A_E$, $A_{tne}$) → use the
-  generic fallback, and record `distance_source="generic"` in the manifest.
+$A_V$ is a **faithful** view: $B_w^{1/2}(B_w^{1/2})^{\top}$ reproduces $w_{ij}$ on edges, so the
+classical vertex layout can use the dataset's own distances — tabula's *measured* `D` drives a
+Kamada–Kawai vertex layout, which is the point of storing it. `normalize=True` perturbs $A_V$ and
+breaks faithfulness; declare that on the graph rather than inferring it.
 
-Record which path was taken per case. A Kamada–Kawai layout of $A_{tne}$ is a meaningful thing
-to compute, but a reader needs to know its distances came from a generic conversion of a
-polynomial accumulation, not from the dataset's own metric.
+$A_E$ and $A_{tne}$ are not in the dataset's units — neither has entries that are "strengths" or
+"distances" in the original sense — so a distance-consuming method on them uses a **generic
+affinity→distance fallback**: normalise, symmetrise, then $-\log$. `KamadaKawaiLayout(mode=
+"similarity")` implements the un-symmetrised version today; lift it out as
+`affinity_matrix_to_distance()` and **symmetrise** it. Row normalisation alone leaves the matrix
+asymmetric, and `nx.from_scipy_sparse_array` then silently keeps one value of each pair — a live
+bug in the current code (§0.5 decision 7).
+
+**The chain is structural, and must be recorded.** In the worst case — a distance-stored dataset
+laid out by a distance-consuming method on the twin graph — it runs
+$d \rightarrow \text{affinity} \rightarrow A_{tne} \rightarrow \text{derived } d$, three
+derivations deep. That is the nature of the method, not a defect, but a reader needs to see it.
+Because the graphs form a `parent` chain back to the `Dataset`, the manifest can record the real
+chain rather than a `distance_source="generic"` flag someone has to keep in sync.
 
 ### 3.6 The plotting refactor
 
@@ -1107,12 +1303,17 @@ compare against committed PNGs) so the refactor can be verified rather than hope
 
 ```python
 def evaluate_layout(result: LayoutResult,
-                    labels: np.ndarray | None,
+                    dataset: Dataset,
                     metric_spec: dict) -> dict[str, float | np.ndarray]
 ```
 
+It takes the `Dataset`, not a loose label vector: a metric or a figure is a function of the
+embedded vertex/edge points **plus a dataset** (§3.4), and the driver unpacks whichever label set
+each metric asks for — primary, composite, or an auxiliary batch covariate. Per-metric signatures
+in §2 are unchanged.
+
 Driven by `METRIC_REGISTRY`. Skips metrics whose `needs` are unmet (no labels, no edge points),
-records a `skipped` reason rather than a NaN, and respects cost-class limits.
+records a `skipped` status rather than a NaN (§0.5), and respects cost-class limits.
 
 Then add a batch-level counterpart alongside `batch_graph_embedding`:
 
@@ -1279,7 +1480,9 @@ Currently nothing is saved. Required:
 ```
 runs/<run_id>/
     manifest.json      # git SHA, package versions, spec, seeds, λ selection + source,
-                       # common_init, disconnected policy, weight transform, gamma,
+                       # common_init (requested AND whether it took effect), disconnected
+                       # policy, per-dataset stored sources + derivation rule + d_scale,
+                       # per-case derivation chain, weight-consistency results, gamma,
                        # include_adjacent, VNR normalisation, host, timestamp
     metrics.parquet    # tidy long-format metric rows
     layouts/<key>.npz  # V, E, slopes per case (compressed)
@@ -1374,9 +1577,13 @@ after they are written into the thesis.
 1. **Correctness and conventions groundwork** — §1.1–§1.3 and the new §1.8 fd-2 fix, plus the
    `(n, d)` convention and `LayoutResult`. See §0.5: only §1.6 corrupts current output, and it
    is scheduled in step 2. Everything else is built on the array convention.
-2. **`Dataset` objects (§3.4)** — weight semantics first, which closes bug §1.6, then labels,
-   then the registry swap in `pipelines.batch_registries`. Run the connectivity report and
-   commit its output; it settles §4.4 and feeds the thesis's experimental-setup section.
+2. **`Dataset` and `LayoutGraph` (§3.4, §3.5)** — the stored-source declarations and the
+   `Dataset → LayoutGraph → LayoutGraph` mappings, which is where bug §1.6 closes; then labels
+   (including moving them out of `metadata.py` and out of `paper_figures.py`); then the registry
+   swap in `pipelines.batch_registries`. Run the connectivity report and commit its output; it
+   settles §4.4 and feeds the thesis's experimental-setup section. Note that `batches/batch.py`
+   depends on three things this step changes — the `karate_club` and `mnist` registry names and
+   the `mode=` sweep — and will otherwise fail only at run time.
 3. `common.py` + `structural.py` + tests — ADR, kNN family, SNS
 4. `visual.py` + tests — NND, NR/VNR, distributions, edge lengths
 5. `crossings.py` + tests — the curve/detection/metric layers, and `detour_ratio`
@@ -1411,7 +1618,7 @@ them in code comments or propose alternatives in the implementation.
 | Decision | Resolution | Where |
 |---|---|---|
 | VNR normalisation | `mean` (divide by $\bar d$). Keep `max` available for one comparison. **Thesis eq. (69) needs updating.** | §2.2 |
-| Weight transform for ideal distances | Not a global choice — determined by each dataset's declared `weight_kind`. **Thesis §3.1.1 needs updating.** | §3.4 |
+| Weight transform for ideal distances | Not a global choice, and not a single `weight_kind` either. Each dataset declares which sides are **stored**; only a *derived* side takes a transform, chosen by what the stored weights mean. **Thesis §3.1.1 needs updating.** | §3.4 |
 | Disconnected-graph policy | `"lcc"` default, `"mask"` for SNS only, `"components"` available but not headline. Applies only to SNS and Sil\*. | §4.4 |
 | γ for curved edges | Fixed at 0.5 for all headline results. **No optimiser.** Sweep $\{0, 0.25, 0.5, 0.75, 1\}$ as a diagnostic on one or two graphs; show $\gamma=1$ (the interpolating case) at least once. | §4.3 |
 | λ grid | $10^k$, $k \in \{-1,-0.5,0,0.5,1\}$. Warn and flag on boundary selection. | §4.2 |
@@ -1420,12 +1627,15 @@ them in code comments or propose alternatives in the implementation.
 | LWCr edge length | Chord, never arc. Load-bearing — see the reasoning in §2.4. | §2.4 |
 | Dispersion statistic | Median and IQR. Deterministic methods flagged, run once. | §4.1 |
 
-| football_2023 labels | `conference` primary, `division` (East/None/West, from the standing strings) as an ordered sub-label. Hue from primary, shade from sub. Also score the composite. | §3.4 |
-| `distance → affinity` | $\exp(-d/d_{\text{scale}})$, $d_{\text{scale}}=\mathrm{median}(d)$ over edges. Exact inverse of $-\log(w/w_{\max})$, and $\gamma_i$ from λ-rescaling then acts as a per-vertex bandwidth. | §3.4 |
-| `count → distance` | $1/w$. The log form gives zero ideal distance to maximum-weight edges. | §3.4 |
-| `none` weights | Combinatorial: affinity = 0/1 indicator; distance = 1 on edges, absent otherwise, so shortest paths are hop counts. | §3.4 |
-| mnist | Retained, as the representative point-cloud-derived $k$-NN network — present to test whether the transform improves on *t*-SNE-style point-cloud embeddings. | §3.4 |
-| Representation input | All of $A_V$, $A_E$, $A_{tne}$ built from `as_affinity()`. Layout methods declare `expects`; conversion happens once at the boundary. | §3.5 |
+| Label roles | Scoring role and display role are **separate fields**. football scores `conference` and takes hue from it; tabula scores the fine `cell_ontology_class` and takes hue from the coarse `compartment`. One field cannot express both. Also score the composite, guarded per §0.5 decision 9. | §3.4 |
+| Auxiliary labels | `donor` and `method` are batch covariates. Score them deliberately — a **low** silhouette is the good outcome, since separating by donor rather than cell type is an artifact. | §3.4 |
+| Derived side: distance → affinity | $\exp(-d/d_{\text{scale}})$, $d_{\text{scale}}=\mathrm{median}(d)$ over edges. Exact inverse of $-\log(w/w_{\max})$, and $\gamma_i$ from λ-rescaling then acts as a per-vertex bandwidth. | §3.4 |
+| Derived side: `strength` → distance | $1/w$, the resistance model. The log form gives zero ideal distance to maximum-weight edges. | §3.4 |
+| Derived side: `adaptive_kernel` | **Raises.** A per-point-adaptive kernel is globally non-invertible ($\rho_i$, $\sigma_i$ unstored), so such a dataset must supply a stored distance side. | §3.4 |
+| `Unweighted` | Combinatorial: affinity = 0/1 indicator; distance = 1 on edges, absent otherwise, so shortest paths are hop counts. | §3.4 |
+| Both sides stored | No transform is applied in either direction — but run `check_weight_consistency`, since independent sources can disagree silently. | §3.4 |
+| digits | Retained, as the representative point-cloud-derived $k$-NN network — present to test whether the transform improves on *t*-SNE-style point-cloud embeddings. | §3.4 |
+| Representation input | $A_E$ and $A_{tne}$ are built from the vertex graph's **affinity** form, always. Every `LayoutGraph` exposes both forms and the layout method asks for the side it needs; nothing converts at the runner boundary. | §3.5 |
 
 ### Deliberately unresolved — do not pick a value, make it configurable
 
@@ -1435,122 +1645,28 @@ and surface the current value in the run manifest.
 - **The dataset roster.** Being revised to add networks that show where the method helps *and*
   where it does not. The code must not assume the current list — see the extensibility
   requirements in §3.4. Adding or removing a dataset is a one-file change.
-- **$\exp(-d)$ vs. $\exp(-d^2)$ for `distance → affinity`.** §3.4 argues for the former and it is
-  the default; implement the latter as a selectable transform and run the comparison once on
-  mnist so the choice rests on a measurement.
-- **Whether football_2023 weights are varied enough to matter.** If nearly all are 1, the dataset
-  is effectively `weight_kind="none"` and the `count` path is irrelevant for it. The
-  connectivity report (§3.4) answers this; set `weight_kind` accordingly once it has been run.
+- **$\exp(-d)$ vs. $\exp(-d^2)$ when deriving affinity from distance.** §3.4 argues for the former
+  and it is the default; `exp_decay_sq` is selectable, and the comparison is run once on digits so
+  the choice rests on a measurement.
+- **The median per-row Spearman that `check_weight_consistency` should expect on tabula.** The
+  argument says $-1$; fuzzy-union symmetrisation may perturb it. Measure it, pin the observed
+  value, and record the reason — do not hardcode $-1$ and then loosen the test.
 
 ---
 
-## Appendix A — create `CLAUDE.md` at the repo root
+## Appendix A — `CLAUDE.md` (done; that file is now authoritative)
 
-The conventions below are easy to violate accidentally and expensive to detect afterwards.
-Create this file as part of the work so they survive beyond this task.
+`CLAUDE.md` was created at the repo root from this appendix and is **the** copy. It has since
+diverged deliberately, and keeping a second copy here would only drift:
 
-````markdown
-# TWIN — working notes
+- the array-orientation convention now names the one remaining legacy `(d, n)` surface and the
+  step at which it converges (tracked in `docs/DECISIONS.md`);
+- the representation convention is stated in `Dataset` / `LayoutGraph` terms per the §3.4/§3.5
+  rewrite;
+- it records the one-time `git config filter.jupyter.clean` step a fresh clone needs, without
+  which no notebook can be committed cleanly;
+- the package layout distinguishes what exists from what is planned.
 
-Twin Neighbor Embedding: a pre-embedding transform that builds a graph containing both the
-vertices and the edges of the input graph as nodes, then hands it to a standard layout method.
-See `EXPERIMENT_SETUP_SPEC.md` for the full background.
-
-## Non-negotiable conventions
-
-- **Array orientation.** Layout arrays are `(d, n)` in `twin/embedding.py` and `(n, d)`
-  everywhere in `twin/metrics/`. The single conversion point is `LayoutResult.from_raw()`.
-  Never re-derive orientation by inspecting `shape` — it is wrong when `n == d`.
-- **Twin block ordering.** `twin_adjacency` produces `[[0, Bᵀ], [B, 0]]`, so rows are
-  **[edges (m); vertices (n)]**. Vertices are `X[:, ne:]`, edge points are `X[:, :ne]`.
-- **Representations consume affinities.** `VertexMatrix`, `EdgeMatrix` and
-  `TwinEmbeddingMatrix` are always built from `dataset.as_affinity()`. Feeding distances to
-  `A_tne` inverts the meaning of every term in the polynomial.
-- **Edge length in crossing metrics is the chord**, never the arc. This is what keeps the
-  straight-vs-curved comparison interpretable.
-- **No dataset names in logic.** Nothing outside `twin/datasets/` may branch on a dataset name.
-  Dataset-specific behaviour goes on the `Dataset` object.
-- **`[THESIS EDIT]` in the spec** means the code intentionally differs from `thesis.pdf`. Do not
-  reconcile the code to the PDF.
-
-## Layout of the package
-
-- `twin/datasets/` — `Dataset` objects: graph, weight semantics, labels, style
-- `twin/graphmatrix.py` — the three representations (the method; treat as given)
-- `twin/twin_embedding.py` — `twin_adjacency` (the method; treat as given)
-- `twin/embedding.py` — layout method wrappers
-- `twin/metrics/` — the metric suite
-- `twin/batching.py` — generic batch-spec engine; domain-agnostic, do not rewrite
-- `twin/pipelines.py` — runners tying the above together
-- `twin/plots.py`, `twin/paper_figures.py` — rendering
-- `batches/` — experiment definitions
-- `runs/` — experiment output (manifests, metrics, layouts); not in version control
-
-## Commands
-
-```bash
-pytest                       # test suite
-python -m twin.report        # dataset connectivity / weight / label report
-python batches/<name>.py     # run an experiment batch
-```
-
-## Version control
-
-**Branching — `master` is off limits**
-
-- **Never commit to, merge into, rebase onto, reset or force-push `master`.** Merging anything
-  into `master` is done manually by the repository owner, never by an agent. Reading `master`
-  and branching from it is fine; writing to it is not.
-- All work lands on the long-lived integration branch **`experiment-setup`**, branched from
-  `master`. If it does not exist yet, create it from `master` and switch to it before making any
-  change.
-- If separate feature branches are useful (e.g. one per phase of the spec), they branch **from**
-  `experiment-setup` and merge back **into** `experiment-setup` — never into `master`.
-- Merge a feature branch into `experiment-setup` only when the test suite passes and the
-  existing paper figures still reproduce. `experiment-setup` should be usable at all times,
-  because it is what gets reviewed before the manual promotion to `master`.
-- Land the bug fixes (spec §1) first, as their own branch merged into `experiment-setup`. They
-  are independently useful, and several change numerical results — keeping them separate makes
-  the before/after attributable.
-- When work is ready for promotion, say so and stop. Do not open, merge or land it into
-  `master`; leave that to the owner.
-
-**Commit granularity**
-
-- Commit at every known-good state: one self-contained change, tests passing, then commit. The
-  point is a working state to revert to when the next change breaks something.
-- One logical unit per commit, and name the spec section in the message:
-  `metrics: implement SNS (spec §2.1)`. This keeps the spec↔code mapping auditable and makes
-  `git bisect` meaningful.
-- **Never mix a refactor with a behaviour change.** The dataset restructure (§3.4) and the
-  plotting refactor (§3.6) are meant to preserve behaviour; if they share a commit with new
-  functionality, a later bisect cannot tell "the refactor broke it" from "the new code is
-  wrong."
-- When a commit **intentionally changes a metric's numerical output**, say so explicitly in the
-  message and update the golden-file fixtures in the *same* commit. Otherwise an intended change
-  is indistinguishable from a regression later.
-
-**Experiment runs and reproducibility**
-
-- **Start a results run only from a clean working tree.** The run manifest records the git SHA,
-  and a dirty tree makes that SHA a false record of what produced the numbers. Commit or stash
-  first.
-- **Never rewrite history that a manifest points at.** Once a SHA appears in `runs/*/manifest.json`,
-  no `commit --amend`, `rebase` or force-push on that commit — it orphans the provenance.
-- Tag the commit whose results are reported (`thesis-results-YYYY-MM-DD`) so the write-up can
-  cite an exact state.
-
-**What is and is not committed**
-
-- `runs/` is **output, not source** — add it to `.gitignore`. Batch definitions in `batches/`
-  *are* source and must be committed.
-- ⚠️ **`.gitignore` currently contains `/data/`.** The existing `.mat` files are tracked (they
-  predate the rule, via Git LFS per `.gitattributes`), but **any new dataset file added under
-  `data/` will be silently ignored.** When adding a dataset, either `git add -f` it or narrow
-  the ignore rule — and verify with `git status --ignored` that it was actually staged.
-- Commit the visual-regression baseline PNGs; they are test fixtures. Do not commit ad-hoc
-  figures.
-- Notebook outputs are stripped by the `jupyter` filter in `.gitattributes`, so a committed
-  notebook is not a record of results. Results live in `runs/`.
-- `.env` is already ignored; keep it that way.
-````
+**Read `CLAUDE.md`, then `docs/STATUS.md`** for where the work currently stands. The version
+control policy — `master` is off limits, commit granularity, run reproducibility, what is and is
+not committed — lives there in full.

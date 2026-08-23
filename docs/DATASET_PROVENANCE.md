@@ -1,8 +1,9 @@
 # Dataset provenance
 
-Where each dataset's graph and edge weights actually come from. This exists because
-`weight_kind` (spec §3.4, §0.5 decision 1) cannot be assigned without knowing how a weight was
-produced — the same number means different things depending on the model that generated it.
+Where each dataset's graph and edge weights actually come from. This exists because a dataset's
+stored sources and their `meaning` (spec §3.4) cannot be declared without knowing how a weight was
+produced — the same number means different things depending on the model that generated it, and
+the wrong declaration silently picks the wrong derivation for the other side.
 
 Claims here are checked by `tests/test_dataset_provenance.py`, which skips when the data files
 are absent.
@@ -76,19 +77,43 @@ to one edge per vertex, requiring 93.1% of vertices to coincide.
 
 ### Consequence for `Dataset`
 
-**Do not transform `A` in either direction.** The two directions are independent sources:
+**Do not transform `A` in either direction.** Both sides are stored, independently:
+
+```python
+affinity = StoredMatrix("A", meaning="adaptive_kernel")
+distance = StoredMatrix("D")
+```
 
 | Direction | Source | Note |
 |---|---|---|
 | affinity | `A` | UMAP membership. Per-point adaptive, which is the property we want, and composes correctly with SG-*t*-SNE's λ-rescaling. This direction was never broken for tabula. |
 | distance | `D` | **Measured**, in `X_scvi`. Not a transform of `A`. |
 
-So `Dataset` needs an explicit **measured distance source** that is not derived from the weights,
-alongside the `weight_kind` transform path. Datasets with only one direction keep using the
-transform; tabula has both, measured independently, and should use them.
+`meaning="adaptive_kernel"` has no derivation rule — it **raises**. That is deliberate: if `D` were
+ever dropped, tabula must fail loudly rather than fall back to `-log(w/w_max)`, which the
+non-invertibility above shows does not apply.
 
 Provenance to record in the manifest: `distance_space="X_scvi"`, `distance_metric="euclidean"`,
 `knn_k=14`, `affinity="umap_connectivities"`.
+
+**Both sides stored is the ideal; derivation is the degraded fallback.** Most datasets ship one
+weight vector and a guess for the other side, and that guess is a modelling assumption however
+well argued. Tabula shipped both, which is why its measured distances can drive a Kamada–Kawai
+layout while its adaptive affinities drive SG-*t*-SNE — the same geometry, from the same source,
+in both directions. Any future point-cloud-derived graph should persist the distance matrix it was
+built from rather than transforming on the fly.
+
+The hazard that comes with it: two independent sources can disagree about which pairs are close,
+silently. `check_weight_consistency` is the guard — see `DECISIONS.md`.
+
+### Also in the file, and currently reached ad hoc
+
+- **`X_umap`** — a 2-d reference embedding, used as a layout by `tabula_sapiens_teaser` (it is
+  passed through `vertex_and_edge_embeddings` to derive edge points for it). A `Dataset` should
+  expose it as a named reference layout rather than have a figure re-open the `.mat`.
+- **The Leiden partition** that figure colours by is computed inside the figure via `leidenalg`
+  with `resolution_parameter=1.0, seed=10`. That is a `derivation="detected:leiden"` label set and
+  belongs in the dataset definition, not in a plotting function.
 
 ### Labels
 
@@ -111,26 +136,33 @@ rather than one `role`.
 
 ## football_2023
 
-Weights are games played: **732 of 735 edges weigh 1, three weigh 2**. Effectively unweighted;
-`weight_kind="none"` (spec §0.5). The `count`/`strength` path is irrelevant for it.
+Weights are games played: **732 of 735 edges weigh 1, three weigh 2**. Effectively unweighted —
+`Unweighted()` on both sides (spec §0.5). The `strength` path is irrelevant for it.
 
 ## karate — two different graphs
 
-| Registry name | Source | Weights |
-|---|---|---|
-| `karate` | `karate.mat` | all 1.0 → `weight_kind="none"` |
-| `karate_weighted` | `nx.karate_club_graph` | Zachary interaction strengths 1–7, 7 distinct → `weight_kind="strength"` |
+| Registry name | Source | Weights | Sources |
+|---|---|---|---|
+| `karate` | `karate.mat` | all 1.0 | `Unweighted()` / `Unweighted()` |
+| `karate_weighted` | `nx.karate_club_graph` | Zachary interaction strengths 1–7, 7 distinct | affinity `Stored(meaning="strength")`; distance derived, `1/w` |
 
 The registry previously exposed only the *weighted* one under the name `karate_club` while the
-spec's table described the unweighted one.
+spec's table described the unweighted one. `karate_weighted` is the genuinely strength-weighted
+small test case that football turned out not to be.
 
 ## digits (formerly `mnist`)
 
 `sklearn.datasets.load_digits()` — 1797 samples of **8×8** digits, not MNIST. At `n_neighbors=12`:
-n = 1797, m = 14732. Weights are Euclidean distances 5.3–37.8 → `weight_kind="distance"`.
-Retained as the representative point-cloud-derived kNN network (spec §8).
+n = 1797, m = 14732. Weights are Euclidean distances 5.3–37.8, so the **distance** side is the
+stored one — `Stored(meaning="distance")` — and the affinity form is derived,
+`exp(-d/d_scale)` with `d_scale = median(d)`. Retained as the representative point-cloud-derived
+kNN network (spec §8).
+
+Note the contrast with tabula, which is the same kind of object built better: both were derived
+from a point cloud, but tabula persisted the distance matrix *and* the affinities, while digits
+persists only distances and must derive the rest.
 
 ## sbm-er-3modes
 
-All 5753 edges carry the single constant weight 8.691e-05. Constant weight → `weight_kind="none"`
-(spec §0.5).
+All 5753 edges carry the single constant weight 8.691e-05. A constant weight carries no
+information, so `Unweighted()` on both sides (spec §0.5).

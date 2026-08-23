@@ -70,41 +70,94 @@ absorbed by `np.nanmean` — which is exactly how `point_distance_metric` (spec 
 return a number that meant nothing. Under the default `"lcc"` policy no infinite entries arise at
 all; this only matters for `"mask"`.
 
-## (10) `weight_transform=` versus the dataset's declared `weight_kind`
+## (10) `weight_transform=` as an escape hatch only
 
 **`ideal_distances(G, weight_transform=...)` keeps the parameter as a low-level escape hatch; the
-pipeline never passes it.** `Dataset.ideal_distances(**kw)` fills `weight_transform` from
-`weight_kind` and is the only form the runner calls. Passing both a `Dataset` and an explicit
-`weight_transform` raises.
+pipeline never passes it.** On the path that produces results, ideal distances come from
+`LayoutGraph.distance` — which is the dataset's stored distance side, or the one derived for it by
+`vertex_graph` (see (11)). Passing a graph that came off a `LayoutGraph` *and* an explicit
+`weight_transform` raises, rather than silently overriding a declared source.
 
-The primitive stays testable in isolation — the analytic cases in §6 need it without constructing
-a `Dataset` — while the dataset remains the single source of truth on the path that produces
-results.
+The primitive stays testable in isolation — the analytic cases in spec §6 need it without
+constructing a `Dataset` — while the dataset remains the single source of truth everywhere else.
 
-## (11) Return type of `as_distance()` / `as_affinity()`
+## (11) The `Dataset` / `LayoutGraph` layering, and stored sources
 
-Each returns **one type unconditionally**:
+The spec's §3.4 originally made a dataset "a graph plus affinities plus distances" and typed both
+accessors as `nx.Graph | sp.spmatrix`. Two problems: a return type that varies pushes a branch
+into every consumer, and — the serious one — it left no answer to *what are $A_E$'s labels?*
 
-- `as_distance() -> nx.Graph`, edge attribute `weight` carrying the distance, non-edges **absent**.
-- `as_affinity() -> sp.sparray`, which is what the representations and `sgtsnepi` consume.
-- `as_distance_matrix()` added only if a dense form is ever actually needed.
+**Two layers.** A `Dataset` is stored information: source of truth, labels, drawing instructions.
+It is never laid out. A `LayoutGraph` is an affinity form, a distance form, and a way to derive
+vertex/edge points; it is laid out and **never labelled**. Labels do not need to reach the layout
+layer, because `vertex_and_edge_points` returns points in the **original** indexing — so a layout
+of $A_E$ or $A_{tne}$ is scored against the dataset's own labels with no length mismatch possible.
 
-**A distance source may be measured rather than derived.** `Dataset` carries an optional
-`distance_source` that is *not* a transform of the weights, with its own provenance fields
-(`distance_space`, `distance_metric`, `knn_k`). When present, `as_distance()` returns it and the
-`weight_kind` transform is not consulted; the manifest records which path was taken.
+> A metric or a figure is a function of the embedded vertex/edge points plus a `Dataset`.
 
-This exists because tabula has both directions measured independently — `A` is a UMAP membership
-and `D` is the Euclidean distance in `X_scvi` that `A` was built from — and because `A` is
-**not invertible to distances at all**: UMAP's per-point $\rho_i$ and $\sigma_i$ are not stored,
-so no global transform recovers $d$. That is true of any per-point-adaptive kernel. See
-[DATASET_PROVENANCE.md](DATASET_PROVENANCE.md#tabula-liver); it is also worth a line in thesis
-§3.1.1, which currently lists global transforms as interchangeable options.
+**One type each, unconditionally.** `LayoutGraph.affinity -> sp.sparray` (what the representations
+and `sgtsnepi` consume); `LayoutGraph.distance -> nx.Graph` (the `Unweighted` case *requires*
+absent non-edges so shortest paths are hop counts, and a graph expresses absence naturally where a
+matrix must encode it). Different types for two different questions is fine; a type that varies
+with the data is not.
 
-The spec types both as `nx.Graph | sp.spmatrix`, which pushes a branch into every consumer. The
-`none` weight kind *requires* absent non-edges so shortest paths are hop counts, and a graph
-expresses absence naturally where a matrix has to encode it. Different types for the two
-questions is fine; a type that varies with `weight_kind` is not.
+**`Dataset` holds no derived information.** It declares which sides are *stored* — `Stored`,
+`StoredMatrix`, `Unweighted` — and what the numbers mean. Derivation of a missing side happens in
+the `Dataset → LayoutGraph` mapping and nowhere else. `edge_graph` and `twin_graph` are then
+`LayoutGraph → LayoutGraph` off the vertex graph, which matches the algebra ($A_E = B^{\top}B$ and
+$A_{tne}$ are both functions of the affinity incidence matrix) and buys two things: the derivation
+chain is readable off a `parent` link instead of maintained as a string, and the incidence matrix
+is built once rather than three times.
+
+`weight_kind` was doing two jobs — saying what stored weights mean *and* prescribing how to derive
+the other side. Those coincide only for a dataset with one weight vector. Tabula has both `A` and
+`D`, so it satisfies the interface directly and no derivation arises; the vocabulary survives as
+the `meaning` of a stored source.
+
+**Why a measured distance source matters.** `A` is **not invertible to distances at all**: UMAP's
+per-point $\rho_i$ and $\sigma_i$ are unstored, so no global transform recovers $d$ — true of any
+per-point-adaptive kernel. Hence `meaning="adaptive_kernel"`, whose derivation rule is *raise*:
+such a dataset must supply a stored distance side, and tabula fails loudly rather than silently
+applying $-\log(w/w_{\max})$ if `D` is ever dropped. See
+[DATASET_PROVENANCE.md](DATASET_PROVENANCE.md#tabula-liver). Worth a line in thesis §3.1.1, which
+lists global transforms as interchangeable options.
+
+**`Dataset` does not own the representations.** They are the *method*; it is the *data*. Keeping
+them mappings keeps two open sets independent — adding a dataset touches no representation, adding
+a representation touches no dataset — and avoids forcing `Dataset` to carry `alpha`, `k` and
+`normalize`, which are method knobs. Caching an expensive $A_{tne}$ across a λ sweep belongs in
+the runner.
+
+## Weight-source consistency
+
+Two independently stored sides can disagree about which pairs are close, and the failure is silent
+and severe: the layout optimises against the affinity while SNS and Sil\* score against the
+distance, so a method could look good or bad for reasons unconnected to the method.
+
+`check_weight_consistency(dataset)` runs whenever both sides are stored:
+
+- **Global Spearman** over shared edges — strongly negative but *not* $-1$, since $\rho_i$ and
+  $\sigma_i$ vary by row.
+- **Median per-row Spearman** — the sharp test. Within a row, UMAP membership is a strictly
+  decreasing function of distance, so this should be $-1$.
+
+**Measure it before pinning it.** The stored `A` is fuzzy-union symmetrised, so `A[i,j]` mixes in
+row $j$'s $\rho_j,\sigma_j$ and within-row monotonicity is not guaranteed a priori. If the observed
+median is not exactly $-1$, record symmetrisation as the cause rather than treating it as a data
+fault; a materially weaker correlation (worse than $\approx -0.9$) is the genuine signal. Do not
+hardcode $-1$ into a test that later gets "fixed" by loosening it.
+
+## `LabelSet` carries scoring and display roles separately
+
+Not one `role` field. football scores `conference` and takes hue from it, with `division` as an
+ordered sub-label supplying shade. Tabula **inverts** that: the fine-grained `cell_ontology_class`
+(13 classes) is what the method claims to resolve and is the scoring primary, while the coarse
+`compartment` (4 classes) is its parent and supplies hue. One field cannot express both
+arrangements, and collapsing them would force a dataset-name branch somewhere.
+
+`donor` and `method` are auxiliary batch covariates and are scored **deliberately** — a layout
+separating cells by donor rather than by cell type is displaying an artifact, so a *low* silhouette
+is the good outcome there. Reporting it is how that becomes visible instead of assumed away.
 
 ## (13) Endpoint exclusion in crossing detection
 
@@ -225,6 +278,12 @@ case.
 
 ## (26) `DatasetStyle` versus the visual-regression baselines
 
+**Pixel baselines guard *refactors*, not figures.** They answer one question: did a change that
+was supposed to be pure reorganisation quietly alter the data behind the picture? A commit that
+*intentionally* changes that data — the digits affinity fix, a palette generalisation — declares
+it and regenerates the baselines in the same commit. Figures changing is not, by itself, a
+failure; figures changing in a commit that claimed to be a refactor is.
+
 **Two phases, two commits, per CLAUDE.md's "never mix a refactor with a behaviour change".**
 
 1. **Baselines first.** Render and commit the baseline PNGs from the *pre-refactor* code. Then the
@@ -236,3 +295,10 @@ case.
 
 Doing it in one step would make the baselines unable to distinguish "the refactor broke it" from
 "the new colour rule is different on purpose".
+
+**Before step 10, use data-level pins instead.** Step 2 moves the label derivations out of
+`paper_figures.py`, which is a refactor and needs a guard — but pixel output is sensitive to
+matplotlib and freetype versions, so bit-for-bit comparison that early would produce false
+failures. Pin the derived **label vectors and colour arrays** exactly, plus a renders-without-error
+smoke test; those are precise about what the label move can actually break. Pixel baselines land
+at step 10, where the renderer refactor is exactly the kind of change they are good at guarding.

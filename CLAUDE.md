@@ -2,8 +2,16 @@
 
 Twin Neighbor Embedding: a pre-embedding transform that builds a graph containing both the
 vertices and the edges of the input graph as nodes, then hands it to a standard layout method.
-See `docs/EXPERIMENT_SETUP_SPEC.md` for the full background, and its §0.5 for the errata and
-decisions that supersede the rest of that document.
+**Where things stand: [`docs/STATUS.md`](docs/STATUS.md)** — position in the spec's ordering,
+environment facts, and what is carried forward. Read it before starting anything.
+
+Background and design record, in reading order:
+
+- `docs/EXPERIMENT_SETUP_SPEC.md` — the specification. **Read its §0.5 first**: it supersedes the
+  rest of the document, and records which of its own claims did not survive verification.
+- `docs/DECISIONS.md` — the questions the spec left open, settled, with reasoning.
+- `docs/DATASET_PROVENANCE.md` — where each dataset's weights actually come from. Its claims are
+  executable (`tests/test_dataset_provenance.py`), not prose.
 
 ## Non-negotiable conventions
 
@@ -20,9 +28,18 @@ decisions that supersede the rest of that document.
     do not add new callers of `graph_embedding_all`.
 - **Twin block ordering.** `twin_adjacency` produces `[[0, Bᵀ], [B, 0]]`, so rows are
   **[edges (m); vertices (n)]**. Vertices are `X[:, ne:]`, edge points are `X[:, :ne]`.
-- **Representations consume affinities.** `VertexMatrix`, `EdgeMatrix` and
-  `TwinEmbeddingMatrix` are always built from `dataset.as_affinity()`. Feeding distances to
-  `A_tne` inverts the meaning of every term in the polynomial.
+- **`Dataset` and `LayoutGraph` are separate layers, and only one of them has labels.**
+  A `Dataset` is stored information — source of truth, labels, drawing instructions — and is never
+  laid out. A `LayoutGraph` is an affinity form, a distance form, and a way to derive vertex/edge
+  points; it is laid out and is **never labelled**. A_E's nodes are edges and A_tne's are edges
+  *and* vertices, so a length-`n` label vector must never reach them. Labels are applied after
+  layout, because `vertex_and_edge_points` returns points in the **original** indexing.
+  - **A metric or a figure is a function of the embedded points plus a `Dataset`.**
+  - Derivation happens in `Dataset → LayoutGraph` (the vertex graph) and nowhere else. `Dataset`
+    holds no derived information.
+- **Derived graphs consume affinities.** `edge_graph` and `twin_graph` are built from the vertex
+  graph's *affinity* form, always. Feeding distances to `A_tne` inverts the meaning of every term
+  in the polynomial.
 - **Edge length in crossing metrics is the chord**, never the arc. This is what keeps the
   straight-vs-curved comparison interpretable.
 - **No dataset names in logic.** Nothing outside `twin/datasets/` may branch on a dataset name.
@@ -32,23 +49,34 @@ decisions that supersede the rest of that document.
 
 ## Layout of the package
 
-- `twin/datasets/` — `Dataset` objects: graph, weight semantics, labels, style
+Present:
+
+- `twin/results.py` — `LayoutResult`; the single `(d, n) → (n, d)` conversion point
+- `twin/instrumentation.py` — `RSSSampler`; runtime and memory for the embed step
 - `twin/graphmatrix.py` — the three representations (the method; treat as given)
 - `twin/twin_embedding.py` — `twin_adjacency` (the method; treat as given)
 - `twin/embedding.py` — layout method wrappers
-- `twin/metrics/` — the metric suite
+- `twin/metrics.py` — the metric suite so far
 - `twin/batching.py` — generic batch-spec engine; domain-agnostic, do not rewrite
 - `twin/pipelines.py` — runners tying the above together
 - `twin/plots.py`, `twin/paper_figures.py` — rendering
+- `twin/dataset.py`, `twin/metadata.py` — graph factories and labels; **both absorbed at step 2**
 - `batches/` — experiment definitions
-- `runs/` — experiment output (manifests, metrics, layouts); not in version control
+- `tests/`, `docs/`
+
+Planned, not yet present:
+
+- `twin/datasets/` — `Dataset` objects: source of truth, labels, style (step 2)
+- `twin/report.py` — the connectivity / weight / label report (step 2)
+- `twin/metrics/` — the metric suite as a package (steps 3–6)
+- `runs/` — experiment output (step 7); output, not source, and **not yet in `.gitignore`**
 
 ## Commands
 
 ```bash
-pytest                       # test suite
-python -m twin.report        # dataset connectivity / weight / label report
+venv/bin/python -m pytest    # test suite
 python batches/<name>.py     # run an experiment batch
+python -m twin.report        # dataset connectivity / weight / label report — arrives at step 2
 ```
 
 **One-time setup per clone.** Git filters live in `.git/config` and cannot be set from the
@@ -77,9 +105,7 @@ becomes unenforceable.
 - Merge a feature branch into `experiment-setup` only when the test suite passes and the
   existing paper figures still reproduce. `experiment-setup` should be usable at all times,
   because it is what gets reviewed before the manual promotion to `master`.
-- Land the bug fixes (spec §1) first, as their own branch merged into `experiment-setup`. They
-  are independently useful, and several change numerical results — keeping them separate makes
-  the before/after attributable.
+- ~~Land the bug fixes (spec §1) first~~ — done, merged at `b220cb8`.
 - When work is ready for promotion, say so and stop. Do not open, merge or land it into
   `master`; leave that to the owner.
 
@@ -110,8 +136,8 @@ becomes unenforceable.
 
 **What is and is not committed**
 
-- `runs/` is **output, not source** — add it to `.gitignore`. Batch definitions in `batches/`
-  *are* source and must be committed.
+- `runs/` is **output, not source** — ⚠️ **it is not in `.gitignore` yet**; add it before the
+  first run is written. Batch definitions in `batches/` *are* source and must be committed.
 - ⚠️ **`.gitignore` currently contains `/data/`.** The existing `.mat` files are tracked (they
   predate the rule, via Git LFS per `.gitattributes`), but **any new dataset file added under
   `data/` will be silently ignored.** When adding a dataset, either `git add -f` it or narrow
