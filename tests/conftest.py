@@ -45,10 +45,18 @@ def triangle() -> nx.Graph:
 def karate() -> nx.Graph:
     """``nx.karate_club_graph`` — carries Zachary's 1-7 interaction weights.
 
-    Registered as ``karate_weighted`` (``weight_kind="strength"``) once §3.4 lands. The
-    unweighted ``karate.mat`` variant is a different dataset.
+    Registered as ``karate_weighted``, whose affinity side is ``Stored(meaning="strength")``.
+    The unweighted ``karate.mat`` variant is a different dataset (§3.4).
     """
     return nx.karate_club_graph()
+
+
+@pytest.fixture
+def karate_dataset():
+    """The registered ``karate_weighted`` dataset, whose graph is the ``karate`` fixture."""
+    from twin.datasets import load_dataset
+
+    return load_dataset("karate_weighted")
 
 
 @pytest.fixture

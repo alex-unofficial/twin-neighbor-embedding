@@ -40,6 +40,10 @@ Background and design record, in reading order:
 - **Derived graphs consume affinities.** `edge_graph` and `twin_graph` are built from the vertex
   graph's *affinity* form, always. Feeding distances to `A_tne` inverts the meaning of every term
   in the polynomial.
+- **Ideal distances come from `vertex_graph(dataset).distance`** — the least-derived form —
+  computed once per dataset by the runner and shared by every representation. Never from
+  `edge_graph`/`twin_graph`'s generic fallback: that would score A_V, A_E and A_tne against three
+  *different* targets and make the central ablation meaningless.
 - **Edge length in crossing metrics is the chord**, never the arc. This is what keeps the
   straight-vs-curved comparison interpretable.
 - **No dataset names in logic.** Nothing outside `twin/datasets/` may branch on a dataset name.
@@ -51,32 +55,37 @@ Background and design record, in reading order:
 
 Present:
 
+- `twin/datasets/` — `Dataset` objects: source of truth, labels, style; one file per dataset
+  plus `registry.py`. Adding a dataset is one file and one registry line.
+- `twin/layoutgraph.py` — `LayoutGraph` and the three mappings `vertex_graph` / `edge_graph` /
+  `twin_graph`; the single place a missing affinity or distance side is derived
 - `twin/results.py` — `LayoutResult`; the single `(d, n) → (n, d)` conversion point
+- `twin/report.py` — the connectivity / weight / label report (`python -m twin.report`)
 - `twin/instrumentation.py` — `RSSSampler`; runtime and memory for the embed step
-- `twin/graphmatrix.py` — the three representations (the method; treat as given)
 - `twin/twin_embedding.py` — `twin_adjacency` (the method; treat as given)
-- `twin/embedding.py` — layout method wrappers
+- `twin/embedding.py` — layout methods and `EMBEDDING_REGISTRY`
 - `twin/metrics.py` — the metric suite so far
 - `twin/batching.py` — generic batch-spec engine; domain-agnostic, do not rewrite
 - `twin/pipelines.py` — runners tying the above together
 - `twin/plots.py`, `twin/paper_figures.py` — rendering
-- `twin/dataset.py`, `twin/metadata.py` — graph factories and labels; **both absorbed at step 2**
+- `twin/graphmatrix.py` — the **pre-restructure** representation classes, plus `compute_slopes`.
+  Superseded by `twin/layoutgraph.py`; alive only because `graph_embedding_all` and
+  `paper_figures` still use it. **Do not add callers**; deleted at step 10.
+- `twin/dataset.py` — raw graph factories, called by `twin/datasets/`. Not a dataset layer.
 - `batches/` — experiment definitions
 - `tests/`, `docs/`
 
 Planned, not yet present:
 
-- `twin/datasets/` — `Dataset` objects: source of truth, labels, style (step 2)
-- `twin/report.py` — the connectivity / weight / label report (step 2)
 - `twin/metrics/` — the metric suite as a package (steps 3–6)
-- `runs/` — experiment output (step 7); output, not source, and **not yet in `.gitignore`**
+- `runs/` — experiment output (step 7); output, not source, and ignored by git
 
 ## Commands
 
 ```bash
 venv/bin/python -m pytest    # test suite
 python batches/<name>.py     # run an experiment batch
-python -m twin.report        # dataset connectivity / weight / label report — arrives at step 2
+python -m twin.report        # dataset connectivity / weight / label report
 ```
 
 **One-time setup per clone.** Git filters live in `.git/config` and cannot be set from the
@@ -136,8 +145,11 @@ becomes unenforceable.
 
 **What is and is not committed**
 
-- `runs/` is **output, not source** — ⚠️ **it is not in `.gitignore` yet**; add it before the
-  first run is written. Batch definitions in `batches/` *are* source and must be committed.
+- `runs/` is **output, not source**, and is in `.gitignore`. Batch definitions in `batches/`
+  *are* source and must be committed. A persisted layout stores the dataset's registry **name
+  and factory params**, never the `Dataset` object — that would write every label vector and,
+  for tabula, two ~50k-edge matrices into each layout file, once per representation, per seed,
+  per λ.
 - ⚠️ **`.gitignore` currently contains `/data/`.** The existing `.mat` files are tracked (they
   predate the rule, via Git LFS per `.gitattributes`), but **any new dataset file added under
   `data/` will be silently ignored.** When adding a dataset, either `git add -f` it or narrow

@@ -1,6 +1,5 @@
 from loguru import logger
 
-from twin.config import REAL_WORLD_DIR
 from twin import embedding as emb
 from twin.pipelines import graph_embedding_all
 from twin.plots import (
@@ -12,16 +11,13 @@ from twin.plots import (
     cumdeg,
     plot_single_metric,
     count_intersections,
-    custom_cmap,
     block_adj,
 )
-import twin.dataset as dataset
-import twin.metadata as metadata
+from twin.datasets import load_dataset
 
 import matplotlib.ticker as ticker
 import matplotlib.gridspec as gridspec
 import numpy as np
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from matplotlib.ticker import MaxNLocator
@@ -29,12 +25,121 @@ import distinctipy
 import networkx as nx
 import igraph as ig
 import leidenalg as leiden
-import seaborn as sns
-from itertools import count
 
 from timeit import default_timer as timer
 
-import scipy.io as sio
+
+def football_label_arrays(dataset):
+    """The football label vectors and colour arrays, sourced from the `Dataset`.
+
+    Behaviour-preserving: the conference and division codes now come from
+    ``dataset.labels(...)`` and the palette from ``dataset.style``, but every returned array is
+    bit-for-bit what the inline figure code produced, and
+    ``tests/test_step2_characterisation.py`` pins them. The plotting refactor proper is spec
+    §3.6, step 10; this only removes the duplicate derivation.
+
+    Args:
+        dataset: the ``football_2023`` :class:`~twin.datasets.Dataset`.
+
+    Returns:
+        dict of the derived arrays. ``vertex_labels`` is the conference code (independents
+        ``-1``), ``stand_labels`` the East/None/West division code (``+1/0/-1``).
+    """
+    conference = dataset.label_set("conference")
+    vertex_labels = dataset.labels("conference")
+    stand_labels = dataset.labels("division")
+    style = dataset.style
+
+    edge_labels = []
+    edge_standing = []
+    edge_alpha = []
+    for u, v in dataset.graph.edges():
+        if (
+            vertex_labels[u] == vertex_labels[v]
+            and stand_labels[u] == stand_labels[v]
+            and vertex_labels[u] != conference.noise_label
+        ):
+            edge_labels.append(vertex_labels[u])
+            edge_standing.append(stand_labels[u])
+            edge_alpha.append(style.edge_alpha_intra)
+        else:
+            edge_labels.append(conference.noise_label)
+            edge_standing.append(0)
+            edge_alpha.append(style.edge_alpha_inter)
+
+    # Hue from the conference, shade from the ordered division, noise colour for the
+    # independents — the table the two figures used to build by hand as `3*l + 1 + s`.
+    colors = style.hue_shade_palette(conference.classes.size)
+
+    def colour_of(hues, shades):
+        return np.array([colors[style.shade_index(l, s)] for l, s in zip(hues, shades)])
+
+    return {
+        # Name -> code, in first-appearance order, which is the order the codes were assigned in.
+        "conf_labels": {
+            conference.display_name(code): int(code)
+            for code in dict.fromkeys(vertex_labels.tolist())
+        },
+        "vertex_labels": np.asarray(vertex_labels),
+        "stand_labels": np.asarray(stand_labels),
+        "edge_labels": np.asarray(edge_labels),
+        "edge_standing": np.asarray(edge_standing),
+        "edge_alpha": np.asarray(edge_alpha),
+        "palette": colors,
+        "vertex_colors": colour_of(vertex_labels, stand_labels),
+        "edge_colors": colour_of(edge_labels, edge_standing),
+    }
+
+
+def tabula_label_arrays(dataset):
+    """Tabula's cell-type label vector and colour arrays, sourced from the `Dataset`.
+
+    Behaviour-preserving. The second ad-hoc ``loadmat`` of the file the graph already came from
+    is gone: the cell types are a label set and ``X_umap`` is a registered reference layout.
+    """
+    graph = dataset.graph
+    cell_type = dataset.label_set("cell_ontology_class")
+    vertex_labels = cell_type.values
+
+    edge_labels = []
+    edge_alpha = []
+    edge_alpha_all = []
+    edge_marker_size = []
+    alpha_edge_points = []
+
+    for u, v in graph.edges():
+        same = vertex_labels[u] == vertex_labels[v]
+        edge_labels.append(vertex_labels[u] if same else -1)
+
+    for u, v, d in graph.edges(data=True):
+        edge_alpha_all.append(d["weight"])
+        if vertex_labels[u] == vertex_labels[v]:
+            edge_alpha.append(0.4)
+            edge_marker_size.append(0.5)
+            alpha_edge_points.append(0.15)
+        else:
+            edge_alpha.append(0.2)
+            edge_marker_size.append(1)
+            alpha_edge_points.append(0.7)
+
+    # Hue only, no shade. The trailing black row is what the inter-cluster label -1 reaches by
+    # wrapping past the end of the table — see the pin in test_step2_characterisation.py.
+    label_colors = dataset.style.hue_table(cell_type.n_classes)
+
+    return {
+        "label2id": {
+            cell_type.display_name(code): int(code) for code in np.unique(vertex_labels)
+        },
+        "vertex_labels": vertex_labels,
+        "edge_labels": np.asarray(edge_labels),
+        "palette": label_colors,
+        "vertex_colors": np.array([label_colors[l] for l in vertex_labels]),
+        "edge_colors": np.array([label_colors[l] for l in edge_labels]),
+        "edge_alpha": np.asarray(edge_alpha),
+        "edge_alpha_all": np.asarray(edge_alpha_all),
+        "edge_marker_size": np.asarray(edge_marker_size),
+        "alpha_edge_points": np.asarray(alpha_edge_points),
+    }
 
 
 def tabula_sapiens_blockadj(ax, experiment, partition, vertex_labels, label2id, label_colors, b=7):
@@ -113,7 +218,8 @@ def tabula_sapiens_teaser(
 
     logger.info(f"Creating Tabula {organ.title()} figure")
 
-    tabula = dataset.tabula(organ)
+    tabula_dataset = load_dataset("tabula", organ=organ)
+    tabula = tabula_dataset.graph
 
     try:
         start = timer()
@@ -149,59 +255,19 @@ def tabula_sapiens_teaser(
         tabula_ig, leiden.RBConfigurationVertexPartition, resolution_parameter=1.0, seed=10
     )
 
-    s = sio.loadmat(str(REAL_WORLD_DIR / f"tabula-{organ}.mat"))
+    arrays = tabula_label_arrays(tabula_dataset)
 
-    Xumap_V, Xumap_E, Xumap_S = experiment["Gv_in"].vertex_and_edge_embeddings(s["X_umap"].T)
+    X_umap = tabula_dataset.reference_layouts["X_umap"]
+    Xumap_V, Xumap_E, Xumap_S = experiment["Gv_in"].vertex_and_edge_embeddings(X_umap.T)
 
-    orig_labels = s["cell_ontology_class"][0]
     vertex_labels_leiden = partition.membership
-    extracted_labels = np.array([elem[0] for elem in orig_labels])
-    unique_labels = np.unique(extracted_labels)
-
-    # 3. Create a label -> ID mapping
-    label2id = {label: idx for idx, label in enumerate(unique_labels)}
-
-    vertex_labels = np.array([label2id[x] for x in extracted_labels])
-
-    n_labels = len(np.unique(vertex_labels))
-
-    # Generate labels for edges based on the edge labels
-    edge_alpha = []
-    edge_alpha_all = []
-    edge_marker_size = []
-    alpha_edge_points = []
-
-    # Generate labels for edges based on the edge labels
-    edge_labels = []
-    for u, v in tabula.edges():
-        if vertex_labels[u] == vertex_labels[v]:
-            edge_labels.append(vertex_labels[u])
-        else:
-            edge_labels.append(-1)
-
-    label_colors = custom_cmap(n_labels, seed=7)
-    rgb0 = label_colors[0, :].copy()
-    rgb5 = label_colors[5, :].copy()
-    label_colors[0, :] = rgb5
-    label_colors[5, :] = rgb0
-
-    vertex_colors = np.array([np.array(label_colors[l]) for l in vertex_labels])
-    edge_colors = np.array([np.array(label_colors[l]) for l in edge_labels])
-
-    for u, v, d in tabula.edges(data=True):
-        edge_alpha_all.append(d["weight"])
-        if vertex_labels[u] == vertex_labels[v]:
-            edge_alpha.append(0.4)
-            edge_marker_size.append(0.5)
-            alpha_edge_points.append(0.15)
-        else:
-            # edge_alpha.append(0.2 if d['weight'] > 0.8 else 0)
-            # edge_alpha_all.append(d['weight'])
-            edge_alpha.append(0.2)
-            edge_marker_size.append(1)
-            alpha_edge_points.append(0.7)
-
-    alpha_edge_points = np.array(alpha_edge_points)
+    label2id = arrays["label2id"]
+    vertex_labels = arrays["vertex_labels"]
+    label_colors = arrays["palette"]
+    vertex_colors = arrays["vertex_colors"]
+    edge_colors = arrays["edge_colors"]
+    edge_marker_size = arrays["edge_marker_size"]
+    alpha_edge_points = arrays["alpha_edge_points"]
 
     logger.info("Creating Tabula plots..")
 
@@ -270,7 +336,7 @@ def tree_of_cliques(
 
     logger.info(f"Creating Tree of Cliques figure")
 
-    G = dataset.tree_of_cliques(h=h, k=k, n=n)
+    G = load_dataset("tree_of_cliques", h=h, k=k, n=n).graph
 
     try:
         start = timer()
@@ -386,7 +452,7 @@ def tree_of_cliques_curves(
 
     logger.info(f"Creating Tree of Cliques curves figure")
 
-    G = dataset.tree_of_cliques(h=h, k=k, n=n)
+    G = load_dataset("tree_of_cliques", h=h, k=k, n=n).graph
 
     experiment = graph_embedding_all(
         G,  # input graph
@@ -449,7 +515,7 @@ def small_world(
 
     logger.info("Creating Small World figure")
 
-    G = dataset.small_world(n, k, p)
+    G = load_dataset("small_world", n=n, k=k, p=p).graph
 
     try:
         start = timer()
@@ -514,7 +580,7 @@ def small_world_curves(
 
     logger.info(f"Creating Small World curves figure")
 
-    G = dataset.small_world(n, k, p)
+    G = load_dataset("small_world", n=n, k=k, p=p).graph
 
     experiment = graph_embedding_all(
         G,  # input graph
@@ -574,7 +640,8 @@ def football_figure(
 
     logger.info(f"Creating Football figure")
 
-    football = dataset.football_2023()
+    football_dataset = load_dataset("football_2023")
+    football = football_dataset.graph
 
     try:
         start = timer()
@@ -600,84 +667,10 @@ def football_figure(
     except Exception as e:
         logger.error("Exception occured while generating embeddings: {e}")
 
-    # Get Ground-Truth labels from metadata
-    conference = metadata.football_2023["conference"]
-    conference_standing = metadata.football_2023["conference_standing"]
-
-    counter = count(0)
-    conf_labels = {
-        conf: (-1 if conf == "NCAA Division I FBS independents" else next(counter))
-        for conf in dict.fromkeys(conference)
-    }
-
-    stand_labels = []
-    for stand in conference_standing:
-        if stand[-5:-1] == "East":
-            stand_labels.append(1)
-        elif stand[-5:-1] == "West":
-            stand_labels.append(-1)
-        else:
-            stand_labels.append(0)
-
-    vertex_labels = [conf_labels[conf] for conf in conference]
-    unique_labels = conf_labels.keys()
-
-    # Generate labels for edges based on the edge labels
-
-    intra_cluster_alpha = 0.6
-    inter_cluster_alpha = 0.1
-
-    edge_labels = []
-    edge_standing = []
-    edge_alpha = []
-    for u, v in football.edges():
-        if (
-            vertex_labels[u] == vertex_labels[v]
-            and stand_labels[u] == stand_labels[v]
-            and vertex_labels[u] != conf_labels["NCAA Division I FBS independents"]
-        ):
-            edge_labels.append(vertex_labels[u])
-            edge_standing.append(stand_labels[u])
-            edge_alpha.append(intra_cluster_alpha)
-        else:
-            edge_labels.append(-1)
-            edge_standing.append(0)
-            edge_alpha.append(inter_cluster_alpha)
-
-    # Convert vertex, edge labels to unique colors
-    n_labels = len(unique_labels)
-
-    # Convert vertex, edge labels to unique colors
-    n_labels = len(unique_labels)
-
-    color_base = sns.color_palette("husl", n_labels, desat=1)
-
-    rng = np.random.default_rng(seed=1)
-    color_base = rng.permutation(color_base)
-
-    # Generate light and dark variations
-    factor_light = 1.3  # Brighten factor
-    factor_dark = 0.7  # Darken factor
-
-    def adjust_brightness(color, factor):
-        return np.clip(np.array(color) * factor, 0, 1)
-
-    colors = np.array(
-        [
-            adjust_brightness(color, {-1: factor_dark, 0: 1.0, 1: factor_light}[i])
-            for color in color_base
-            for i in [-1, 0, 1]
-        ]
-    )
-
-    black = np.array([0.0, 0.0, 0.0])
-    colors = np.vstack([colors] + 3 * [black])
-
-    vertex_colors = np.array(
-        [colors[3 * l + 1 + s, :] for l, s in zip(vertex_labels, stand_labels)]
-    )
-
-    edge_colors = np.array([colors[3 * l + 1 + s, :] for l, s in zip(edge_labels, edge_standing)])
+    arrays = football_label_arrays(football_dataset)
+    edge_alpha = arrays["edge_alpha"]
+    vertex_colors = arrays["vertex_colors"]
+    edge_colors = arrays["edge_colors"]
 
     logger.info("Creating Football plots...")
     # Plot Vertex and Edge positions from twin embedding
@@ -710,7 +703,8 @@ def football_curves(
 
     logger.info(f"Creating Football curves figure")
 
-    football = dataset.football_2023()
+    football_dataset = load_dataset("football_2023")
+    football = football_dataset.graph
 
     # Extract embedding from Graph
     experiment = graph_embedding_all(
@@ -726,81 +720,10 @@ def football_curves(
         common_init=True,
     )
 
-    # Get Ground-Truth labels from metadata
-    conference = metadata.football_2023["conference"]
-    conference_standing = metadata.football_2023["conference_standing"]
-
-    counter = count(0)
-    conf_labels = {
-        conf: (-1 if conf == "NCAA Division I FBS independents" else next(counter))
-        for conf in dict.fromkeys(conference)
-    }
-
-    stand_labels = []
-    for stand in conference_standing:
-        if stand[-5:-1] == "East":
-            stand_labels.append(1)
-        elif stand[-5:-1] == "West":
-            stand_labels.append(-1)
-        else:
-            stand_labels.append(0)
-
-    vertex_labels = [conf_labels[conf] for conf in conference]
-    unique_labels = conf_labels.keys()
-
-    # Generate labels for edges based on the edge labels
-
-    intra_cluster_alpha = 0.6
-    inter_cluster_alpha = 0.1
-
-    edge_labels = []
-    edge_standing = []
-    edge_alpha = []
-    for u, v in football.edges():
-        if (
-            vertex_labels[u] == vertex_labels[v]
-            and stand_labels[u] == stand_labels[v]
-            and vertex_labels[u] != conf_labels["NCAA Division I FBS independents"]
-        ):
-            edge_labels.append(vertex_labels[u])
-            edge_standing.append(stand_labels[u])
-            edge_alpha.append(intra_cluster_alpha)
-        else:
-            edge_labels.append(-1)
-            edge_standing.append(0)
-            edge_alpha.append(inter_cluster_alpha)
-
-    # Convert vertex, edge labels to unique colors
-    n_labels = len(unique_labels)
-
-    color_base = sns.color_palette("husl", n_labels, desat=1)
-
-    rng = np.random.default_rng(seed=1)
-    color_base = rng.permutation(color_base)
-
-    # Generate light and dark variations
-    factor_light = 1.3  # Brighten factor
-    factor_dark = 0.7  # Darken factor
-
-    def adjust_brightness(color, factor):
-        return np.clip(np.array(color) * factor, 0, 1)
-
-    colors = np.array(
-        [
-            adjust_brightness(color, {-1: factor_dark, 0: 1.0, 1: factor_light}[i])
-            for color in color_base
-            for i in [-1, 0, 1]
-        ]
-    )
-
-    black = np.array([0.0, 0.0, 0.0])
-    colors = np.vstack([colors] + 3 * [black])
-
-    vertex_colors = np.array(
-        [colors[3 * l + 1 + s, :] for l, s in zip(vertex_labels, stand_labels)]
-    )
-
-    edge_colors = np.array([colors[3 * l + 1 + s, :] for l, s in zip(edge_labels, edge_standing)])
+    arrays = football_label_arrays(football_dataset)
+    edge_alpha = arrays["edge_alpha"]
+    vertex_colors = arrays["vertex_colors"]
+    edge_colors = arrays["edge_colors"]
 
     fig, axes = plt.subplots(1, 3, figsize=(3 * 6, 6))
     for i, method in enumerate(["VertexEmbedding", "EdgeEmbedding", "TwinEmbedding"]):
@@ -850,7 +773,7 @@ def barabasi_albert(
 ):
     logger.info(f"Exporting Barabasi-Albert metrics at: {output_path}")
     initial_graph = nx.cycle_graph(7)
-    G = dataset.barabasi_albert( n, d, initial_graph = initial_graph )
+    G = load_dataset("barabasi_albert", n=n, k=d).graph
 
     experiment = graph_embedding_all(
         G, # input graph

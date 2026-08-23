@@ -106,6 +106,13 @@ built from rather than transforming on the fly.
 The hazard that comes with it: two independent sources can disagree about which pairs are close,
 silently. `check_weight_consistency` is the guard — see `DECISIONS.md`.
 
+**Measured, and they do not disagree.** Over the 49368 shared pairs: global Spearman −0.2364,
+median per-row −0.7820, and — restricted to the pairs `D` recorded in one direction only, where
+fuzzy union cannot have mixed row $j$'s $\rho_j,\sigma_j$ into row $i$ — **exactly −1.0 in all
+3819 scored rows**. So `A[i,j]` is a strictly decreasing function of `D[i,j]` wherever it is
+$\mu_{ij}$ unmixed, and the weaker aggregate figures are symmetrisation and per-row $\sigma_i$
+variation, not a fault. Pinned in `tests/test_datasets_registry.py`.
+
 ### Also in the file, and currently reached ad hoc
 
 - **`X_umap`** — a 2-d reference embedding, used as a layout by `tabula_sapiens_teaser` (it is
@@ -152,11 +159,17 @@ small test case that football turned out not to be.
 
 ## digits (formerly `mnist`)
 
-`sklearn.datasets.load_digits()` — 1797 samples of **8×8** digits, not MNIST. At `n_neighbors=12`:
-n = 1797, m = 14732. Weights are Euclidean distances 5.3–37.8, so the **distance** side is the
-stored one — `Stored(meaning="distance")` — and the affinity form is derived,
-`exp(-d/d_scale)` with `d_scale = median(d)`. Retained as the representative point-cloud-derived
-kNN network (spec §8).
+`sklearn.datasets.load_digits()` — 1797 samples of **8×8** digits, not MNIST. At `n_neighbors=12`
+(the registry default): n = 1797, m = 14732. Weights are Euclidean distances 5.3–37.8, so the
+**distance** side is the stored one — `Stored(meaning="distance")` — and the affinity form is
+derived, `exp(-d/d_scale)` with `d_scale = median(d) = 21.8403`. Retained as the representative
+point-cloud-derived kNN network (spec §8).
+
+This is the dataset bug §1.6 was about. Before the restructure, its stored distances were handed
+to the representations as if they were affinities; the Spearman correlation between the old and
+the new edge weights is **exactly −1** over all 14732 edges, i.e. every edge was ranked in
+precisely the reverse order. The *layout* consequence is smaller than that sounds — see the
+commit that closed it.
 
 Note the contrast with tabula, which is the same kind of object built better: both were derived
 from a point cloud, but tabula persisted the distance matrix *and* the affinities, while digits

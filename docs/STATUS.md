@@ -2,7 +2,7 @@
 
 Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
-**Last updated:** end of session 1 (2026-08-23). Branch `experiment-setup` @ `e0428de`.
+**Last updated:** end of session 2 (2026-08-23). Branch `experiment-setup`.
 
 ---
 
@@ -11,11 +11,11 @@ Read `CLAUDE.md` first, then this. Updated at the end of each session.
 | Step | State |
 |---|---|
 | **1. Correctness and conventions groundwork** | **Done** — merged `b220cb8`, `e0428de` |
-| **2. `Dataset` and `LayoutGraph` (§3.4, §3.5)** | **Next** — plan: [`docs/plans/step2-datasets.md`](plans/step2-datasets.md) |
-| 3. `common.py` + `structural.py` — ADR, kNN family, SNS | not started |
+| **2. `Dataset` and `LayoutGraph` (§3.4, §3.5)** | **Done** — session 2; plan: [`docs/plans/step2-datasets.md`](plans/step2-datasets.md) |
+| **3. `common.py` + `structural.py` — ADR, kNN family, SNS** | **Next** |
 | 4. `visual.py` — NND, NR/VNR, distributions, edge lengths | not started |
 | 5. `crossings.py` — curves, detection, Cr/LWCr, detour | not started |
-| 6. `label.py` — silhouette, accuracy, graph-side checks | not started (needs step 2) |
+| 6. `label.py` — silhouette, accuracy, graph-side checks | not started (step 2 unblocked it) |
 | 7. Registry, `evaluate_layout`, `batch_layout_metrics`, persistence | not started |
 | 8. λ sweep and selection, seeds, straight/curved variants | not started |
 | 9. Bugs §1.4, §1.5, §1.7; graph *t*-SNE baseline | not started |
@@ -23,42 +23,59 @@ Read `CLAUDE.md` first, then this. Updated at the end of each session.
 | 11. Reporting: aggregation, Typst export, schema guards | not started |
 | 12. Dataset groups including the adversarial density case | not started |
 
-**No results run has been produced.** `runs/` does not exist, so nothing downstream is invalidated
-by a change that moves numbers. Spec §7: do not produce Section 5 numbers before step 8.
+**No results run has been produced.** `runs/` does not exist (and is now in `.gitignore`), so
+nothing downstream is invalidated by a change that moves numbers. Spec §7: do not produce
+Section 5 numbers before step 8.
 
 ## Read these before starting
 
 1. `CLAUDE.md` — non-negotiable conventions and the version-control policy.
-2. `docs/EXPERIMENT_SETUP_SPEC.md` **§0.5 first** — it supersedes the rest of the document, and
-   records that §3.4/§3.5 were rewritten to the two-source model.
+2. `docs/EXPERIMENT_SETUP_SPEC.md` **§0.5 first** — it supersedes the rest of the document.
 3. `docs/DECISIONS.md` — the open questions the implementer was asked to settle, with reasoning.
 4. `docs/DATASET_PROVENANCE.md` — where each dataset's weights actually come from. Assertions
    here are executable: `tests/test_dataset_provenance.py`.
-5. `docs/plans/<step>.md` — the commit sequence and verification for the step in progress. The
+5. `docs/DATASET_REPORT.md` — the generated roster table (`python -m twin.report`).
+6. `docs/plans/<step>.md` — the commit sequence and verification for the step in progress. The
    design lives in the spec; these say what to do in what order.
 
 ---
 
-## What landed in session 1
+## What landed in session 2
 
-Spec §7 step 1, on `session1/correctness-and-conventions`, merged at `b220cb8`; the `sgtsnepi`
-upgrade merged after it at `e0428de`.
+Spec §7 step 2, on `step2/datasets`, merged into `experiment-setup`. Ten planned items in
+eleven commits; 268 tests (was 94), all eight `paper_figures` functions still render.
 
-- **`twin/results.py`** — `LayoutResult`, the single `(d, n) → (n, d)` conversion point.
-  `from_raw()` transposes unconditionally and asserts against the graph; orientation is never
-  inferred from `shape`, which is wrong when `n == d`.
-- **`twin/metrics.py`** — `require_n_by_d` replaces transpose sniffing; `point_distance_metric`
-  deleted (§1.2); `knn_accuracy` / `knn_accuracy_report` reimplemented from thesis eqs. (57)–(60)
-  with tie rules, a `d = 0` guard and a majority-class floor.
-- **`twin/instrumentation.py`** — `RSSSampler`. Memory is sampled as process RSS, not tracked with
-  `tracemalloc`, because the primary backend is a C extension and `tracemalloc` cannot see into it.
-- **`twin/pipelines.py`** — `graph_embedding` returns a `LayoutResult` and records `runtime_s`,
-  `representation_s`, `n_points`, `peak_mem_mb`.
-- **`twin/graphmatrix.py`** — `point_provenance` declared per representation (spec §0.5 decision 5).
-- **94 tests**, including characterisation pins that make "behaviour-preserving" checkable.
+- **`twin/datasets/`** — `Dataset`, `LabelSet`, `DatasetStyle`, the stored-source types, one file
+  per dataset, and `DATASET_REGISTRY`. Ten datasets: the `karate` / `karate_weighted` split, the
+  `mnist` → `digits` rename, `sbm_er_3modes` newly reachable, and tabula loading `A`, `D`, all
+  four label fields and `X_umap`.
+- **`twin/layoutgraph.py`** — `LayoutGraph` plus `vertex_graph` / `edge_graph` / `twin_graph`.
+  Derivation of a missing side happens in `vertex_graph` and nowhere else; the incidence matrix
+  is built once and shared; the derivation chain is read off a `parent` link.
+- **`twin/embedding.py`** — `embed(layout_graph, y0)`, `mode=` deleted, `EMBEDDING_REGISTRY` with
+  `expects` / `stochastic` / `has_lambda`, and a conformance test that asserts each method reads
+  exactly the side it declares.
+- **`twin/results.py`** — `LayoutResult` holds the `Dataset`; `G` is a property; it records the
+  derivation chain.
+- **`twin/report.py`** — `python -m twin.report`; output committed as `docs/DATASET_REPORT.md`.
+- **Bug §1.6 closed.** Digits stops being fed distances as if they were affinities.
 
-Three of the spec's six §1 bug claims did not reproduce; §0.5 records the corrections. §1.8 (the
-`sgtsnepi` fd-2 bug) was found during the work and is now fixed upstream in 0.7.
+### What the measurements said, where they contradicted the plan
+
+- **Tabula's two stored sides do not disagree.** Global Spearman is −0.236 and per-row −0.782,
+  both weaker than the spec expected — but restricted to pairs recorded in one direction only,
+  where fuzzy union cannot have mixed two rows' parameters, it is **exactly −1 in all 3819
+  scored rows**. Symmetrisation is the cause of the aggregate degradation. `DECISIONS.md` has the
+  table; read the ≈ −0.9 threshold against the *unmixed* column.
+- **The §1.6 fix is decisive at the matrix level and invisible at the layout level.** Spearman
+  between the old and new digits edge weights is exactly −1 over all 14732 edges. But Procrustes
+  disparity between the old and new layouts at matched init is 0.02–0.46, while *re-initialising
+  the same configuration* moves it 0.46–0.83 — so the correction moves the layout less than seed
+  noise does, and Procrustes cannot show that the bug mattered. Re-measure in quality terms
+  (kNN recall, ADR) once step 3 lands.
+- **No dataset in the roster has a coincident vertex pair.** §0.5's zero-ideal-distance concern
+  is inert for the current roster; the report has the column to catch a future dataset that
+  reintroduces it.
 
 ---
 
@@ -79,17 +96,21 @@ Three of the spec's six §1 bug claims did not reproduce; §0.5 records the corr
   the clean-tree rule for results runs is unenforceable.
 - `pytest`, `pyarrow` and `psutil` are installed. `openTSNE` and `fa2_modified` are **not** — both
   are needed at step 9.
+- **The notebooks under `notebooks/` were not updated** and import modules that have moved
+  (`twin.metadata`, the old `graph_embedding` signature). They are not a record of results
+  (outputs are stripped) and nothing in the test suite touches them.
 
 ## Health check
 
 ```bash
-venv/bin/python -m pytest -q     # 94 passing
+venv/bin/python -m pytest -q     # 268 passing
+python -m twin.report            # the roster table; regenerates docs/DATASET_REPORT.md with -o
 git status --short               # clean; if notebooks appear modified, the filter is unset
 ```
 
 Figures: the six fast `paper_figures` functions render in seconds; `tabula_sapiens_teaser` takes
 about three minutes and internally calls `tabula_sapiens_blockadj`, so rendering it covers both.
-All eight render as of `e0428de`.
+All eight render as of the session-2 merge.
 
 ---
 
@@ -97,23 +118,28 @@ All eight render as of `e0428de`.
 
 | Item | Bites at |
 |---|---|
-| `dataset.tabula()` reads only `A`, discarding `D` and every label field in the same `.mat` | **step 2** — `D` is the measured distance source and the labels are needed by step 6 |
-| `karate` / `karate_weighted` split not in the registry; `batch_registries` exposes only the *weighted* graph under the name `karate_club` | **step 2** |
-| `twin/report.py` does not exist, though `CLAUDE.md` advertises `python -m twin.report` | **step 2** |
-| `runs/` is **not** in `.gitignore`, although `CLAUDE.md` says it should be | **step 7**, when the first run is written |
+| Ideal distances have a single owner but no consumer yet: `common.ideal_distances` and its `max_n` guard do not exist. Take them from `vertex_graph(dataset).distance` | **step 3** |
+| The `exp_decay` vs `exp_decay_sq` affinity rule is selectable but has never been compared. Spec §3.4 asks for one comparison on digits | **step 3**, alongside kNN recall |
+| Re-measure the §1.6 fix in quality terms — Procrustes said the layout *changed*, not that it improved | **step 3** |
 | Memory runs need **one case per process**: `peak_mem_mb` is a delta from the entry baseline, and glibc does not always return freed memory, so later cases in a batch measure from a higher floor | step 7 |
+| A persisted layout must store the dataset's registry **name and params**, never the `Dataset` object | step 7 |
 | `common_init` is not in the batch runner — deliberately deferred, since it needs the seed axis and the paired protocol; the column-slicing convention it depends on is already tested | step 8 |
 | `openTSNE` and `fa2_modified` not installed | step 9 |
-| One legacy `(d, n)` surface: `graph_embedding_all` → `paper_figures` → `plots` | converges at steps 5 and 10; tracked in `DECISIONS.md` (2) |
+| One legacy `(d, n)` surface: `graph_embedding_all` → `paper_figures` → `plots`, and with it `twin/graphmatrix.py`'s pre-restructure classes and their `.affinity` / `.distance` shim | converges at steps 5 and 10; tracked in `DECISIONS.md` (2) |
+| Tabula's Leiden partition is still computed inside `tabula_sapiens_teaser` rather than registered as a `detected:leiden` label set | step 10, where the consumer and the cost land together |
+| The notebooks import modules that have moved | whenever someone opens one |
 
 ## Traps
 
-- **`batches/batch.py` breaks three separate ways in step 2** — it names `karate_club` and `mnist`
-  in its graph axis and sweeps `mode: ['distance','similarity']` on Kamada–Kawai and neato. All
-  three change. It is the least obvious dependency in the tree and it fails only at run time.
-- **`paper_figures.py` imports both `metadata` and `dataset`**, and derives labels inline — the
-  `stand[-5:-1]` division slicing, and a second ad-hoc `loadmat` for tabula cell types. Those
-  derivations move into `Dataset` in step 2; the plotting refactor itself is step 10.
-- **Pin derived data before refactoring it.** The characterisation pins in session 1 caught an
-  inverted sort in the leave-one-out neighbour selection that would otherwise have looked like a
-  plausible metric. Do the same for the label vectors and colour arrays before moving them.
+- **`docs/plans/step2-datasets.md` is now history, not instructions.** Where the implementation
+  departed from it — `LayoutGraph`'s module, the commit ordering, the shim on the legacy classes
+  — `DECISIONS.md` records why.
+- **`twin/graphmatrix.py` is not the representation layer any more.** `twin/layoutgraph.py` is.
+  The old classes survive for `paper_figures` only; adding a caller re-entangles the two layers.
+- **A `Dataset` is never laid out and a `LayoutGraph` is never labelled.** If a metric or figure
+  needs a special case to score $A_E$ or $A_{tne}$ against the dataset's labels, the layering has
+  been broken somewhere — `vertex_and_edge_points` returns points in the **original** indexing.
+- **Pin derived data before refactoring it.** The step-2 pins (`tests/fixtures/step2_labels.npz`
+  plus the digest table in `tests/test_step2_characterisation.py`) are what made the label and
+  colour move provably behaviour-preserving. Regenerating the fixture without updating the
+  digests fails loudly, which is the point.

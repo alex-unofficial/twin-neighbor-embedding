@@ -1,17 +1,33 @@
-"""
-Author: Dimitris Floros
-Date: 2025-01-31
-Description: This module contains classes for graph embedding methods.
+"""Layout methods (spec §3.5).
+
+Every method takes a `LayoutGraph` and **asks for the side it needs** rather than being handed
+one by a runner that guessed::
+
+    A = layout_graph.affinity     # SG-t-SNE, spectral, spring (FR), ForceAtlas2
+    G = layout_graph.distance     # Kamada-Kawai, neato, Yifan Hu
+
+The `mode="distance"|"similarity"` parameters are gone. That decision never belonged to the
+layout class, and it is not a runner decision either — it is a property of the graph being laid
+out. Half of bug §1.6 closes here; the other half is that the graph now knows which of its
+sides is stored.
+
+`EmbeddingSpec.expects` is kept as declared metadata for the manifest and the report, but the
+runner no longer branches on it — so nothing keeps it honest except
+``tests/test_embedding.py::test_every_method_touches_exactly_the_side_it_declares``, which hands
+each method a graph that records which side was read.
+
+Original author: Dimitris Floros (2025-01-31).
 """
 
 from dataclasses import dataclass
+from typing import Literal
+
 import networkx as nx
 import numpy as np
 import scipy.sparse as sp
-from sgtsnepi import sgtsnepi
 from fa2 import ForceAtlas2
+from sgtsnepi import sgtsnepi
 
-import twin.graphmatrix as gm
 
 @dataclass
 class GraphEmbeddingMethod:
@@ -23,368 +39,154 @@ class GraphEmbeddingMethod:
 
     method_name: str
 
-    def embed(self, graph, y0=None):
-        """Placeholder method for embedding. Subclasses should override this.
+    def embed(self, layout_graph, y0=None):
+        """Lay out one `LayoutGraph`, returning ``(d, n_points)``.
 
         Args:
-            graph (networkx.Graph): The input graph to embed.
-
-        Raises:
-            NotImplementedError: If the method is not overridden by a subclass.
+            layout_graph: a :class:`~twin.layoutgraph.LayoutGraph`, from which the method reads
+                whichever of ``.affinity`` / ``.distance`` its `EmbeddingSpec` declares.
+            y0: initial positions, ``(d, n_points)``, or None.
         """
         raise NotImplementedError("Each embedding method must implement its own 'embed' function.")
 
     def init_embedding(self, n, d):
-        """Placeholder method for initializing the embedding. Subclasses should override this.
-
-        Args:
-            n (int): The number of nodes in the graph.
-            d (int): The dimensionality of the embedding.
-
-        Returns:
-            np.ndarray: The initial embedding (all zeros if not overridden).
-        """
+        """Initial positions, ``(d, n)``. Zeros unless a subclass overrides."""
         return np.zeros((d, n))
+
+
+def _positions(y0, n):
+    """networkx's ``pos`` mapping from a ``(d, n)`` array, or None."""
+    return None if y0 is None else {i: y0[:, i] for i in range(n)}
+
+
+def _as_array(positions, n, d):
+    """A networkx position mapping back into a ``(d, n)`` array."""
+    Y = np.zeros((d, n))
+    for node, position in positions.items():
+        Y[:, node] = position
+    return Y
 
 
 @dataclass
 class SpringLayout(GraphEmbeddingMethod):
-    """Spring layout embedding.
+    """Fruchterman-Reingold. Consumes the affinity: an edge weight is an attraction strength."""
 
-    Attributes:
-        method_name (str): The name of the embedding method.
-        seed (int): Seed for the random number generator.
-    """
-
-    method_name: str = "Spring Layout"  # Override the method name
-    seed: int = 0  # Seed for the random number generator
-    d: int = 2  # Dimensionality of the embedding
-    # --- add any additional parameters here ---
+    method_name: str = "Spring Layout"
+    seed: int = 0
+    d: int = 2
 
     def init_embedding(self, n, d):
-        """Initialize the embedding with random values.
+        return np.random.default_rng(self.seed).uniform(size=(d, n))
 
-        Args:
-            n (int): The number of nodes in the graph.
-            d (int): The dimensionality of the embedding.
-
-        Returns:
-            np.ndarray: The initial embedding.
-        """
-        rng = np.random.default_rng(self.seed)
-        return rng.uniform(size=(d, n))
-
-    def embed(self, G: gm.GraphMatrixMethod, y0=None):
-        """Embed the graph using a spring layout.
-
-        Args:
-            graph (networkx.Graph): The input graph to embed.
-
-        Returns:
-            dict: A dictionary of positions keyed by node.
-        """
-        # form graph from adjacency matrix sp
-        adj = G.get_adj()
-        graph = nx.from_scipy_sparse_array(adj)
-
-        if y0 is None:
-            pos = None
-        else:
-            pos = {i: y0[:, i] for i in range(adj.shape[0])}
-
-        Y_spring = nx.spring_layout(graph, seed=self.seed, pos=pos, dim=self.d)
-
-        Y = np.zeros((self.d, adj.shape[0]))
-        for node, pos in Y_spring.items():
-            Y[:, node] = pos
-
-        return Y
+    def embed(self, layout_graph, y0=None):
+        n = layout_graph.n_points
+        graph = nx.from_scipy_sparse_array(layout_graph.affinity)
+        positions = nx.spring_layout(graph, seed=self.seed, pos=_positions(y0, n), dim=self.d)
+        return _as_array(positions, n, self.d)
 
 
 @dataclass
 class KamadaKawaiLayout(GraphEmbeddingMethod):
-    """Kamada-Kawai embedding.
+    """Stress minimisation against the graph's **distance** form."""
 
-    Attributes:
-        method_name (str): The name of the embedding method.
-        mode (str): The type of edge weights. Can be 'distance' or 'similarity'.
-        seed (int): Seed for the random number generator.
-    """
-
-    method_name: str = "Kamada-Kawai"  # Override the method name
-    mode: str = 'distance' # Edge weight mode ('distance' or 'similarity')
-    seed: int = 0  # Seed for the random number generator
-    d: int = 2  # Dimensionality of the embedding
-    # --- add any additional parameters here ---
+    method_name: str = "Kamada-Kawai"
+    seed: int = 0
+    d: int = 2
 
     def init_embedding(self, n, d):
-        """Initialize the embedding with random values.
+        return np.random.default_rng(self.seed).uniform(size=(d, n))
 
-        Args:
-            n (int): The number of nodes in the graph.
-            d (int): The dimensionality of the embedding.
-
-        Returns:
-            np.ndarray: The initial embedding.
-        """
-        rng = np.random.default_rng(self.seed)
-        return rng.uniform(size=(d, n))
-
-    def embed(self, G: gm.GraphMatrixMethod, y0=None):
-        """Embed the graph using Kamada-Kawai layout.
-
-        Args:
-            graph (networkx.Graph): The input graph to embed.
-
-        Returns:
-            dict: A dictionary of positions keyed by node.
-        """
-        # form graph from adjacency matrix sp
-        adj = G.get_adj()
-
-        if self.mode == 'distance':
-            dist_adj = adj
-        elif self.mode == 'similarity':
-            # Normalize weights for row-stochastic input matrix
-            row_sums = np.array(adj.sum(axis=1)).ravel()
-
-            inv_row_sums = np.reciprocal(row_sums, out=None, where=row_sums != 0)
-            inv_row_sums[row_sums == 0] = 0.0
-
-            D_inv = sp.diags(inv_row_sums)
-            norm_adj = D_inv @ adj
-
-            # Transform to distance via information function
-            dist_adj = norm_adj.copy()
-            dist_adj.data = -np.log(dist_adj.data)
-
-        else:
-            raise ValueError("mode must be 'distance' or 'similarity'")
-
-        graph = nx.from_scipy_sparse_array(dist_adj)
-
-        if y0 is None:
-            pos = None
-        else:
-            pos = {i: y0[:, i] for i in range(adj.shape[0])}
-
-        Y_kk = nx.kamada_kawai_layout(graph, pos=pos, dim=self.d)
-
-        Y = np.zeros((self.d, adj.shape[0]))
-        for node, pos in Y_kk.items():
-            Y[:, node] = pos
-
-        return Y
+    def embed(self, layout_graph, y0=None):
+        n = layout_graph.n_points
+        positions = nx.kamada_kawai_layout(
+            layout_graph.distance, pos=_positions(y0, n), dim=self.d
+        )
+        return _as_array(positions, n, self.d)
 
 
 @dataclass
 class YifanHuLayout(GraphEmbeddingMethod):
-    """Yifan Hu embedding.
+    """Graphviz `sfdp`, a multilevel force method, over the **distance** form.
 
-    Attributes:
-        method_name (str): The name of the embedding method.
-        seed (int): Seed for the random number generator.
+    Note:
+        `y0` and `d` are ignored — spec §1.4, deferred to step 9.
     """
 
-    method_name: str = "Yifan Hu"  # Override the method name
-    seed: int = 0  # Seed for the random number generator
-    d: int = 2  # Dimensionality of the embedding
-    # --- add any additional parameters here ---
+    method_name: str = "Yifan Hu"
+    seed: int = 0
+    d: int = 2
 
-    def embed(self, G: gm.GraphMatrixMethod, y0=None):
-        """Embed the graph using Yifan Hu layout.
-
-        Args:
-            graph (networkx.Graph): The input graph to embed.
-
-        Returns:
-            dict: A dictionary of positions keyed by node.
-        """
-        # form graph from adjacency matrix sp
-        adj = G.get_adj()
-        graph = nx.from_scipy_sparse_array(adj)
-
-        if y0 is None:
-            pos = None
-        else:
-            pos = {i: y0[:, i] for i in range(adj.shape[0])}
-
-        Y_sfdp = nx.nx_pydot.graphviz_layout(graph, prog='sfdp')
-
-        Y = np.zeros((self.d, adj.shape[0]))
-        for node, pos in Y_sfdp.items():
-            Y[:, node] = pos
-
-        return Y
+    def embed(self, layout_graph, y0=None):
+        positions = nx.nx_pydot.graphviz_layout(layout_graph.distance, prog="sfdp")
+        return _as_array(positions, layout_graph.n_points, self.d)
 
 
 @dataclass
 class NeatoLayout(GraphEmbeddingMethod):
-    """Stress Majorization (MDS based) embedding.
+    """Graphviz `neato` — stress majorization (MDS) over the **distance** form."""
 
-    Attributes:
-        method_name (str): The name of the embedding method.
-        mode (str): The type of edge weights. Can be 'distance' or 'similarity'.
-    """
+    method_name: str = "NEATO"
+    seed: int = 0
+    d: int = 2
 
-    method_name: str = "NEATO"  # Override the method name
-    seed: int = 0  # Seed for the random number generator
-    d: int = 2  # Dimensionality of the embedding
-    mode: str = 'distance' # Edge weight mode ('distance' or 'similarity')
-    # --- add any additional parameters here ---
-
-    def embed(self, G: gm.GraphMatrixMethod, y0=None):
-        """Embed the graph using NEATO layout.
-
-        Args:
-            graph (networkx.Graph): The input graph to embed.
-
-        Returns:
-            dict: A dictionary of positions keyed by node.
-        """
-        # form graph from adjacency matrix sp
-        adj = G.get_adj()
-
-        if self.mode == 'distance':
-            dist_adj = adj
-        elif self.mode == 'similarity':
-            # Normalize weights for row-stochastic input matrix
-            row_sums = np.array(adj.sum(axis=1)).ravel()
-
-            inv_row_sums = np.reciprocal(row_sums, out=None, where=row_sums != 0)
-            inv_row_sums[row_sums == 0] = 0.0
-
-            D_inv = sp.diags(inv_row_sums)
-            norm_adj = D_inv @ adj
-
-            # Transform to distance via information function
-            dist_adj = norm_adj.copy()
-            dist_adj.data = -np.log(dist_adj.data)
-        else:
-            raise ValueError("mode must be 'distance' or 'similarity'")
-
-        graph = nx.from_scipy_sparse_array(dist_adj)
-
-        if y0 is None:
-            pos = None
-        else:
-            pos = {i: y0[:, i] for i in range(adj.shape[0])}
-
-        Y_neato = nx.nx_pydot.graphviz_layout(graph, prog='neato')
-
-        Y = np.zeros((self.d, adj.shape[0]))
-        for node, pos in Y_neato.items():
-            Y[:, node] = pos
-
-        return Y
+    def embed(self, layout_graph, y0=None):
+        positions = nx.nx_pydot.graphviz_layout(layout_graph.distance, prog="neato")
+        return _as_array(positions, layout_graph.n_points, self.d)
 
 
 @dataclass
 class ForceAtlas2Layout(GraphEmbeddingMethod):
-    """ForceAtlas2 embedding.
+    """ForceAtlas2 over the affinity matrix.
 
     Attributes:
-        method_name (str): The name of the embedding method.
-        seed (int): Seed for the random number generator.
-        d (int): Dimensionality of the embedding.
-        linlog (bool): Enable ForceAtlas2 LinLog mode
+        linlog (bool): Enable ForceAtlas2 LinLog mode.
     """
 
-    method_name: str = "ForceAtlas2"  # Override the method name
-    seed: int = 0  # Seed for the random number generator
-    d: int = 2  # Dimensionality of the embedding
-    linlog: bool = False # ForceAtlas2 LinLog mode
-    verbose: bool = False # Verbose layout
+    method_name: str = "ForceAtlas2"
+    seed: int = 0
+    d: int = 2
+    linlog: bool = False
+    verbose: bool = False
 
     def init_embedding(self, n, d):
-        """Initialize the embedding with random values.
+        return np.random.default_rng(self.seed).normal(size=(d, n), loc=0, scale=1e-4)
 
-        Args:
-            n (int): The number of nodes in the graph.
-            d (int): The dimensionality of the embedding.
-
-        Returns:
-            np.ndarray: The initial embedding.
-        """
-        rng = np.random.default_rng(self.seed)
-        return rng.normal(size=(d, n), loc=0, scale=1e-4)
-
-    def embed(self, G: gm.GraphMatrixMethod, y0=None):
-        """Embed the graph using ForceAtlas2.
-
-        Args:
-            graph (networkx.Graph): The input graph to embed.
-
-        Returns:
-            np.ndarray: The embedded coordinates.
-        """
-
+    def embed(self, layout_graph, y0=None):
         fa2 = ForceAtlas2(
-            seed=self.seed,
-            dim=self.d,
-            linLogMode=self.linlog,
-            verbose=self.verbose,
+            seed=self.seed, dim=self.d, linLogMode=self.linlog, verbose=self.verbose
         )
-
-        adj = G.get_adj()
-
-        if y0 is None:
-            pos = None
-        else:
-            pos = y0.T
-
-        Y_fa2 = fa2.forceatlas2(adj, pos)
-
-        return np.array(Y_fa2).T
+        Y = fa2.forceatlas2(layout_graph.affinity, None if y0 is None else y0.T)
+        return np.array(Y).T
 
 
 @dataclass
 class SGtSNELayout(GraphEmbeddingMethod):
-    """SGtSNE layout embedding.
+    """SG-t-SNE-Pi. The primary backend; consumes the affinity.
 
     Attributes:
-        method_name (str): The name of the embedding method.
-        lambda_par (float): Lambda parameter for SGtSNE.
-        seed (int): Seed for the random number generator.
-        d (int): Dimensionality of the embedding.
+        lambda_par (float): the rescaling parameter; per-row exponents are found so that each
+            row's rescaled affinities sum to it.
     """
 
-    method_name: str = "SGtSNE Layout"  # Override the method name
-    lambda_par: float = 1.0  # Lambda parameter for SGtSNE
-    seed: int = 0  # Seed for the random number generator
-    d: int = 2  # Dimensionality of the embedding
-    silent: bool = True  # Whether to suppress output from SGtSNE
-    run_exact: bool = False  # Whether to run the exact version of SGtSNE
+    method_name: str = "SGtSNE Layout"
+    lambda_par: float = 1.0
+    seed: int = 0
+    d: int = 2
+    silent: bool = True
+    run_exact: bool = False
 
     def init_embedding(self, n, d):
-        """Initialize the embedding with random values.
+        return np.random.default_rng(self.seed).normal(size=(d, n), loc=0, scale=1e-4)
 
-        Args:
-            n (int): The number of nodes in the graph.
-            d (int): The dimensionality of the embedding.
-
-        Returns:
-            np.ndarray: The initial embedding.
-        """
-        rng = np.random.default_rng(self.seed)
-        return rng.normal(size=(d, n), loc=0, scale=1e-4)
-
-    def embed(self, G: gm.GraphMatrixMethod, y0=None):
-        """Embed the graph using SGtSNE.
-
-        Args:
-            graph (networkx.Graph): The input graph to embed.
-
-        Returns:
-            np.ndarray: The embedded coordinates.
-        """
-        adj = G.get_adj()
-        rng = np.random.default_rng(self.seed)
+    def embed(self, layout_graph, y0=None):
+        affinity = layout_graph.affinity
         if y0 is None:
-            y0 = rng.normal(size=(self.d, adj.shape[0]), loc=0, scale=1e-3)
+            y0 = np.random.default_rng(self.seed).normal(
+                size=(self.d, layout_graph.n_points), loc=0, scale=1e-3
+            )
 
         return sgtsnepi(
-            adj,
+            affinity,
             d=self.d,
             lambda_par=self.lambda_par,
             silent=self.silent,
@@ -395,30 +197,51 @@ class SGtSNELayout(GraphEmbeddingMethod):
 
 @dataclass
 class SpectralLayout(GraphEmbeddingMethod):
-    """Spectral layout embedding.
-
-    Attributes:
-        method_name (str): The name of the embedding method.
-        d (int): Dimensionality of the embedding.
-    """
+    """Eigenvectors of the graph Laplacian of the affinity matrix."""
 
     method_name: str = "Spectral Layout"
     d: int = 2
     normed: bool = True
     seed: int = 0
 
-    def embed(self, G: gm.GraphMatrixMethod, y0=None):
-        """Embed the graph using spectral layout.
+    def embed(self, layout_graph, y0=None):
+        L = sp.csgraph.laplacian(layout_graph.affinity, normed=self.normed)
+        _, eigvecs = sp.linalg.eigsh(L, k=self.d + 1, which="SM")
+        return eigvecs[:, 1:].T
 
-        Args:
-            graph (networkx.Graph): The input graph to embed.
 
-        Returns:
-            np.ndarray: The embedded coordinates.
-        """
-        adj = G.get_adj()
-        L = sp.csgraph.laplacian(adj, normed=self.normed)
-        eigvals, eigvecs = sp.linalg.eigsh(L, k=self.d + 1, which="SM")
-        eigvecs = eigvecs[:, 1:].T
+@dataclass(frozen=True)
+class EmbeddingSpec:
+    """What a layout method is, declaratively (spec §3.5).
 
-        return eigvecs
+    Attributes:
+        cls: the method class.
+        expects: which side it reads. Declared metadata for the manifest and the report — the
+            runner does **not** branch on it, because nothing converts at the boundary any
+            more. Since nothing depends on it, nothing keeps it honest either, so it is
+            asserted by a test rather than trusted.
+        stochastic: whether repeated runs at the same seed and `y0` can differ, which is what
+            decides whether a case needs the seed axis (spec §4.1).
+        has_lambda: whether it takes the SG-t-SNE rescaling parameter, i.e. whether the lambda
+            sweep applies to it (spec §4.2).
+    """
+
+    cls: type
+    expects: Literal["affinity", "distance"]
+    stochastic: bool
+    has_lambda: bool
+
+
+EMBEDDING_REGISTRY: dict[str, EmbeddingSpec] = {
+    "spring": EmbeddingSpec(SpringLayout, "affinity", stochastic=True, has_lambda=False),
+    "yifanhu": EmbeddingSpec(YifanHuLayout, "distance", stochastic=False, has_lambda=False),
+    "forceatlas2": EmbeddingSpec(
+        ForceAtlas2Layout, "affinity", stochastic=True, has_lambda=False
+    ),
+    "kamada-kawai": EmbeddingSpec(
+        KamadaKawaiLayout, "distance", stochastic=False, has_lambda=False
+    ),
+    "neato": EmbeddingSpec(NeatoLayout, "distance", stochastic=False, has_lambda=False),
+    "spectral": EmbeddingSpec(SpectralLayout, "affinity", stochastic=False, has_lambda=False),
+    "sgtsne": EmbeddingSpec(SGtSNELayout, "affinity", stochastic=True, has_lambda=True),
+}
