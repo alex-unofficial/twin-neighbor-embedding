@@ -11,7 +11,7 @@ Read `CLAUDE.md` first, then this. Updated at the end of each session.
 | Step | State |
 |---|---|
 | **1. Correctness and conventions groundwork** | **Done** — merged `b220cb8`, `e0428de` |
-| **2. `Dataset` and `LayoutGraph` (§3.4, §3.5)** | **Next** |
+| **2. `Dataset` and `LayoutGraph` (§3.4, §3.5)** | **Next** — plan: [`docs/plans/step2-datasets.md`](plans/step2-datasets.md) |
 | 3. `common.py` + `structural.py` — ADR, kNN family, SNS | not started |
 | 4. `visual.py` — NND, NR/VNR, distributions, edge lengths | not started |
 | 5. `crossings.py` — curves, detection, Cr/LWCr, detour | not started |
@@ -34,6 +34,8 @@ by a change that moves numbers. Spec §7: do not produce Section 5 numbers befor
 3. `docs/DECISIONS.md` — the open questions the implementer was asked to settle, with reasoning.
 4. `docs/DATASET_PROVENANCE.md` — where each dataset's weights actually come from. Assertions
    here are executable: `tests/test_dataset_provenance.py`.
+5. `docs/plans/<step>.md` — the commit sequence and verification for the step in progress. The
+   design lives in the spec; these say what to do in what order.
 
 ---
 
