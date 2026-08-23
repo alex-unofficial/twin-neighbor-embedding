@@ -20,6 +20,8 @@ import networkx as nx
 import numpy as np
 import scipy.sparse as sp
 
+from twin.datasets.sparsify import SparsityModel
+
 #: What a stored weight vector *means*. This names a model, not merely a direction: it is what
 #: lets ``vertex_graph`` derive the missing side rather than guess it. ``count`` is an alias of
 #: ``strength``; ``affinity`` was retired as a kind because it named the sign of a relationship
@@ -295,6 +297,9 @@ class Dataset:
             (spec §3.4).
         reference_layouts: published 2-d embeddings shipped with the data (tabula's ``X_umap``),
             in ``(n, d)``.
+        sparsity: how the graph got its edge set, when that was a choice rather than the data.
+            None for a graph that *is* the data — a football season, a karate club — where
+            nothing was discarded and there is nothing to declare.
         style: drawing instructions.
         params: the factory arguments, for the manifest.
         provenance: free-form facts for the manifest — where a distance was measured, in what
@@ -312,6 +317,7 @@ class Dataset:
     label_sets: dict[str, LabelSet] = field(default_factory=dict)
     composite_of: dict[str, tuple[str, ...]] = field(default_factory=dict)
     reference_layouts: dict[str, np.ndarray] = field(default_factory=dict)
+    sparsity: SparsityModel | None = None
 
     style: DatasetStyle | None = None
     params: dict = field(default_factory=dict)

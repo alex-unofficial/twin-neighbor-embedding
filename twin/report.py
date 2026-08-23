@@ -20,6 +20,7 @@ from pathlib import Path
 
 import networkx as nx
 import numpy as np
+import scipy.sparse as sp
 
 from twin.datasets import DATASET_REGISTRY, WeightConsistencyReport, check_weight_consistency, load_dataset
 from twin.layoutgraph import vertex_graph
@@ -47,6 +48,14 @@ class DatasetRow:
     weight_median: float
     weight_max: float
     weight_distinct: int
+
+    sparsity: str
+    sparsity_violations: list[str]
+    degree_min: int
+    degree_median: float
+    degree_max: int
+    n_isolated: int
+    stored_nnz: dict[str, int]
 
     zero_distance_pair_fraction: float
     labels: list[tuple[str, int, str, str, str]] = field(default_factory=list)
@@ -91,6 +100,14 @@ def describe_dataset(name: str, **params) -> DatasetRow:
 
     weights = np.array([w for _, _, w in vg.distance.edges(data="weight")], dtype=float)
     sources = dataset.describe_sources()
+    degrees = np.array([d for _, d in dataset.graph.degree()])
+
+    # nnz of the raw stored matrices, before any symmetrisation the mapping applies. For tabula,
+    # A's 98736 against D's 70098 against the graph's 49368 undirected edges is the consistency
+    # a re-export would break, and it is invisible from the graph alone.
+    stored_nnz = {
+        key: int(sp.csr_array(matrix).nnz) for key, matrix in sorted(dataset.matrices.items())
+    }
 
     return DatasetRow(
         name=name,
@@ -109,6 +126,13 @@ def describe_dataset(name: str, **params) -> DatasetRow:
         weight_median=float(np.median(weights)) if weights.size else float("nan"),
         weight_max=float(weights.max()) if weights.size else float("nan"),
         weight_distinct=int(np.unique(weights).size),
+        sparsity=dataset.sparsity.describe() if dataset.sparsity else "the graph is the data",
+        sparsity_violations=dataset.sparsity.check(dataset) if dataset.sparsity else [],
+        degree_min=int(degrees.min()) if degrees.size else 0,
+        degree_median=float(np.median(degrees)) if degrees.size else 0.0,
+        degree_max=int(degrees.max()) if degrees.size else 0,
+        n_isolated=int((degrees == 0).sum()),
+        stored_nnz=stored_nnz,
         zero_distance_pair_fraction=zero_distance_pair_fraction(vg.distance, dataset.n),
         labels=[
             (
@@ -182,6 +206,33 @@ def to_markdown(rows: list[DatasetRow]) -> str:
         ),
         "",
         "`mean degree` is the *k* at which the λ selection criterion of spec §4.2 is defined.",
+        "",
+        "## Sparsity",
+        "",
+        "Sparse input is the operating regime, not a compromise: the twin transform *requires*",
+        "it. On a complete graph over tabula's 5007 vertices A_E would carry ~10^11 nonzeros and",
+        "A_tne would span 12.5 M nodes, so a dense-input comparison is not an experiment that",
+        "could be run at any budget. Where the edge set was therefore a *choice*, the choice is",
+        "declared here and checked against the graph rather than trusted.",
+        "",
+        _table(
+            ["dataset", "sparsity model", "degree min / median / max", "isolated", "stored nnz", "declaration holds"],
+            [
+                [
+                    f"`{r.name}`",
+                    r.sparsity,
+                    f"{r.degree_min} / {_fmt(r.degree_median, 4)} / {r.degree_max}",
+                    f"{r.n_isolated}",
+                    ", ".join(f"{k}: {v}" for k, v in r.stored_nnz.items()) or "—",
+                    "yes" if not r.sparsity_violations else "**NO** — " + "; ".join(r.sparsity_violations),
+                ]
+                for r in rows
+            ],
+        ),
+        "",
+        "A *k*-NN graph gives every vertex degree at least *k* after or-symmetrisation, and",
+        "nk/2 <= m <= nk. Those are the invariants a file re-exported at a different *k* breaks,",
+        "which is why they are checked rather than printed.",
         "",
         "## Stored sides, and what is derived",
         "",

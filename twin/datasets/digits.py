@@ -12,6 +12,7 @@ import sklearn.datasets as skdata
 
 from twin.dataset import construct_knn_graph
 from twin.datasets.base import Dataset, DatasetStyle, LabelSet, Stored
+from twin.datasets.sparsify import KNearest
 
 #: The batch and the provenance record both use 12; the old `dataset.mnist` defaulted to 100,
 #: which makes a 1797-vertex graph with mean degree 125 and was never what got run.
@@ -37,6 +38,7 @@ def digits(n_neighbors: int = DEFAULT_N_NEIGHBORS) -> Dataset:
                 display_role="hue",
             )
         },
+        sparsity=KNearest(k=n_neighbors, symmetrise="or", space="raw 8x8 pixels"),
         style=DatasetStyle(palette="husl", palette_seed=0),
         params={"n_neighbors": n_neighbors},
         provenance={

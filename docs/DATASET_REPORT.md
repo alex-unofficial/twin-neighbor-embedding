@@ -20,6 +20,31 @@ column comes off the `Dataset` object, so adding a dataset adds a row and nothin
 
 `mean degree` is the *k* at which the λ selection criterion of spec §4.2 is defined.
 
+## Sparsity
+
+Sparse input is the operating regime, not a compromise: the twin transform *requires*
+it. On a complete graph over tabula's 5007 vertices A_E would carry ~10^11 nonzeros and
+A_tne would span 12.5 M nodes, so a dense-input comparison is not an experiment that
+could be run at any budget. Where the edge set was therefore a *choice*, the choice is
+declared here and checked against the graph rather than trusted.
+
+| dataset | sparsity model | degree min / median / max | isolated | stored nnz | declaration holds |
+|---|---|---|---|---|---|
+| `ring_of_cliques` | the graph is the data | 3 / 3.5 / 4 | 0 | — | yes |
+| `tree_of_cliques` | the graph is the data | 3 / 3 / 4 | 0 | — | yes |
+| `small_world` | the graph is the data | 10 / 12 / 13 | 0 | — | yes |
+| `barabasi_albert` | the graph is the data | 7 / 10 / 141 | 0 | — | yes |
+| `karate` | the graph is the data | 1 / 3 / 17 | 0 | — | yes |
+| `karate_weighted` | the graph is the data | 1 / 3 / 17 | 0 | — | yes |
+| `football_2023` | the graph is the data | 10 / 11 / 13 | 0 | — | yes |
+| `sbm_er_3modes` | the graph is the data | 41 / 54.5 / 72 | 0 | — | yes |
+| `digits` | 12-NN (euclidean in raw 8x8 pixels), symmetrised by or | 12 / 15 / 45 | 0 | — | yes |
+| `tabula` | 14-NN (euclidean in X_scvi), symmetrised by or | 14 / 18 / 55 | 0 | A: 98736, D: 70098 | yes |
+
+A *k*-NN graph gives every vertex degree at least *k* after or-symmetrisation, and
+nk/2 <= m <= nk. Those are the invariants a file re-exported at a different *k* breaks,
+which is why they are checked rather than printed.
+
 ## Stored sides, and what is derived
 
 | dataset | affinity | distance | derivation |
