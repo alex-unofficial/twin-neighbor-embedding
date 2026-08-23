@@ -317,3 +317,64 @@ def test_a_disagreeing_pair_of_sides_is_detected():
 
     assert check_weight_consistency(agreeing).global_spearman == pytest.approx(-1.0)
     assert check_weight_consistency(disagreeing).global_spearman == pytest.approx(+1.0)
+
+
+# --------------------------------------------------------------------------- #
+#                                  Sparsity                                    #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("name", sorted(GRAPH_PINS))
+def test_every_declared_sparsity_model_holds(name):
+    """Declared, then checked — the invariant a file re-exported at a different k breaks.
+
+    A k-NN graph gives every vertex degree at least k after or-symmetrisation, and
+    nk/2 <= m <= nk. Neither is implied by n and m alone, so neither would show up in
+    `GRAPH_PINS`.
+    """
+    needs_data(name)
+    ds = load_dataset(name)
+    if ds.sparsity is None:
+        return
+    assert ds.sparsity.check(ds) == []
+
+
+def test_the_two_point_cloud_datasets_declare_a_sparsity_model_and_the_rest_do_not():
+    """Only a graph whose edge set was a *choice* has something to declare.
+
+    A football season or a karate club is the data; nothing was discarded and there is no k.
+    """
+    declared = {n for n in DATASET_REGISTRY if load_dataset(n).sparsity is not None}
+    assert declared == {"digits", "tabula"}
+
+
+def test_the_declared_k_is_the_measured_minimum_degree():
+    """The sharp check: k is a floor on degree, and it is met exactly, not merely exceeded."""
+    for name, k in (("digits", 12), ("tabula", 14)):
+        needs_data(name)
+        ds = load_dataset(name)
+        assert ds.sparsity.k == k
+        assert min(d for _, d in ds.graph.degree()) == k
+
+
+def test_a_wrong_k_is_caught():
+    """The check has to be able to fail, or it is decoration."""
+    from twin.datasets import KNearest
+
+    ds = load_dataset("digits")
+    problems = KNearest(k=40).check(ds)
+    assert len(problems) == 2
+    assert "vertices have degree below 40" in problems[0]
+    assert "implies" in problems[1]
+
+
+@pytest.mark.skipif(not TABULA.exists(), reason="tabula-liver.mat not present")
+def test_the_stored_matrices_and_the_graph_agree_on_size():
+    """A's directed nnz, D's directed nnz and the graph's undirected edge count are three
+    independent numbers that a re-export would have to break together to go unnoticed."""
+    import scipy.sparse as sp
+
+    ds = load_dataset("tabula")
+    assert sp.csr_array(ds.matrices["A"]).nnz == 98736
+    assert sp.csr_array(ds.matrices["D"]).nnz == 70098
+    assert ds.m == 49368

@@ -40,10 +40,22 @@ Background and design record, in reading order:
 - **Derived graphs consume affinities.** `edge_graph` and `twin_graph` are built from the vertex
   graph's *affinity* form, always. Feeding distances to `A_tne` inverts the meaning of every term
   in the polynomial.
+- **One support, three valuations.** A `LayoutGraph` exposes `combinatorial` (1), `affinity` (w)
+  and `distance` (d) over the same edge set, and a layout method declares which it reads.
+  ⚠️ Declaring it right is **not enough**: a backend that serialises its input can still
+  misread it — graphviz takes `weight` as a spring strength and `len` as a target length, so a
+  distance sent as `weight` inverts the sign. Check what arrives, not just what was asked for.
+- **Sparsity is declared in the dataset factory, never in `vertex_graph`.** The graph's edge set
+  defines the original edge indexing, so a layout-layer knob must not change it. `k` is a
+  declared budget parameter, and `KNearest.check()` verifies the declaration against the graph.
 - **Ideal distances come from `vertex_graph(dataset).distance`** — the least-derived form —
   computed once per dataset by the runner and shared by every representation. Never from
   `edge_graph`/`twin_graph`'s generic fallback: that would score A_V, A_E and A_tne against three
-  *different* targets and make the central ablation meaningless.
+  *different* targets and make the central ablation meaningless. The all-pairs closure belongs
+  in `common.ideal_distances`, deliberately **not** as a `LayoutGraph` property.
+- **The graph is the stipulated ground truth.** For a point-cloud dataset the target is a graph
+  geodesic, not the ambient metric; a layout is not expected to recover distances the method was
+  never shown. What that costs is measured per dataset, not asserted — `DECISIONS.md`.
 - **Edge length in crossing metrics is the chord**, never the arc. This is what keeps the
   straight-vs-curved comparison interpretable.
 - **No dataset names in logic.** Nothing outside `twin/datasets/` may branch on a dataset name.
@@ -55,8 +67,8 @@ Background and design record, in reading order:
 
 Present:
 
-- `twin/datasets/` — `Dataset` objects: source of truth, labels, style; one file per dataset
-  plus `registry.py`. Adding a dataset is one file and one registry line.
+- `twin/datasets/` — `Dataset` objects: source of truth, labels, style, declared sparsity; one
+  file per dataset plus `registry.py`. Adding a dataset is one file and one registry line.
 - `twin/layoutgraph.py` — `LayoutGraph` and the three mappings `vertex_graph` / `edge_graph` /
   `twin_graph`; the single place a missing affinity or distance side is derived
 - `twin/results.py` — `LayoutResult`; the single `(d, n) → (n, d)` conversion point

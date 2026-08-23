@@ -50,13 +50,43 @@ def edge_weights(G: nx.Graph) -> np.ndarray:
 # --------------------------------------------------------------------------- #
 
 
-def test_every_layout_graph_exposes_both_forms(strength_dataset):
-    """A layout method asks for the side it needs; nothing converts at the boundary (§3.5)."""
+def test_every_layout_graph_exposes_all_three_forms(strength_dataset):
+    """A layout method asks for the form it needs; nothing converts at the boundary (§3.5)."""
     vg = vertex_graph(strength_dataset)
     for g in (vg, edge_graph(vg), twin_graph(vg)):
         assert sp.issparse(g.affinity)
+        assert sp.issparse(g.combinatorial)
         assert isinstance(g.distance, nx.Graph)
         assert g.distance.number_of_nodes() == g.n_points
+
+
+@pytest.mark.parametrize("normalize", [False, True])
+def test_the_three_forms_share_one_support(strength_dataset, normalize):
+    """One support, three valuations: combinatorial (1), affinity (w), distance (d)."""
+    vg = vertex_graph(strength_dataset, normalize=normalize)
+    for g in (vg, edge_graph(vg), twin_graph(vg)):
+        combinatorial, affinity = sp.csr_array(g.combinatorial), sp.csr_array(g.affinity)
+        assert (combinatorial.astype(bool) != affinity.astype(bool)).nnz == 0, g.name
+        assert set(np.unique(combinatorial.data)) == {1.0}, g.name
+
+
+def test_the_combinatorial_form_of_the_vertex_graph_is_the_graphs_own_adjacency(
+    strength_dataset,
+):
+    got = sp.csr_array(vertex_graph(strength_dataset).combinatorial).toarray()
+    expected = nx.to_scipy_sparse_array(strength_dataset.graph, weight=None).toarray()
+    np.testing.assert_array_equal(got, expected)
+
+
+def test_the_combinatorial_form_is_structural_not_a_threshold(strength_dataset):
+    """Derived by rerunning the algebra on the unweighted incidence.
+
+    `normalize=True` scales entries by 1/sqrt(deg), so hanging a support on a float comparison
+    against zero would make it a function of the weights. It must not be.
+    """
+    plain = sp.csr_array(vertex_graph(strength_dataset).combinatorial)
+    scaled = sp.csr_array(vertex_graph(strength_dataset, normalize=True).combinatorial)
+    assert (plain != scaled).nnz == 0
 
 
 def test_n_points_is_n_then_m_then_n_plus_m(strength_dataset):

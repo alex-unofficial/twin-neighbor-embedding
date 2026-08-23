@@ -20,6 +20,31 @@ column comes off the `Dataset` object, so adding a dataset adds a row and nothin
 
 `mean degree` is the *k* at which the λ selection criterion of spec §4.2 is defined.
 
+## Sparsity
+
+Sparse input is the operating regime, not a compromise: the twin transform *requires*
+it. On a complete graph over tabula's 5007 vertices A_E would carry ~10^11 nonzeros and
+A_tne would span 12.5 M nodes, so a dense-input comparison is not an experiment that
+could be run at any budget. Where the edge set was therefore a *choice*, the choice is
+declared here and checked against the graph rather than trusted.
+
+| dataset | sparsity model | degree min / median / max | isolated | stored nnz | declaration holds |
+|---|---|---|---|---|---|
+| `ring_of_cliques` | the graph is the data | 3 / 3.5 / 4 | 0 | — | yes |
+| `tree_of_cliques` | the graph is the data | 3 / 3 / 4 | 0 | — | yes |
+| `small_world` | the graph is the data | 10 / 12 / 13 | 0 | — | yes |
+| `barabasi_albert` | the graph is the data | 7 / 10 / 141 | 0 | — | yes |
+| `karate` | the graph is the data | 1 / 3 / 17 | 0 | — | yes |
+| `karate_weighted` | the graph is the data | 1 / 3 / 17 | 0 | — | yes |
+| `football_2023` | the graph is the data | 10 / 11 / 13 | 0 | — | yes |
+| `sbm_er_3modes` | the graph is the data | 41 / 54.5 / 72 | 0 | — | yes |
+| `digits` | 12-NN (euclidean in raw 8x8 pixels), symmetrised by or | 12 / 15 / 45 | 0 | — | yes |
+| `tabula` | 14-NN (euclidean in X_scvi), symmetrised by or | 14 / 18 / 55 | 0 | A: 98736, D: 70098 | yes |
+
+A *k*-NN graph gives every vertex degree at least *k* after or-symmetrisation, and
+nk/2 <= m <= nk. Those are the invariants a file re-exported at a different *k* breaks,
+which is why they are checked rather than printed.
+
 ## Stored sides, and what is derived
 
 | dataset | affinity | distance | derivation |
@@ -104,6 +129,31 @@ blurred an otherwise exact relationship*, and on tabula it settles the question:
 exactly −1 wherever it can be seen unmixed.
 
 Not comparable, because a side is an indicator or a single constant weight and so carries no ranks — nothing could disagree: `ring_of_cliques`, `tree_of_cliques`, `small_world`, `barabasi_albert`, `karate`, `football_2023`, `sbm_er_3modes`.
+
+## What sparsification costs
+
+For a point-cloud-derived dataset the graph is the **stipulated ground truth**, and
+a layout is not expected to recover distances the method was never shown. That is a
+deliberate stipulation rather than a limitation of the data — the unsparsified
+source is available for both of these and is declined — so what it costs is
+measured here rather than merely acknowledged.
+
+| dataset | rank ρ | stress | stress after rescaling | d_geo/d_full median | max | edge weight error |
+|---|---|---|---|---|---|---|
+| `digits` | 0.6955 | 1.784 | 0.2027 | 2.625 | 5.761 | 0 |
+| `tabula` | 0.7876 | 1.489 | 0.2102 | 2.188 | 5.892 | 3.5e-07 |
+
+Graph geodesics are exact on the *k*-NN edges and overestimate strictly elsewhere,
+so the ratio is >= 1 everywhere and the distortion is a one-sided inflation of
+*long-range* distances. Local metrics — kNN recall, NND, edge lengths — are
+therefore undistorted; the global ones score against a proxy.
+
+**Read the rescaled column for SNS.** It fits its own global scale, so a uniform
+inflation costs it nothing; most of the raw stress here is exactly that. What
+remains is the ordering, and the rank correlation is what says how much of it
+survives. All of these improve monotonically with *k*, which is the same knob that
+makes the twin transform tractable — the trade is explicit and both ends are in
+this report.
 
 ## Why each dataset is in the roster
 

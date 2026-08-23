@@ -1,20 +1,28 @@
 """Layout methods (spec §3.5).
 
-Every method takes a `LayoutGraph` and **asks for the side it needs** rather than being handed
+Every method takes a `LayoutGraph` and **asks for the form it needs** rather than being handed
 one by a runner that guessed::
 
-    A = layout_graph.affinity     # SG-t-SNE, spectral, spring (FR), ForceAtlas2
-    G = layout_graph.distance     # Kamada-Kawai, neato, Yifan Hu
+    C = layout_graph.combinatorial   # Yifan Hu (sfdp)
+    A = layout_graph.affinity        # SG-t-SNE, spectral, spring (FR), ForceAtlas2
+    G = layout_graph.distance        # Kamada-Kawai, neato
 
 The `mode="distance"|"similarity"` parameters are gone. That decision never belonged to the
 layout class, and it is not a runner decision either — it is a property of the graph being laid
 out. Half of bug §1.6 closes here; the other half is that the graph now knows which of its
 sides is stored.
 
+**Reading the right form is not enough — it has to arrive meaning the right thing.** The two
+graphviz backends go through `nx.nx_pydot`, which writes every edge attribute into the dot
+source, and graphviz reads `weight` as a spring-strength multiplier and `len` as a desired edge
+length. So a distance passed as `weight` is read as "far apart means pull harder". Both
+graphviz methods therefore build their own input graph here rather than handing over
+`.distance` directly.
+
 `EmbeddingSpec.expects` is kept as declared metadata for the manifest and the report, but the
 runner no longer branches on it — so nothing keeps it honest except
-``tests/test_embedding.py::test_every_method_touches_exactly_the_side_it_declares``, which hands
-each method a graph that records which side was read.
+``tests/test_embedding.py::test_every_method_touches_exactly_the_form_it_declares``, which hands
+each method a graph that records which form was read.
 
 Original author: Dimitris Floros (2025-01-31).
 """
@@ -57,6 +65,36 @@ class GraphEmbeddingMethod:
 def _positions(y0, n):
     """networkx's ``pos`` mapping from a ``(d, n)`` array, or None."""
     return None if y0 is None else {i: y0[:, i] for i in range(n)}
+
+
+def _structure_only(layout_graph) -> nx.Graph:
+    """The combinatorial form as a graph with **no edge attributes at all**.
+
+    Deliberately attribute-free. `nx.nx_pydot` writes every edge attribute into the dot source,
+    and graphviz reads `weight` as a spring-strength multiplier — so a graph that carries any
+    valuation would silently hand one to a method that has no use for it.
+    """
+    graph = nx.Graph()
+    graph.add_nodes_from(range(layout_graph.n_points))
+    graph.add_edges_from(zip(*sp.triu(sp.csr_array(layout_graph.combinatorial), k=1).nonzero()))
+    return graph
+
+
+def _desired_lengths(layout_graph) -> nx.Graph:
+    """The distance form as a graph carrying graphviz's ``len``, not ``weight``.
+
+    This distinction is the whole of bug §1.6 in a second place. For `neato` and `sfdp`,
+    graphviz's ``len`` is the *desired edge length* and ``weight`` is how strongly the edge is
+    held to that length — so passing a distance as ``weight`` says "far apart means pull
+    harder", which inverts it. `nx.nx_pydot` writes `weight=` for the `weight` attribute and
+    nothing else, so the attribute has to be renamed on the way in.
+    """
+    graph = nx.Graph()
+    graph.add_nodes_from(range(layout_graph.n_points))
+    graph.add_edges_from(
+        (u, v, {"len": float(d)}) for u, v, d in layout_graph.distance.edges(data="weight")
+    )
+    return graph
 
 
 def _as_array(positions, n, d):
@@ -106,7 +144,11 @@ class KamadaKawaiLayout(GraphEmbeddingMethod):
 
 @dataclass
 class YifanHuLayout(GraphEmbeddingMethod):
-    """Graphviz `sfdp`, a multilevel force method, over the **distance** form.
+    """Graphviz `sfdp`, a multilevel force method, over the **combinatorial** form.
+
+    Hu's method is combinatorial: attractive $d^2/K$ along edges, repulsive $-CK^2/d$ between
+    all pairs, with $K$ a **global** constant. There is no per-edge target length in the
+    formulation, so it is handed the structure and nothing else.
 
     Note:
         `y0` and `d` are ignored — spec §1.4, deferred to step 9.
@@ -117,20 +159,24 @@ class YifanHuLayout(GraphEmbeddingMethod):
     d: int = 2
 
     def embed(self, layout_graph, y0=None):
-        positions = nx.nx_pydot.graphviz_layout(layout_graph.distance, prog="sfdp")
+        positions = nx.nx_pydot.graphviz_layout(_structure_only(layout_graph), prog="sfdp")
         return _as_array(positions, layout_graph.n_points, self.d)
 
 
 @dataclass
 class NeatoLayout(GraphEmbeddingMethod):
-    """Graphviz `neato` — stress majorization (MDS) over the **distance** form."""
+    """Graphviz `neato` — stress majorization (MDS) against the **distance** form.
+
+    The distances go in as graphviz's ``len`` (desired edge length), not ``weight`` (how
+    strongly the edge is held to that length). See :func:`_desired_lengths`.
+    """
 
     method_name: str = "NEATO"
     seed: int = 0
     d: int = 2
 
     def embed(self, layout_graph, y0=None):
-        positions = nx.nx_pydot.graphviz_layout(layout_graph.distance, prog="neato")
+        positions = nx.nx_pydot.graphviz_layout(_desired_lengths(layout_graph), prog="neato")
         return _as_array(positions, layout_graph.n_points, self.d)
 
 
@@ -216,7 +262,9 @@ class EmbeddingSpec:
 
     Attributes:
         cls: the method class.
-        expects: which side it reads. Declared metadata for the manifest and the report — the
+        expects: which of the graph's three forms it reads — ``combinatorial`` (the structure
+            alone), ``affinity`` (larger means more strongly coupled) or ``distance`` (larger
+            means further apart). Declared metadata for the manifest and the report — the
             runner does **not** branch on it, because nothing converts at the boundary any
             more. Since nothing depends on it, nothing keeps it honest either, so it is
             asserted by a test rather than trusted.
@@ -227,14 +275,16 @@ class EmbeddingSpec:
     """
 
     cls: type
-    expects: Literal["affinity", "distance"]
+    expects: Literal["combinatorial", "affinity", "distance"]
     stochastic: bool
     has_lambda: bool
 
 
 EMBEDDING_REGISTRY: dict[str, EmbeddingSpec] = {
     "spring": EmbeddingSpec(SpringLayout, "affinity", stochastic=True, has_lambda=False),
-    "yifanhu": EmbeddingSpec(YifanHuLayout, "distance", stochastic=False, has_lambda=False),
+    "yifanhu": EmbeddingSpec(
+        YifanHuLayout, "combinatorial", stochastic=False, has_lambda=False
+    ),
     "forceatlas2": EmbeddingSpec(
         ForceAtlas2Layout, "affinity", stochastic=True, has_lambda=False
     ),

@@ -20,8 +20,16 @@ from pathlib import Path
 
 import networkx as nx
 import numpy as np
+import scipy.sparse as sp
 
-from twin.datasets import DATASET_REGISTRY, WeightConsistencyReport, check_weight_consistency, load_dataset
+from twin.datasets import (
+    DATASET_REGISTRY,
+    DistortionReport,
+    WeightConsistencyReport,
+    check_weight_consistency,
+    load_dataset,
+    sparsification_distortion,
+)
 from twin.layoutgraph import vertex_graph
 
 
@@ -48,10 +56,19 @@ class DatasetRow:
     weight_max: float
     weight_distinct: int
 
+    sparsity: str
+    sparsity_violations: list[str]
+    degree_min: int
+    degree_median: float
+    degree_max: int
+    n_isolated: int
+    stored_nnz: dict[str, int]
+
     zero_distance_pair_fraction: float
     labels: list[tuple[str, int, str, str, str]] = field(default_factory=list)
     composites: list[str] = field(default_factory=list)
     consistency: WeightConsistencyReport | None = None
+    distortion: DistortionReport | None = None
     description: str = ""
 
 
@@ -91,6 +108,14 @@ def describe_dataset(name: str, **params) -> DatasetRow:
 
     weights = np.array([w for _, _, w in vg.distance.edges(data="weight")], dtype=float)
     sources = dataset.describe_sources()
+    degrees = np.array([d for _, d in dataset.graph.degree()])
+
+    # nnz of the raw stored matrices, before any symmetrisation the mapping applies. For tabula,
+    # A's 98736 against D's 70098 against the graph's 49368 undirected edges is the consistency
+    # a re-export would break, and it is invisible from the graph alone.
+    stored_nnz = {
+        key: int(sp.csr_array(matrix).nnz) for key, matrix in sorted(dataset.matrices.items())
+    }
 
     return DatasetRow(
         name=name,
@@ -109,6 +134,13 @@ def describe_dataset(name: str, **params) -> DatasetRow:
         weight_median=float(np.median(weights)) if weights.size else float("nan"),
         weight_max=float(weights.max()) if weights.size else float("nan"),
         weight_distinct=int(np.unique(weights).size),
+        sparsity=dataset.sparsity.describe() if dataset.sparsity else "the graph is the data",
+        sparsity_violations=dataset.sparsity.check(dataset) if dataset.sparsity else [],
+        degree_min=int(degrees.min()) if degrees.size else 0,
+        degree_median=float(np.median(degrees)) if degrees.size else 0.0,
+        degree_max=int(degrees.max()) if degrees.size else 0,
+        n_isolated=int((degrees == 0).sum()),
+        stored_nnz=stored_nnz,
         zero_distance_pair_fraction=zero_distance_pair_fraction(vg.distance, dataset.n),
         labels=[
             (
@@ -122,6 +154,7 @@ def describe_dataset(name: str, **params) -> DatasetRow:
         ],
         composites=sorted(dataset.composite_of),
         consistency=check_weight_consistency(dataset),
+        distortion=sparsification_distortion(dataset, vg.distance),
         description=dataset.description,
     )
 
@@ -182,6 +215,33 @@ def to_markdown(rows: list[DatasetRow]) -> str:
         ),
         "",
         "`mean degree` is the *k* at which the λ selection criterion of spec §4.2 is defined.",
+        "",
+        "## Sparsity",
+        "",
+        "Sparse input is the operating regime, not a compromise: the twin transform *requires*",
+        "it. On a complete graph over tabula's 5007 vertices A_E would carry ~10^11 nonzeros and",
+        "A_tne would span 12.5 M nodes, so a dense-input comparison is not an experiment that",
+        "could be run at any budget. Where the edge set was therefore a *choice*, the choice is",
+        "declared here and checked against the graph rather than trusted.",
+        "",
+        _table(
+            ["dataset", "sparsity model", "degree min / median / max", "isolated", "stored nnz", "declaration holds"],
+            [
+                [
+                    f"`{r.name}`",
+                    r.sparsity,
+                    f"{r.degree_min} / {_fmt(r.degree_median, 4)} / {r.degree_max}",
+                    f"{r.n_isolated}",
+                    ", ".join(f"{k}: {v}" for k, v in r.stored_nnz.items()) or "—",
+                    "yes" if not r.sparsity_violations else "**NO** — " + "; ".join(r.sparsity_violations),
+                ]
+                for r in rows
+            ],
+        ),
+        "",
+        "A *k*-NN graph gives every vertex degree at least *k* after or-symmetrisation, and",
+        "nk/2 <= m <= nk. Those are the invariants a file re-exported at a different *k* breaks,",
+        "which is why they are checked rather than printed.",
         "",
         "## Stored sides, and what is derived",
         "",
@@ -316,6 +376,48 @@ def to_markdown(rows: list[DatasetRow]) -> str:
             " carries no ranks — nothing could disagree: "
             + ", ".join(f"`{r.name}`" for r in skipped)
             + ".",
+            "",
+        ]
+
+    distorted = [r for r in rows if r.distortion is not None]
+    out += ["## What sparsification costs", ""]
+    if not distorted:
+        out += ["No dataset in this selection retains the point cloud it was built from.", ""]
+    else:
+        out += [
+            "For a point-cloud-derived dataset the graph is the **stipulated ground truth**, and",
+            "a layout is not expected to recover distances the method was never shown. That is a",
+            "deliberate stipulation rather than a limitation of the data — the unsparsified",
+            "source is available for both of these and is declined — so what it costs is",
+            "measured here rather than merely acknowledged.",
+            "",
+            _table(
+                ["dataset", "rank ρ", "stress", "stress after rescaling", "d_geo/d_full median", "max", "edge weight error"],
+                [
+                    [
+                        f"`{r.name}`",
+                        _fmt(r.distortion.spearman),
+                        _fmt(r.distortion.relative_stress),
+                        _fmt(r.distortion.scaled_relative_stress),
+                        _fmt(r.distortion.median_ratio),
+                        _fmt(r.distortion.max_ratio),
+                        _fmt(r.distortion.edge_weight_max_error, 2),
+                    ]
+                    for r in distorted
+                ],
+            ),
+            "",
+            "Graph geodesics are exact on the *k*-NN edges and overestimate strictly elsewhere,",
+            "so the ratio is >= 1 everywhere and the distortion is a one-sided inflation of",
+            "*long-range* distances. Local metrics — kNN recall, NND, edge lengths — are",
+            "therefore undistorted; the global ones score against a proxy.",
+            "",
+            "**Read the rescaled column for SNS.** It fits its own global scale, so a uniform",
+            "inflation costs it nothing; most of the raw stress here is exactly that. What",
+            "remains is the ordering, and the rank correlation is what says how much of it",
+            "survives. All of these improve monotonically with *k*, which is the same knob that",
+            "makes the twin transform tractable — the trade is explicit and both ends are in",
+            "this report.",
             "",
         ]
 

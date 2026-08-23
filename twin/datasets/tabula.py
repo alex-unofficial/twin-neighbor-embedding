@@ -25,6 +25,7 @@ import scipy.sparse as sp
 
 from twin.config import REAL_WORLD_DIR
 from twin.datasets.base import Dataset, DatasetStyle, LabelSet, StoredMatrix
+from twin.datasets.sparsify import KNearest
 
 #: Fields in the `.mat` that carry information. `gender` and `anatomical_information` are
 #: constant across all 5007 cells and are deliberately not registered.
@@ -87,6 +88,11 @@ def tabula(organ: str = "liver") -> Dataset:
             "X_umap": np.asarray(mat["X_umap"], dtype=float),
             "X_scvi_umap": np.asarray(mat["X_scvi_umap"], dtype=float),
         },
+        # Shipped sparse: the export is an exact 14-NN graph, so nothing is computed here and
+        # the edge set must not be touched. Declared so the report can verify it survives a
+        # re-export.
+        source_points=np.asarray(mat["X_scvi"], dtype=float),
+        sparsity=KNearest(k=14, symmetrise="or", space="X_scvi"),
         # `custom_cmap(13, seed=7)` with rows 0 and 5 exchanged is what the teaser draws today;
         # the swap is hand-tuned and is declared here rather than repeated in the figure.
         style=DatasetStyle(palette="distinctipy", palette_seed=7, palette_swaps=((0, 5),)),

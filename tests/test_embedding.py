@@ -12,15 +12,22 @@ NAMES = sorted(EMBEDDING_REGISTRY)
 
 
 class RecordingGraph:
-    """A `LayoutGraph` that remembers which of its two forms was read.
+    """A `LayoutGraph` that remembers which of its three forms was read.
 
     `expects` is declared metadata that nothing branches on, so nothing keeps it honest either.
     This is what does (`DECISIONS.md`).
     """
 
+    FORMS = ("combinatorial", "affinity", "distance")
+
     def __init__(self, inner):
         self._inner = inner
         self.touched: set[str] = set()
+
+    @property
+    def combinatorial(self):
+        self.touched.add("combinatorial")
+        return self._inner.combinatorial
 
     @property
     def affinity(self):
@@ -42,7 +49,7 @@ def small_vertex_graph():
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_every_method_touches_exactly_the_side_it_declares(small_vertex_graph, name):
+def test_every_method_touches_exactly_the_form_it_declares(small_vertex_graph, name):
     spec = EMBEDDING_REGISTRY[name]
     recorder = RecordingGraph(small_vertex_graph)
 
@@ -102,6 +109,82 @@ def test_a_distance_consuming_method_uses_the_datasets_own_distances(small_verte
     as_if_lengths = nx.from_scipy_sparse_array(small_vertex_graph.affinity)
     inverted = np.zeros_like(correct)
     for node, position in nx.kamada_kawai_layout(as_if_lengths, dim=2).items():
+        inverted[:, node] = position
+
+    assert not np.allclose(correct, inverted)
+
+
+# --------------------------------------------------------------------------- #
+#       What actually reaches the backend — which `expects` cannot check       #
+# --------------------------------------------------------------------------- #
+
+
+def dot_source(graph) -> str:
+    return nx.nx_pydot.to_pydot(graph).to_string()
+
+
+def test_yifan_hu_is_handed_the_structure_and_nothing_else(small_vertex_graph):
+    """Hu's method is combinatorial — attractive d²/K, repulsive −CK²/d, K a *global* constant.
+
+    `nx.nx_pydot` writes every edge attribute into the dot source and graphviz reads `weight` as
+    a spring-strength multiplier, so an input graph carrying any valuation would silently hand
+    one to a method with no use for it.
+    """
+    from twin.embedding import _structure_only
+
+    graph = _structure_only(small_vertex_graph)
+    assert graph.number_of_nodes() == small_vertex_graph.n_points
+    assert all(not data for _, _, data in graph.edges(data=True)), "no edge attributes"
+
+    source = dot_source(graph)
+    assert "weight" not in source and "len" not in source
+
+
+def test_neato_receives_desired_lengths_not_spring_strengths(small_vertex_graph):
+    """The inversion this closes: for graphviz, `len` is the target and `weight` is how hard it
+    is held to that target. A distance passed as `weight` says "far apart means pull harder"."""
+    from twin.embedding import _desired_lengths
+
+    graph = _desired_lengths(small_vertex_graph)
+    source = dot_source(graph)
+
+    assert "len=" in source and "weight=" not in source
+
+    expected = {
+        frozenset((u, v)): d
+        for u, v, d in small_vertex_graph.distance.edges(data="weight")
+    }
+    got = {frozenset((u, v)): d for u, v, d in graph.edges(data="len")}
+    assert got == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("name", ["karate_weighted", "football_2023"])
+def test_desired_lengths_are_strictly_positive_on_every_representation(name):
+    """graphviz has no use for a zero-length edge; the generic fallback could in principle
+    produce one where a normalised symmetric entry lands at exactly 1."""
+    from twin.datasets import load_dataset
+    from twin.embedding import _desired_lengths
+
+    vg = vertex_graph(load_dataset(name))
+    for graph in (vg, edge_graph(vg), twin_graph(vg)):
+        lengths = np.array([d for _, _, d in _desired_lengths(graph).edges(data="len")])
+        assert (lengths > 0).all(), graph.name
+
+
+def test_neato_responds_to_the_distances_it_is_given(small_vertex_graph):
+    """Witness for the behaviour change: the layout is a function of `len`, so reversing the
+    ranking of the distances must move it."""
+    from twin.embedding import NeatoLayout, _desired_lengths
+
+    correct = NeatoLayout(seed=0, d=2).embed(small_vertex_graph)
+
+    reversed_graph = _desired_lengths(small_vertex_graph)
+    longest = max(d for _, _, d in reversed_graph.edges(data="len"))
+    for u, v, data in reversed_graph.edges(data=True):
+        data["len"] = longest + 0.01 - data["len"]
+
+    inverted = np.zeros_like(correct)
+    for node, position in nx.nx_pydot.graphviz_layout(reversed_graph, prog="neato").items():
         inverted[:, node] = position
 
     assert not np.allclose(correct, inverted)

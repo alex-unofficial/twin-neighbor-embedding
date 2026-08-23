@@ -90,6 +90,7 @@ class LayoutGraph:
         default=None, repr=False, compare=False
     )
     _distance: nx.Graph | None = field(default=None, repr=False, compare=False)
+    _combinatorial: sp.sparray | None = field(default=None, repr=False, compare=False)
 
     # ------------------------------------------------------------- the forms
 
@@ -97,6 +98,36 @@ class LayoutGraph:
     def n_points(self) -> int:
         """Rows of the matrix actually laid out: n for A_V, m for A_E, n + m for A_tne."""
         return self.affinity.shape[0]
+
+    @property
+    def combinatorial(self) -> sp.sparray:
+        """The 0/1 structure: presence or absence of a connection, ``(n_points, n_points)``.
+
+        A `LayoutGraph` is **one support carrying up to three valuations** — combinatorial (1),
+        affinity (*w*) and distance (*d*) — and this is the first of them. Some methods want no
+        valuation at all: Yifan Hu's is a combinatorial force method, attractive $d^2/K$ along
+        edges and repulsive $-CK^2/d$ between all pairs with $K$ a *global* constant, so it has
+        no per-edge target to read.
+
+        Derived by rerunning the same algebra on the **unweighted** incidence, not by
+        thresholding the affinity. Those agree today, but `normalize=True` scales entries by
+        $1/\\sqrt{\\deg}$ and a float comparison against zero is the wrong thing to hang a
+        support on.
+        """
+        if self._combinatorial is None:
+            B = self.incidence
+            if self.kind == "vertex":
+                A = B @ B.T
+            elif self.kind == "edge":
+                A = B.T @ B
+            else:
+                A = twin_adjacency(B, self.params.get("alpha", 0.85), n=self.params.get("k", 2))
+
+            A = sp.csr_array(A - sp.diags_array(A.diagonal()))
+            A.eliminate_zeros()
+            A.data = np.ones_like(A.data)
+            self._combinatorial = A
+        return self._combinatorial
 
     @property
     def distance(self) -> nx.Graph:

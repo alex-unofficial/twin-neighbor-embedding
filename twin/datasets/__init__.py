@@ -16,19 +16,25 @@ from twin.datasets.base import (
     Unweighted,
 )
 from twin.datasets.consistency import WeightConsistencyReport, check_weight_consistency
+from twin.datasets.distortion import DistortionReport, sparsification_distortion
+from twin.datasets.sparsify import KNearest, SparsityModel
 from twin.datasets.registry import DATASET_REGISTRY, load_dataset
 
 __all__ = [
     "DATASET_REGISTRY",
     "Dataset",
+    "DistortionReport",
     "DatasetStyle",
+    "KNearest",
     "LabelSet",
     "Meaning",
     "Stored",
     "StoredMatrix",
+    "SparsityModel",
     "StoredSource",
     "Unweighted",
     "WeightConsistencyReport",
     "check_weight_consistency",
+    "sparsification_distortion",
     "load_dataset",
 ]
