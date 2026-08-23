@@ -15,8 +15,11 @@ from twin.datasets.base import (
     StoredSource,
     Unweighted,
 )
+from twin.datasets.consistency import WeightConsistencyReport, check_weight_consistency
+from twin.datasets.registry import DATASET_REGISTRY, load_dataset
 
 __all__ = [
+    "DATASET_REGISTRY",
     "Dataset",
     "DatasetStyle",
     "LabelSet",
@@ -25,4 +28,7 @@ __all__ = [
     "StoredMatrix",
     "StoredSource",
     "Unweighted",
+    "WeightConsistencyReport",
+    "check_weight_consistency",
+    "load_dataset",
 ]
