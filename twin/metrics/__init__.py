@@ -30,10 +30,14 @@ from twin.metrics.label import (
     knn_accuracy_report,
     majority_class_rate,
 )
-from twin.metrics.structural import knn_neighbor_preservation_accuracy
+from twin.metrics.structural import (
+    adjacency_distance_ratio,
+    knn_neighbor_preservation_accuracy,
+)
 
 __all__ = [
     "KnnAccuracyReport",
+    "adjacency_distance_ratio",
     "condensed",
     "finite_pair_mask",
     "clear_pairwise_cache",

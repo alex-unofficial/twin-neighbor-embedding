@@ -91,6 +91,7 @@ class LayoutGraph:
         default=None, repr=False, compare=False
     )
     _distance: nx.Graph | None = field(default=None, repr=False, compare=False)
+    _affinity_graph: nx.Graph | None = field(default=None, repr=False, compare=False)
     _combinatorial: sp.sparray | None = field(default=None, repr=False, compare=False)
 
     # ------------------------------------------------------------- the forms
@@ -149,6 +150,28 @@ class LayoutGraph:
         if self._distance is None:
             self._distance = self._build_distance()
         return self._distance
+
+    def affinity_graph(self) -> nx.Graph:
+        """The affinity form as a graph, stamped ``twin_side="affinity"``.
+
+        The counterpart of :attr:`distance`, for the metrics that weight a pair by how strongly
+        it is coupled rather than by how far apart it should be: ADR and `weighted_recall`
+        (spec §2.1). Its node set is this representation's, so it is the **vertex** graph's
+        affinity a vertex-indexed metric wants — $A_E$'s nodes are edges.
+
+        Why not just ``dataset.graph``: on `digits` that graph's ``weight`` is a stored
+        Euclidean distance, so a metric reading it scores the inverse of what it means
+        (`DECISIONS.md`, step-3 decisions). This form is an affinity by construction on every
+        dataset, derived or stored.
+        """
+        if self._affinity_graph is None:
+            G = nx.from_scipy_sparse_array(sp.csr_array(self.affinity))
+            self._affinity_graph = stamp_form(
+                G,
+                side="affinity",
+                source=f"{self.name} of {self.dataset_name}: {self.derivation}",
+            )
+        return self._affinity_graph
 
     def chain(self) -> list[str]:
         """The derivation chain, root first — structural, not a maintained string."""

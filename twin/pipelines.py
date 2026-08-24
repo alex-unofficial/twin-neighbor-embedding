@@ -282,8 +282,12 @@ def embedding_metrics_all(
 
     Note:
         The ``VertexPointDistance`` / ``EdgePointDistance`` entries were dropped with
-        ``point_distance_metric`` (spec §1.2). ADR (spec §2.1) fills the same slot once it
-        lands; nothing stands in for it meanwhile.
+        ``point_distance_metric`` (spec §1.2). ADR exists now
+        (`twin.metrics.adjacency_distance_ratio`) and is **not** being wired in here: this
+        function has no callers and no tests, and is superseded by ``batch_layout_metrics``
+        (spec §3.7), so wiring it in would mean adding untested code to a function scheduled
+        for deletion *and* inventing a table shape that §5.2 discards. `DECISIONS.md` records
+        the call.
 
         This whole function is the old hardcoded vertex/edge/twin triple that bypasses the
         batch engine, and is superseded by ``batch_layout_metrics`` (spec §3.7).
@@ -372,7 +376,8 @@ def metrics_to_typ(metrics):
 
     Note:
         The point-distance table is emitted only if the key is present; it went away with
-        ``point_distance_metric`` (spec §1.2) and returns as ADR in spec §2.1. This whole
+        ``point_distance_metric`` (spec §1.2). ADR does not refill it — these emitters branch
+        on the removed ``VertexPointDistance`` / ``EdgePointDistance`` keys and this whole
         function is rewritten against the long DataFrame in spec §5.2.
     """
     has_point_distance = any(
@@ -518,7 +523,8 @@ def metrics_to_df(metrics: dict, graph_label: str = None):
     result = {}
 
     # 1. Point Distance DataFrame -- present only if the caller supplied it. Removed with
-    #    `point_distance_metric` (spec §1.2); returns as ADR in spec §2.1.
+    #    `point_distance_metric` (spec §1.2). ADR exists but does not fill this slot; the
+    #    long-DataFrame rewrite at spec §5.2 replaces the shape (`DECISIONS.md`).
     if "VertexPointDistance" in metrics and "EdgePointDistance" in metrics:
         point_dist_data = {
             emb_type: [
