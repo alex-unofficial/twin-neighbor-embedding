@@ -17,6 +17,7 @@ with the imports rather than with the design (`tests/test_metrics_surface.py`).
 
 from twin.metrics.common import (
     clear_pairwise_cache,
+    default_k,
     condensed,
     finite_pair_mask,
     ideal_distances,
@@ -31,20 +32,37 @@ from twin.metrics.label import (
     majority_class_rate,
 )
 from twin.metrics.structural import (
+    NeighborPreservationReport,
     adjacency_distance_ratio,
-    knn_neighbor_preservation_accuracy,
+    knn_jaccard,
+    knn_jaccard_report,
+    knn_precision,
+    knn_precision_report,
+    knn_recall,
+    knn_recall_report,
+    weighted_recall,
+    weighted_recall_report,
 )
 
 __all__ = [
     "KnnAccuracyReport",
+    "NeighborPreservationReport",
     "adjacency_distance_ratio",
     "condensed",
+    "default_k",
     "finite_pair_mask",
     "clear_pairwise_cache",
     "ideal_distances",
     "knn_accuracy",
     "knn_accuracy_report",
-    "knn_neighbor_preservation_accuracy",
+    "knn_jaccard",
+    "knn_jaccard_report",
+    "knn_precision",
+    "knn_precision_report",
+    "knn_recall",
+    "knn_recall_report",
+    "weighted_recall",
+    "weighted_recall_report",
     "majority_class_rate",
     "mean_pairwise_distance",
     "pairwise_distances",

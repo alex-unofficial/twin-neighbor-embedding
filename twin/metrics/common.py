@@ -15,6 +15,7 @@ import numpy as np
 import scipy.sparse as sp
 from scipy.sparse import csgraph
 from scipy.spatial.distance import pdist
+from sklearn.neighbors import NearestNeighbors
 
 from twin.forms import SOURCE_KEY, graph_side
 
@@ -76,6 +77,46 @@ def require_n_by_d(X: np.ndarray, n_expected: int, name: str = "X") -> np.ndarra
             f"{name} must be (n_points, d) with n_points={n_expected}, got {X.shape}{hint}"
         )
     return X
+
+
+# --------------------------------------------------------------------------- #
+#                       Leave-one-out neighbourhoods                           #
+# --------------------------------------------------------------------------- #
+
+
+def _loo_neighbors(X: np.ndarray, k_max: int):
+    """Indices and distances of the ``k_max`` nearest *other* points, per point.
+
+    Queries ``k_max + 1`` and drops the self column. With coincident points the self entry is
+    not guaranteed to sort first, so it is removed by index identity rather than by position.
+
+    **One leave-one-out convention for the whole package.** The label family and the
+    neighbourhood-preservation family (spec §2.1, §2.3) both come through here. The alternative
+    was sklearn's own ``kneighbors(X=None)`` rule, which masks column 0 for a row whose own
+    index did not survive the ``k_max + 1`` query; that differs from this one only when a point
+    has more than ``k_max`` exact duplicates, and having two conventions for that case in one
+    package is worse than either of them.
+
+    Among exactly coincident points the choice of which duplicates to keep is arbitrary — there
+    is no information to break the tie with — so a value computed on a layout with duplicates is
+    reproducible for a fixed ``k_max`` but **not** invariant to it.
+    """
+    n = X.shape[0]
+    knn = NearestNeighbors(n_neighbors=k_max + 1).fit(X)
+    dist, idx = knn.kneighbors(X, n_neighbors=k_max + 1)
+
+    drop = idx == np.arange(n)[:, None]
+    # A row can miss its own index only under exact duplicates; drop its furthest entry so
+    # every row contributes exactly k_max neighbours.
+    missing = ~drop.any(axis=1)
+    drop[missing, -1] = True
+
+    # Stable sort on the drop flag: False (keep) sorts first, in original distance order.
+    order = np.argsort(drop, axis=1, kind="stable")[:, :k_max]
+    return (
+        np.take_along_axis(dist, order, axis=1),
+        np.take_along_axis(idx, order, axis=1),
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -309,3 +350,21 @@ def mean_pairwise_distance(X: np.ndarray) -> float:
 def clear_pairwise_cache() -> None:
     """Drop the cached condensed vectors. For tests, and for a runner between datasets."""
     _pairwise_cache.clear()
+
+
+def default_k(G: nx.Graph) -> int:
+    r"""$k$ = the mean degree of the **input** graph, rounded to nearest, floor 1.
+
+    Spec §0.5 decision 6. The input graph, not the line graph or the twin graph, and the same
+    $k$ for every representation of a dataset — $R^k$ is evaluated against $G$'s neighbourhoods
+    whichever matrix produced the layout, so a per-representation $k$ would compare recovery of
+    the same neighbourhoods at different budgets.
+
+    ``floor(x + 0.5)``, not ``round``: Python's ``round`` is banker's rounding, so
+    ``round(16.5)`` is 16. No current dataset lands on a half — the bug would ship silently and
+    appear when one does.
+    """
+    n, m = G.number_of_nodes(), G.number_of_edges()
+    if n == 0:
+        return 1
+    return max(1, int(np.floor(2 * m / n + 0.5)))

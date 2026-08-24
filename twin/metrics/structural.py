@@ -4,69 +4,191 @@ A metric here is a function of the embedded points and the **graph** — no labe
 arrays are ``(n_points, d)``; see :mod:`twin.metrics.common`.
 """
 
+from dataclasses import dataclass
+
 import numpy as np
 import networkx as nx
 import scipy.sparse as sp
-from sklearn.neighbors import NearestNeighbors
 
 from twin.forms import SOURCE_KEY, graph_side
-from twin.metrics.common import mean_pairwise_distance, require_n_by_d
+from twin.metrics.common import _loo_neighbors, mean_pairwise_distance, require_n_by_d
 
 
-def knn_neighbor_preservation_accuracy(X: np.ndarray, G: nx.Graph, n_neighbors, mode="recall"):
-    # Handle both scalar and iterable inputs
-    if isinstance(n_neighbors, (list, np.ndarray)):
-        accuracies = np.array(
-            [knn_neighbor_preservation_accuracy(X, G, n, mode) for n in n_neighbors]
-        )
+@dataclass
+class NeighborPreservationReport:
+    """Score plus the diagnostics needed to read it (spec §2.1, `DECISIONS.md` (18)).
 
-        return accuracies
+    Attributes:
+        k: the neighbourhood sizes evaluated.
+        value: one score per ``k``.
+        n_excluded: per ``k``, how many vertices had a zero normalisation and were dropped
+            before the mean. §3.1.1 says a zero-degree vertex has no neighbourhood to recover,
+            so excluding it is correct — but absorbing it silently is how a table comes to
+            average over a denominator nobody stated. Which vertices those are depends on the
+            criterion: recall and weighted recall normalise by graph degree and exclude the
+            isolated ones; precision normalises by ``k`` and jaccard by the union with the
+            embedded neighbourhood, and neither is ever zero.
+        n_scored: per ``k``, how many vertices the mean actually ran over.
+    """
 
-    # Ensure mode is set correctly and set parameters accordingly
-    if mode in {"recall", "jaccard", "precision"}:
-        weight = None
-    elif mode == "weighted recall":
-        weight = "weight"
-    else:
-        raise ValueError(
-            "mode must be one of 'recall', 'weighted recall', 'jaccard' or 'precision'"
-        )
+    k: np.ndarray
+    value: np.ndarray
+    n_excluded: np.ndarray
+    n_scored: np.ndarray
 
-    X = require_n_by_d(X, G.number_of_nodes(), "X")
+    def __post_init__(self):
+        # `np.nanmean` over an all-NaN row warns and returns NaN, which reaches a table as a
+        # blank rather than as an error. The two counts cannot disagree if they are checked.
+        total = self.n_excluded + self.n_scored
+        if len(set(total.tolist())) != 1:
+            raise ValueError(
+                f"n_excluded + n_scored must be the vertex count for every k, got {total}"
+            )
 
-    knn = NearestNeighbors(n_neighbors=n_neighbors)
-    knn.fit(X)
 
-    # connectivity matrices (sparse)
-    knn_adjacency_matrix = knn.kneighbors_graph(mode="connectivity")
-    true_adjacency_matrix = nx.adjacency_matrix(G, weight=weight)
+def _preservation_report(
+    X: np.ndarray, G: nx.Graph, k, criterion: str
+) -> NeighborPreservationReport:
+    """The shared core of the four neighbourhood metrics — eqs. (30)-(39).
 
-    # ensure CSR format for elementwise operations
-    knn_adj = knn_adjacency_matrix.tocsr()
-    true_adj = true_adjacency_matrix.tocsr()
+    One ``NearestNeighbors`` fit and **one query at max(k)**, sliced per ``k``. The recursive
+    re-fit per ``k`` it replaces was the dominant cost of a swept call.
 
-    # element-wise multiply to count matching neighbors
-    matching_neighbors = knn_adj.multiply(true_adj)
+    Note:
+        Slicing is not identical to re-querying when the layout has exact duplicates: which of
+        several coincident points count as "the k nearest" depends on how many were asked for,
+        and there is nothing to break the tie with. On a layout with no duplicates — every
+        registered dataset, every real layout so far — the two agree exactly.
+    """
+    n = G.number_of_nodes()
+    X = require_n_by_d(X, n, "X")
 
-    # row-wise sums -> 1D numpy arrays
-    matching_counts = np.asarray(matching_neighbors.sum(axis=1)).ravel()
+    ks = np.atleast_1d(np.asarray(k, dtype=int))
+    if ks.min() < 1:
+        raise ValueError(f"k must be >= 1, got {ks.min()}")
+    if ks.max() > n - 1:
+        raise ValueError(f"k={ks.max()} exceeds n-1={n - 1}; there are not that many neighbours")
 
-    if mode in {"recall", "weighted recall"}:
-        normalization = np.asarray(true_adj.sum(axis=1)).ravel()
-    elif mode == "jaccard":
-        normalization = np.asarray(true_adj.maximum(knn_adj).sum(axis=1)).ravel()
-    elif mode == "precision":
-        normalization = n_neighbors
+    weight = "weight" if criterion == "weighted_recall" else None
+    if weight is not None:
+        side = graph_side(G)
+        if side == "distance":
+            raise ValueError(
+                f"weighted_recall weights a recovered neighbour by its affinity, but this graph "
+                f"is stamped 'distance' ({G.graph.get(SOURCE_KEY)!r}) — on digits that attribute "
+                "is a stored Euclidean distance, so the metric would reward recovering the "
+                "*least* coupled neighbours. Pass the evaluation context's affinity graph "
+                "(`LayoutGraph.affinity_graph()`)."
+            )
+        if side == "combinatorial":
+            # The declaration wins over whatever is on the edges. football_2023 declares
+            # `Unweighted()` on both sides and still carries a stray `weight` attribute — 732
+            # edges at 1 and three at 2 — from the .mat it was built from. Reading those would
+            # make eq. (39) fail on a graph the dataset says is unweighted.
+            weight = None
 
-    # avoid division by zero: mark degree-0 nodes as NaN and use nanmean
-    with np.errstate(divide="ignore", invalid="ignore"):
-        neighbor_accuracy = matching_counts / normalization
+    true_adj = sp.csr_array(nx.adjacency_matrix(G, nodelist=range(n), weight=weight))
+    _, idx = _loo_neighbors(X, int(ks.max()))
 
-    neighbor_accuracy = np.where(normalization == 0, np.nan, neighbor_accuracy)
+    value = np.empty(ks.size)
+    n_excluded = np.empty(ks.size, dtype=int)
 
-    mean_accuracy = np.nanmean(neighbor_accuracy)
+    for i, kk in enumerate(ks):
+        rows = np.repeat(np.arange(n), kk)
+        knn_adj = sp.csr_array((np.ones(n * kk), (rows, idx[:, :kk].ravel())), shape=(n, n))
+        matched = np.asarray(knn_adj.multiply(true_adj).sum(axis=1)).ravel()
 
-    return mean_accuracy
+        if criterion in ("recall", "weighted_recall"):
+            normalisation = np.asarray(true_adj.sum(axis=1)).ravel()
+        elif criterion == "jaccard":
+            normalisation = np.asarray(true_adj.maximum(knn_adj).sum(axis=1)).ravel()
+        elif criterion == "precision":
+            normalisation = np.full(n, float(kk))
+        else:
+            raise ValueError(f"unknown criterion {criterion!r}")
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            per_vertex = matched / normalisation
+        per_vertex = np.where(normalisation == 0, np.nan, per_vertex)
+
+        n_excluded[i] = int(np.isnan(per_vertex).sum())
+        value[i] = float(np.nanmean(per_vertex)) if n_excluded[i] < n else np.nan
+
+    return NeighborPreservationReport(
+        k=ks, value=value, n_excluded=n_excluded, n_scored=n - n_excluded
+    )
+
+
+def _score(report: NeighborPreservationReport, k):
+    """A float for scalar ``k``, an array for array-like ``k`` — as `knn_accuracy` does.
+
+    ``np.ndim(k)``, not ``isinstance(k, (list, np.ndarray))``: a tuple used to fall through the
+    latter into the scalar path and then into an obscure sklearn error. Nothing here infers
+    *sweep versus distribution* from the shape — `MetricSpec` declares that at step 7
+    (`DECISIONS.md` (20)).
+    """
+    return report.value if np.ndim(k) else float(report.value[0])
+
+
+def knn_recall_report(X: np.ndarray, G: nx.Graph, k=10) -> NeighborPreservationReport:
+    """Eq. (30)-(32): the fraction of each vertex's graph neighbours found among its k nearest."""
+    return _preservation_report(X, G, k, "recall")
+
+
+def knn_recall(X: np.ndarray, G: nx.Graph, k=10):
+    """$R^k$ — recovered graph neighbours over graph degree, averaged over vertices (eq. 32).
+
+    Zero-degree vertices are excluded rather than scored at 0; see
+    :class:`NeighborPreservationReport` for the count.
+    """
+    return _score(knn_recall_report(X, G, k), k)
+
+
+def knn_precision_report(X: np.ndarray, G: nx.Graph, k=10) -> NeighborPreservationReport:
+    """Eq. (33): recovered graph neighbours over ``k``."""
+    return _preservation_report(X, G, k, "precision")
+
+
+def knn_precision(X: np.ndarray, G: nx.Graph, k=10):
+    """$P^k$ — recovered graph neighbours over ``k``, averaged over vertices (eq. 33).
+
+    Nothing is excluded: the normalisation is ``k``, so an isolated vertex scores 0 rather than
+    dropping out. That asymmetry with recall is deliberate and is what the two measure.
+    """
+    return _score(knn_precision_report(X, G, k), k)
+
+
+def knn_jaccard_report(X: np.ndarray, G: nx.Graph, k=10) -> NeighborPreservationReport:
+    """Eq. (34)-(35): intersection over union of the graph and embedded neighbourhoods."""
+    return _preservation_report(X, G, k, "jaccard")
+
+
+def knn_jaccard(X: np.ndarray, G: nx.Graph, k=10):
+    """$J^k$ — |graph ∩ embedded| / |graph ∪ embedded|, averaged over vertices (eqs. 34-35).
+
+    Nothing is excluded: the union always contains the ``k`` embedded neighbours.
+    """
+    return _score(knn_jaccard_report(X, G, k), k)
+
+
+def weighted_recall_report(X: np.ndarray, G: nx.Graph, k=10) -> NeighborPreservationReport:
+    """Eqs. (36)-(38): recall with each neighbour weighted by its affinity."""
+    return _preservation_report(X, G, k, "weighted_recall")
+
+
+def weighted_recall(X: np.ndarray, G: nx.Graph, k=10):
+    r"""$R_w^k$ — recall with each recovered neighbour weighted by $w_{ij}$ (eqs. 36-38).
+
+    Equals :func:`knn_recall` exactly on an unweighted graph (eq. 39), which is the cheap test
+    that says the weighting is wired up rather than merely present.
+
+    ``G`` must be **affinity-valued**: a graph stamped ``twin_side="distance"`` is refused.
+    §2.1's literal signature implies `dataset.graph`'s ``weight`` attribute, but on digits that
+    attribute is a stored Euclidean distance, and a metric that reads whichever number happens
+    to be on the edge is a metric that inverts silently on the one dataset where the two differ
+    (`DECISIONS.md`, step-3 decisions). Take the affinity graph from the evaluation context.
+    """
+    return _score(weighted_recall_report(X, G, k), k)
 
 
 # `point_distance_metric` lived here. Removed per spec §1.2: its `adjacency=True` branch

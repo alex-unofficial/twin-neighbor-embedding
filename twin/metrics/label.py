@@ -12,9 +12,8 @@ spec §7 step 6.
 from dataclasses import dataclass
 
 import numpy as np
-from sklearn.neighbors import NearestNeighbors
 
-from twin.metrics.common import require_n_by_d
+from twin.metrics.common import _loo_neighbors, require_n_by_d
 
 
 @dataclass
@@ -43,30 +42,6 @@ def majority_class_rate(labels: np.ndarray) -> float:
     labels = np.asarray(labels)
     _, counts = np.unique(labels, return_counts=True)
     return float(counts.max() / labels.size)
-
-
-def _loo_neighbors(X: np.ndarray, k_max: int):
-    """Indices and distances of the ``k_max`` nearest *other* points, per point.
-
-    Queries ``k_max + 1`` and drops the self column. With coincident points the self entry is
-    not guaranteed to sort first, so it is removed by index identity rather than by position.
-    """
-    n = X.shape[0]
-    knn = NearestNeighbors(n_neighbors=k_max + 1).fit(X)
-    dist, idx = knn.kneighbors(X, n_neighbors=k_max + 1)
-
-    drop = idx == np.arange(n)[:, None]
-    # A row can miss its own index only under exact duplicates; drop its furthest entry so
-    # every row contributes exactly k_max neighbours.
-    missing = ~drop.any(axis=1)
-    drop[missing, -1] = True
-
-    # Stable sort on the drop flag: False (keep) sorts first, in original distance order.
-    order = np.argsort(drop, axis=1, kind="stable")[:, :k_max]
-    return (
-        np.take_along_axis(dist, order, axis=1),
-        np.take_along_axis(idx, order, axis=1),
-    )
 
 
 def knn_accuracy_report(

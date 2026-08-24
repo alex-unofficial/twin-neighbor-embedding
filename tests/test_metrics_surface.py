@@ -23,7 +23,18 @@ REQUIRED_EXPORTS = {
     "majority_class_rate",
     "knn_accuracy_report",
     "knn_accuracy",
-    "knn_neighbor_preservation_accuracy",
+    # spec §2.1, split into four named functions at step 3 commit 7. The `mode=` string and
+    # `knn_neighbor_preservation_accuracy` itself are gone; there was one caller, in-tree.
+    "knn_recall",
+    "knn_recall_report",
+    "knn_precision",
+    "knn_precision_report",
+    "knn_jaccard",
+    "knn_jaccard_report",
+    "weighted_recall",
+    "weighted_recall_report",
+    "NeighborPreservationReport",
+    "default_k",
     # spec §2.0, added at step 3 commit 4.
     "ideal_distances",
     "finite_pair_mask",

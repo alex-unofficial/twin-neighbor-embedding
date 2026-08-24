@@ -272,7 +272,6 @@ def embedding_metrics_all(
     n_samples: int = 1,
     n_neighbors: int = 10,
     target=None,
-    mode="recall",
     embedding_kw: dict = {},
     twinmatrix_kw: dict = {},
     common_init: bool = True,
@@ -327,15 +326,9 @@ def embedding_metrics_all(
         res_e = _result_from(Ge_in, Y, dataset, "edge", E_in, seed)
         res_tw = _result_from(Gtw_in, Z, dataset, "twin", E_in, seed)
 
-        neighbor_preservation_metric_v += knn_neighbor_preservation_accuracy(
-            res_v.V, G, n_neighbors, mode=mode
-        )
-        neighbor_preservation_metric_e += knn_neighbor_preservation_accuracy(
-            res_e.V, G, n_neighbors, mode=mode
-        )
-        neighbor_preservation_metric_tw += knn_neighbor_preservation_accuracy(
-            res_tw.V, G, n_neighbors, mode=mode
-        )
+        neighbor_preservation_metric_v += knn_recall(res_v.V, G, n_neighbors)
+        neighbor_preservation_metric_e += knn_recall(res_e.V, G, n_neighbors)
+        neighbor_preservation_metric_tw += knn_recall(res_tw.V, G, n_neighbors)
 
         if target is not None:
             classification_metric_v += knn_accuracy(res_v.V, target, n_neighbors)
