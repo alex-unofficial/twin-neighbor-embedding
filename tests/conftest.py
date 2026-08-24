@@ -72,6 +72,27 @@ def karate_random_layout(karate) -> np.ndarray:
 
 
 @pytest.fixture
+def isolated_vertex_graph() -> nx.Graph:
+    """A weighted path 0-1-2-3-4 plus a zero-degree vertex 5.
+
+    No registered dataset has an isolated vertex — every one of them is connected — so the
+    NaN-exclusion path in the neighbourhood metrics is unreachable from the roster and invisible
+    to the karate pins. The path is weighted 1..4 so that ``weighted recall`` is not vacuously
+    equal to ``recall`` here.
+    """
+    G = nx.Graph()
+    G.add_weighted_edges_from([(0, 1, 1.0), (1, 2, 2.0), (2, 3, 3.0), (3, 4, 4.0)])
+    G.add_node(5)
+    return G
+
+
+@pytest.fixture
+def isolated_vertex_layout(isolated_vertex_graph) -> np.ndarray:
+    """An unstructured (6, 2) layout for :func:`isolated_vertex_graph`."""
+    return np.random.default_rng(2).normal(size=(isolated_vertex_graph.number_of_nodes(), 2))
+
+
+@pytest.fixture
 def karate_structured_layout(karate, karate_labels) -> np.ndarray:
     """A structured (n, 2) layout: club along x, degree along y, with fixed jitter.
 
@@ -83,3 +104,18 @@ def karate_structured_layout(karate, karate_labels) -> np.ndarray:
     degrees = np.array([d for _, d in karate.degree()], dtype=float)
     jitter = np.random.default_rng(1).normal(scale=0.25, size=(karate.number_of_nodes(), 2))
     return np.column_stack([karate_labels * 0.6, degrees * 0.2]) + jitter
+
+
+@pytest.fixture
+def karate_coincident_layout(karate_structured_layout) -> np.ndarray:
+    """``karate_structured_layout`` with vertices 0-8 collapsed onto one point.
+
+    Nine coincident points, deliberately more than ``k + 1`` at both pinned ``k``, because that
+    is the regime where the two leave-one-out conventions in the package diverge: sklearn's
+    ``kneighbors(X=None)`` masks column 0 for a row whose own index did not survive into the
+    ``k + 1`` query, while ``twin.metrics._loo_neighbors`` masks the last column by design. No
+    registered dataset has a coincident vertex pair (`STATUS.md`), so nothing else can see it.
+    """
+    X = karate_structured_layout.copy()
+    X[1:9] = X[0]
+    return X
