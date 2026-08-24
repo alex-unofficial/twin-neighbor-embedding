@@ -16,7 +16,7 @@ import scipy.sparse as sp
 from scipy.sparse import csgraph
 from scipy.spatial.distance import pdist
 
-from twin.layoutgraph import SOURCE_KEY, graph_side
+from twin.forms import SOURCE_KEY, graph_side
 
 #: One pair ordering for the whole package: scipy's condensed ordering, the row-major upper
 #: triangle. ``pdist`` produces it, :func:`condensed` converts into it, SNS sums over it. Every

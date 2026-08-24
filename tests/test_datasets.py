@@ -9,6 +9,7 @@ import networkx as nx
 import numpy as np
 import pytest
 
+from twin.forms import graph_side
 from twin.datasets import (
     Dataset,
     DatasetStyle,
@@ -195,3 +196,71 @@ def test_distinctipy_palette_keeps_the_trailing_black_row():
     table = DatasetStyle(palette="distinctipy", palette_seed=7).hue_table(13)
     assert table.shape == (14, 3)
     np.testing.assert_array_equal(table[-1], np.zeros(3))
+
+
+# --------------------------------------------------------------------------- #
+#              What the dataset's own `weight` attribute means                 #
+# --------------------------------------------------------------------------- #
+#
+# The declaration already exists — a `Stored` side *is* the graph's edge attribute — but the
+# `nx.Graph` travels without it, and the numbers do not say which way they point. The stamp is
+# what lets ADR and `ideal_distances` refuse the wrong valuation instead of inverting silently.
+
+
+def test_a_stored_affinity_stamps_the_graph_as_affinity(toy):
+    assert make(toy).graph_weight_side() == "affinity"
+    assert graph_side(make(toy).graph) == "affinity"
+
+
+def test_a_stored_distance_stamps_the_graph_as_distance(toy):
+    dataset = Dataset(name="toy", graph=toy, affinity=None, distance=Stored(meaning="distance"))
+    assert graph_side(dataset.graph) == "distance"
+
+
+def test_two_unweighted_sides_stamp_the_graph_as_combinatorial(toy):
+    dataset = Dataset(name="toy", graph=toy, affinity=Unweighted(), distance=Unweighted())
+    assert graph_side(dataset.graph) == "combinatorial"
+
+
+def test_a_side_stored_under_another_attribute_name_does_not_claim_weight(toy):
+    """The stamp describes ``weight`` specifically, so a side under another name says nothing."""
+    toy_copy = toy.copy()
+    for u, v in toy_copy.edges():
+        toy_copy[u][v]["length"] = 1.0
+    dataset = Dataset(
+        name="toy",
+        graph=toy_copy,
+        affinity=Stored(meaning="strength"),
+        distance=Stored(meaning="distance", weight="length"),
+    )
+    assert dataset.graph_weight_side() == "affinity"
+
+
+def test_stored_matrices_alone_leave_the_graph_unstamped(toy):
+    """tabula's case: both sides are separate matrices, so nothing declares the attribute."""
+    A = nx.to_scipy_sparse_array(toy, weight="weight")
+    dataset = Dataset(
+        name="toy",
+        graph=toy,
+        affinity=StoredMatrix("A", meaning="kernel"),
+        distance=StoredMatrix("A", meaning="distance"),
+        matrices={"A": A},
+    )
+    assert dataset.graph_weight_side() is None
+    assert graph_side(dataset.graph) is None
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("karate", "combinatorial"),
+        ("karate_weighted", "affinity"),
+        ("digits", "distance"),
+        ("football_2023", "combinatorial"),
+    ],
+)
+def test_the_roster_declares_what_its_graph_weights_are(name, expected):
+    """digits is the one that matters: its `weight` is a stored Euclidean distance."""
+    from twin.datasets import load_dataset
+
+    assert graph_side(load_dataset(name).graph) == expected

@@ -13,13 +13,11 @@ import scipy.sparse as sp
 import twin.graphmatrix as gm
 from twin.config import REAL_WORLD_DIR
 from twin.datasets import Dataset, Stored, StoredMatrix, Unweighted, load_dataset
+from twin.forms import SOURCE_KEY, graph_side, stamp_form
 from twin.layoutgraph import (
-    SOURCE_KEY,
     LayoutGraph,
     affinity_matrix_to_distance,
     edge_graph,
-    graph_side,
-    stamp_form,
     twin_graph,
     vertex_graph,
 )
