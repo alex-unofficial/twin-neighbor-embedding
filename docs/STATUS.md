@@ -2,8 +2,8 @@
 
 Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
-**Last updated:** end of session 2 (2026-08-23), including the step-2b follow-up. Branch
-`experiment-setup`.
+**Last updated:** end of session 2 (2026-08-24), which closed spec §7 step 2. Branch
+`experiment-setup` @ `b86ee02`.
 
 ---
 
@@ -13,7 +13,7 @@ Read `CLAUDE.md` first, then this. Updated at the end of each session.
 |---|---|
 | **1. Correctness and conventions groundwork** | **Done** — merged `b220cb8`, `e0428de` |
 | **2. `Dataset` and `LayoutGraph` (§3.4, §3.5)** | **Done** — session 2, plus the step-2b follow-up; plan: [`docs/plans/step2-datasets.md`](plans/step2-datasets.md) |
-| **3. `common.py` + `structural.py` — ADR, kNN family, SNS** | **Next** |
+| **3. `common.py` + `structural.py` — ADR, kNN family, SNS** | **Next** — plan: [`docs/plans/step3-metrics.md`](plans/step3-metrics.md) |
 | 4. `visual.py` — NND, NR/VNR, distributions, edge lengths | not started |
 | 5. `crossings.py` — curves, detection, Cr/LWCr, detour | not started |
 | 6. `label.py` — silhouette, accuracy, graph-side checks | not started (step 2 unblocked it) |
@@ -36,15 +36,18 @@ Section 5 numbers before step 8.
 4. `docs/DATASET_PROVENANCE.md` — where each dataset's weights actually come from. Assertions
    here are executable: `tests/test_dataset_provenance.py`.
 5. `docs/DATASET_REPORT.md` — the generated roster table (`python -m twin.report`).
-6. `docs/plans/<step>.md` — the commit sequence and verification for the step in progress. The
-   design lives in the spec; these say what to do in what order.
+6. [`docs/plans/step3-metrics.md`](plans/step3-metrics.md) — the commit sequence and
+   verification for the step in progress. The design lives in the spec; a plan says what to do in
+   what order. [`step2-datasets.md`](plans/step2-datasets.md) is history, kept for its record of
+   where the implementation departed from it.
 
 ---
 
 ## What landed in session 2
 
-Spec §7 step 2, on `step2/datasets`, merged into `experiment-setup`. Ten planned items in
-eleven commits; 268 tests (was 94), all eight `paper_figures` functions still render.
+Spec §7 step 2, in two merges — `step2/datasets` (eleven commits against ten planned items) and
+the `step2b/forms-and-sparsity` follow-up (five commits, prompted by review). **299 tests, up
+from 94**; all eight `paper_figures` functions still render.
 
 - **`twin/datasets/`** — `Dataset`, `LabelSet`, `DatasetStyle`, the stored-source types, one file
   per dataset, and `DATASET_REGISTRY`. Ten datasets: the `karate` / `karate_weighted` split, the
@@ -62,8 +65,6 @@ eleven commits; 268 tests (was 94), all eight `paper_figures` functions still re
 - **Bug §1.6 closed.** Digits stops being fed distances as if they were affinities.
 
 ### The step-2b follow-up
-
-Five commits after the step-2 merge, prompted by four caveats raised on review.
 
 - **`LayoutGraph.combinatorial`** — the third form. A `LayoutGraph` is one support carrying up
   to three valuations, derived structurally rather than by thresholding the affinity.
@@ -101,6 +102,22 @@ Five commits after the step-2 merge, prompted by four caveats raised on review.
   is inert for the current roster; the report has the column to catch a future dataset that
   reintroduces it.
 
+### Where step 3 starts
+
+[`docs/plans/step3-metrics.md`](plans/step3-metrics.md) has the commit sequence; the five
+decisions the spec left open at this step are pinned in
+[`DECISIONS.md`](DECISIONS.md#step-3-decisions-pinned-before-they-are-discovered-the-hard-way).
+Two things about the step worth knowing before opening either:
+
+- **Scope is exactly ADR, the kNN family and SNS.** `twin/metrics.py` becomes a package, but
+  `visual.py`, `crossings.py`, `label.py`'s content and the whole
+  registry / `evaluate_layout` / persistence layer are steps 4–7. The plan states the boundary
+  because it is the easiest thing to drift across.
+- **Only one commit in it can move a number, and it touches all sixteen existing pins** — the one
+  that splits `knn_neighbor_preservation_accuracy`'s `mode=` string into four named functions.
+  The pin *keys* become function names there, which is exactly the cover a quiet value change
+  would need.
+
 ---
 
 ## Environment facts not visible in the tree
@@ -134,7 +151,7 @@ git status --short               # clean; if notebooks appear modified, the filt
 
 Figures: the six fast `paper_figures` functions render in seconds; `tabula_sapiens_teaser` takes
 about three minutes and internally calls `tabula_sapiens_blockadj`, so rendering it covers both.
-All eight render as of the session-2 merge.
+All eight render as of `b86ee02`.
 
 ---
 
@@ -142,11 +159,12 @@ All eight render as of the session-2 merge.
 
 | Item | Bites at |
 |---|---|
-| Ideal distances have a single owner but no consumer yet: `common.ideal_distances` and its `max_n` guard do not exist. Take them from `vertex_graph(dataset).distance` | **step 3** |
-| The `exp_decay` vs `exp_decay_sq` affinity rule is selectable but has never been compared. Spec §3.4 asks for one comparison on digits | **step 3**, alongside kNN recall |
-| A metric needs the **vertex** `LayoutGraph`, not just points + `Dataset`. Build it as an evaluation context per dataset, not as a field on `LayoutResult` — `DECISIONS.md` (5) | **step 3** |
-| SNS on a Kamada-Kawai layout is close to a measure of optimiser success, since KK optimises approximately what SNS measures. Report it beside metrics that are not KK's objective | **step 3**, and the write-up |
-| Re-measure the §1.6 fix in quality terms — Procrustes said the layout *changed*, not that it improved | **step 3** |
+| Ideal distances have a single owner but no consumer yet: `common.ideal_distances` and its `max_n` guard do not exist. Take them from `vertex_graph(dataset).distance` | **step 3** — planned, commit 4 |
+| The `exp_decay` vs `exp_decay_sq` affinity rule is selectable but has never been compared. Spec §3.4 asks for one comparison on digits | **step 3** — planned, commit 11 |
+| A metric needs the **vertex** `LayoutGraph`, not just points + `Dataset`. Build it as an evaluation context per dataset, not as a field on `LayoutResult` — `DECISIONS.md` (5) | **step 3** — planned, commit 9 |
+| SNS on a Kamada-Kawai layout is close to a measure of optimiser success, since KK optimises approximately what SNS measures. Report it beside metrics that are not KK's objective | **step 3** goes in the docstring (commit 8); the reporting flag is step 11 |
+| Re-measure the §1.6 fix in quality terms — Procrustes said the layout *changed*, not that it improved | **step 3** — planned, commit 10 |
+| ⚠️ **Spec §2.5's cost class is wrong.** It says SNS and Sil\* are what will not run on tabula; the largest n is 5007, so the O(n²) closure is 200 MB and `max_n=20000` never trips. The expensive metrics scale with **m** — crossings, 49368 edges on tabula | a run planner built on it would size the wrong thing: **steps 5 and 7** |
 | Memory runs need **one case per process**: `peak_mem_mb` is a delta from the entry baseline, and glibc does not always return freed memory, so later cases in a batch measure from a higher floor | step 7 |
 | A persisted layout must store the dataset's registry **name and params**, never the `Dataset` object | step 7 |
 | `common_init` is not in the batch runner — deliberately deferred, since it needs the seed axis and the paired protocol; the column-slicing convention it depends on is already tested | step 8 |
