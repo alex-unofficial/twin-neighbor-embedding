@@ -1,0 +1,25 @@
+{
+  "dataset": "karate_weighted",
+  "layout": "tests/conftest.py::karate_structured_layout",
+  "k": [
+    5,
+    10
+  ],
+  "default_k": 5,
+  "values": {
+    "adjacency_distance_ratio": 1.5390680287987029,
+    "knn_accuracy@k=10": 0.8529411764705882,
+    "knn_accuracy@k=5": 0.8823529411764706,
+    "knn_jaccard@k=10": 0.11002579494202147,
+    "knn_jaccard@k=5": 0.07345938375350139,
+    "knn_precision@k=10": 0.15294117647058825,
+    "knn_precision@k=5": 0.13529411764705884,
+    "knn_recall@k=10": 0.26596261053440984,
+    "knn_recall@k=5": 0.13142781622452904,
+    "normalized_stress": 0.9846051647218835,
+    "raw_stress": 504.0144964822399,
+    "scale_normalized_stress": 0.7261768692110877,
+    "weighted_recall@k=10": 0.2760149755585861,
+    "weighted_recall@k=5": 0.14677585923382333
+  }
+}
