@@ -307,6 +307,57 @@ out with.
 would duplicate it per case and re-couple the layers. Step 3/7 work; recorded here so it is not
 reinvented.
 
+## Step 3 decisions, pinned before they are discovered the hard way
+
+Five choices the spec leaves open at step 3, settled in advance so that
+[`plans/step3-metrics.md`](plans/step3-metrics.md) can be executed without re-deriving them. Each
+records the alternative and why it lost.
+
+**`ideal_distances` returns the full `(n, n)` array under every policy.** Under `"lcc"` the
+infinities sit outside the largest component; under `"mask"` only genuinely unreachable pairs are
+infinite. The alternative — returning the `(n_lcc, n_lcc)` submatrix plus an index vector — is
+more honest about what was actually scored, but it pushes index bookkeeping into every consumer,
+and every consumer is holding an `(n, d)` layout it would then have to subset in step. Keeping the
+shape fixed makes alignment free, and the two policies still give documented, *different* answers,
+which is what §6 asks of them.
+
+**`max_n` stays at 20000, and the message quotes the projected allocation.** It is what §2.0 sets,
+and the guard is an escape valve rather than a memory policy — the runner is expected to know what
+it is asking for. But note what the default actually admits: $20000^2 \times 8$ B is **3.2 GB**, so
+the guard does not by itself protect a workstation, which is the reason the error names the number
+rather than just refusing. Lowering it to ~10000 (800 MB) would make it genuinely protective at
+the cost of deviating from a spec-stated default; revisit if it ever bites, with the change
+recorded here.
+
+**`weighted_recall` reads the vertex graph's affinity side, not `dataset.graph`'s `weight`
+attribute.** They agree on `karate_weighted` and `tabula` and **disagree on digits**, whose
+`weight` attribute is a stored Euclidean distance. §2.1's literal signature implies the graph
+attribute; the layering says the affinity form, and the layering wins for the same reason bug §1.6
+does — a metric that reads whichever number happens to be on the edge is a metric that inverts
+silently on the one dataset where the two differ. Recorded here rather than left to be inferred
+from the plan, because it is a deviation from the written signature. ADR takes the same rule and
+enforces it by refusing a graph stamped `twin_side="distance"`.
+
+**ADR is not wired into `embedding_metrics_all`; the point-distance slot is closed in prose.**
+Three comments in `twin/pipelines.py` promise ADR will fill the slot left by `point_distance_metric`
+(spec §1.2). It will not, there. That function has zero callers and zero tests, is superseded by
+`batch_layout_metrics` (§3.7), and its Typst emitters branch on the removed `VertexPointDistance`
+/ `EdgePointDistance` keys and are rewritten against the long DataFrame at §5.2. Wiring ADR in
+means adding untested code to a function scheduled for deletion *and* inventing a table shape that
+step 11 discards. The comments are updated to say ADR exists and that this path is not getting it.
+Wrong only if a thesis draft needs point-distance tables before step 7 lands.
+
+**The golden file is built on `karate_weighted`, with a deterministic layout, keyed by metric
+name.** §6 says `karate_club`, which is no longer a registry name; `karate_weighted` is its literal
+successor, since `batch_registries["graph"]["karate_club"]` *was* `nx.karate_club_graph`. It is
+also the only choice that works on the merits: on unweighted `karate`, ADR degenerates to eq. (29)
+and `weighted_recall` equals `knn_recall` by construction, so a golden file there would pin two
+metrics at values that **cannot detect a weighting bug**. Use the `karate_structured_layout`
+fixture rather than a seeded layout run — `conftest.py` already states the principle, and a golden
+file that runs SG-*t*-SNE pins the backend, so every `sgtsnepi` bump reads as a metric regression.
+Key it by metric name so steps 4–6 add keys instead of invalidating the file; one that must be
+regenerated wholesale three times will be regenerated without being read.
+
 ## `largest_component()` is not built
 
 Dropped from the `Dataset` interface. Subsetting a dataset means subsetting the graph, *every*

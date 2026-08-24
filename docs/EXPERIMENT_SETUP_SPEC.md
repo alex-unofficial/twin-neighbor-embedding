@@ -366,9 +366,10 @@ changed, and why:
    vertex graph, which matches the algebra and lets the derivation chain be read off a `parent`
    link instead of maintained as a string. It also builds the incidence matrix once instead of
    three times.
-4. **Layout methods ask; the runner does not convert.** Every `LayoutGraph` exposes both forms.
-   This is what lets tabula's *measured* distances drive a Kamada–Kawai vertex layout, which the
-   old "convert once at the boundary" rule could not express.
+4. **Layout methods ask; the runner does not convert.** Every `LayoutGraph` exposes all three
+   forms (see the session-2 corrections below — the original rewrite said two). This is what lets
+   tabula's *measured* distances drive a Kamada–Kawai vertex layout, which the old "convert once
+   at the boundary" rule could not express.
 5. **`check_weight_consistency` is new**, and is the hazard the change introduces: two
    independently stored sides can disagree about which pairs are close, and the layout optimises
    against one while SNS and Sil\* score against the other.
@@ -388,7 +389,74 @@ y0_vertex = y0[:, ne:]                # A_V
 y0_twin   = y0                        # A_tne
 ```
 
-Appendix A states the convention correctly. Follow Appendix A.
+Appendix A states the convention correctly. Follow Appendix A. **The §3.3 code block itself was
+never edited** — it still shows the row slicing. This erratum is authoritative over it.
+
+### Session 2 corrections — what implementing steps 1 and 2 established
+
+Written after §7 steps 1 and 2 shipped. Where a claim below contradicts the body, this wins.
+
+**§1.6 is real, and its effect is smaller than "the layout is wrong" suggests.** Measured on
+digits: the Spearman correlation between the old and the new edge weights is **exactly −1.000000**
+over all 14732 edges — every edge was ranked in precisely the reverse order, which is the bug
+stated exactly. But Procrustes disparity between the old and new *layouts* at matched
+initialisation is 0.02–0.46 over four inits, while **re-initialising the same configuration moves
+it 0.46–0.83**. The correction moves the layout less than seed noise does, so Procrustes cannot
+establish that the bug mattered. Whether it *improves* digits is a step-3 measurement in quality
+terms (kNN recall, ADR), not a step-2 claim.
+
+**Yifan Hu consumes the combinatorial form, and `expects` is not sufficient.** §3.4/§3.5 have been
+corrected in place. The generalisation is worth stating separately, because it will recur: a
+layout method declaring the right form does not guarantee the backend *interprets* it correctly.
+`nx.nx_pydot` writes edge attributes as `weight=`, which graphviz reads as a spring strength, not
+a length. Step 2's own switch of both graphviz methods to `.distance` introduced a wrong-sign
+regression that the `expects` conformance test passed throughout, because that test checks which
+form was read and not what the backend took it to mean.
+
+**`check_weight_consistency` on tabula: the argument's two predictions both failed, and a third
+statistic settles it.** Global Spearman over shared pairs is **−0.2364**, not "strongly negative";
+median per-row is **−0.7820**, not $-1$, and past the ≈ −0.9 line that was supposed to signal
+genuine inconsistency. Restricted to pairs the raw kNN matrix recorded in one direction only —
+where fuzzy union cannot have mixed row $j$'s $\rho_j,\sigma_j$ into row $i$ — it is **exactly
+$-1$ in all 3819 scored rows**. The sides do not disagree; symmetrisation blurs them. **Read the
+≈ −0.9 threshold against the unmixed column**, not the raw per-row one.
+
+**No dataset in the roster has a coincident vertex pair.** The zero-ideal-distance concern above
+is inert for the current roster: tabula's smallest *measured* distance is 0.2005, and the
+transform that would have zeroed 93% of its vertices is the one that raises. The report carries
+the column to catch a future dataset that reintroduces it.
+
+**Sparsification is declared and its cost is measured** — see the two new §3.4 subsections. For
+`digits` and `tabula` the ambient metric is retained and declined; rank correlation against it is
+0.6955 and 0.7876, and relative stress is 1.784 / 1.489 raw but **0.2027 / 0.2102 after the
+optimal uniform rescaling that SNS performs anyway**. Quote the rescaled figure when quoting it at
+SNS; the raw one overstates the cost by roughly a factor of nine.
+
+⚠️ **§2.5's cost class is wrong, and it misdirects step 3 and step 7.** It says "SNS, Sil\* and
+the crossing metrics are the ones that will not run on `tabula` or `mnist`". The largest dataset
+is tabula at $n = 5007$, so the $O(n^2)$ ideal-distance closure is 200 MB and §2.0's
+`max_n = 20000` guard never trips on the current roster. The genuinely expensive case is the
+**crossing** metrics, which scale with $m$ — 49368 edges on tabula, 14732 on digits — not SNS or
+Sil\*, which scale with $n$.
+
+**§2.0's `weight_transform=` is vestigial.** Under the rewritten §3.4 the transform has already
+been applied by `vertex_graph`, and `one_minus` ($1-w$) exists nowhere in the new model.
+`DECISIONS.md` (10) settles it: the parameter survives as a low-level escape hatch, the pipeline
+never passes it, and passing a graph that came off a `LayoutGraph` *together with* an explicit
+transform raises. Step 3 must not re-litigate this.
+
+**§6's fixtures and premises have moved.** "Add `tests/` (nothing exists)" — 299 tests exist. The
+golden-file target `karate_club` is not a registry name any more; it is `karate` (the unweighted
+`.mat`) and `karate_weighted` (`nx.karate_club_graph`), and `DECISIONS.md` records which the
+golden file uses and why.
+
+**Stale descriptions, listed so that nobody re-schedules completed work.** These are facts about
+the tree, not open items: `twin/metadata.py` is deleted; `mnist` is registered as `digits` (the
+raw `dataset.mnist()` factory survives as a graph builder); the representation layer is
+`twin/layoutgraph.py` and every `GraphMatrixMethod` reference in the Background section and the
+§0 tables describes the pre-restructure baseline; `twin/metrics.py` is 271 lines, not 112;
+`twin/features.py` is deleted; §1.1 and §1.2's line numbers no longer resolve; and the `mode=`
+sweep and registry names §7 step 2 warns `batches/batch.py` depends on were all fixed there.
 
 ---
 
@@ -888,13 +956,15 @@ two is what makes $A_E$ and $A_{tne}$ evaluable at all:
 Dataset                        # stored information only. Owns identity. Never laid out.
     affinity / distance        #   whichever sides are STORED, with what they mean
     label_sets                 #   per ORIGINAL vertex
+    sparsity, source_points    #   how the edge set was chosen, and what from
     style, params, description
 
         │  vertex_graph(dataset, normalize=False)      ← derivation happens HERE
         ▼
 LayoutGraph(A_V)               # computational layer. Laid out. Never labelled.
-    affinity -> sp.sparray     #   SG-t-SNE, spectral, FR, ForceAtlas2 consume this
-    distance -> nx.Graph       #   Kamada-Kawai, neato, Yifan Hu consume this
+    combinatorial -> sp.sparray  # Yifan Hu (sfdp) consumes this
+    affinity      -> sp.sparray  # SG-t-SNE, spectral, FR, ForceAtlas2 consume this
+    distance      -> nx.Graph    # Kamada-Kawai, neato consume this
     incidence                  #   what the two derived graphs consume
     vertex_and_edge_points(X) -> (V, E, slopes)   ← back into ORIGINAL indexing
     n_points, point_provenance, parent
@@ -903,6 +973,13 @@ LayoutGraph(A_V)               # computational layer. Laid out. Never labelled.
         ▼                                  ▼
 LayoutGraph(A_E)                           LayoutGraph(A_tne)
 ```
+
+**One support, three valuations.** A `LayoutGraph` carries a single edge set and up to three
+readings of it: combinatorial (1), affinity ($w$), distance ($d$). The combinatorial form is
+derived by rerunning the same algebra on the **unweighted** incidence — $BB^{\top}$, $B^{\top}B$,
+`twin_adjacency(B, α, k)` — not by thresholding the affinity, because `normalize=True` scales
+entries by $1/\sqrt{\deg}$ and a float comparison against zero is the wrong thing to hang a
+support on.
 
 Named `LayoutGraph` rather than `Graph` only so it does not read as `nx.Graph`, which it contains.
 
@@ -917,6 +994,11 @@ class Dataset:
     distance: Stored | StoredMatrix | Unweighted | None
 
     label_sets: dict[str, LabelSet] = field(default_factory=dict)
+
+    # --- how the edge set was chosen, when it was a choice at all ---
+    sparsity: KNearest | None = None
+    source_points: np.ndarray | None = None      # the cloud it was sparsified from
+
     style: DatasetStyle | None = None
     params: dict = field(default_factory=dict)   # generator params, for the manifest
     description: str = ""
@@ -1086,6 +1168,75 @@ one. **[THESIS EDIT]** — implement the model above rather than a single global
 reporting layer should emit, per dataset, which sides are stored, the rule used for any derived
 side, and the resulting derivation chain.
 
+#### Sparsity: the operating regime, declared in the factory
+
+**Sparse input is not a compromise for speed — it is a precondition for the method.** On a
+complete graph over tabula's 5007 vertices, $A_E = B^{\top}B$ would carry
+$\sum_v \deg(v)(\deg(v)-1) \approx 10^{11}$ nonzeros and $A_{tne}$ would span
+$n + m \approx 12.5$ M nodes. A dense-input comparison is not an experiment that can be run at
+any budget, so the dense metric is not a yardstick any of these methods could be *built* to
+serve. Make the argument at the transform, where it is airtight: at $n \approx 5000$ a dense
+distance matrix is only 200 MB, so the general "dense is slow" version is attackable and this one
+is not.
+
+**Sparsification therefore happens in the dataset factory**, before any representation exists —
+never inside `vertex_graph`. Two reasons. The graph's edge set defines the *original edge
+indexing* that `vertex_and_edge_points` returns into, so a layout-layer knob must not be able to
+change it. And $k$ then sweeps through the existing batch axis for free, as
+`("digits", {"n_neighbors": [5, 12, 30]})`, which is right semantically: a different $k$ is a
+different dataset, not a different view of one.
+
+```python
+KNearest(k, symmetrise="or", space="", metric="euclidean")
+```
+
+$k$-NN rather than an $r$-neighbourhood, because it bounds degree and cannot isolate a vertex,
+and because it is what UMAP, *t*-SNE and tabula's own export already do. Sparsify on the
+**distance** side only: for a globally monotone derivation such as $\exp(-d/d_{\text{scale}})$,
+the $k$ nearest by distance and the $k$ largest by affinity are the same set, so there is exactly
+one place to do it.
+
+$k$ is **declared, not derived from a target density.** §4.2's λ criterion is defined at
+$k$ = mean degree, so it is already a first-class experimental quantity; choosing it through a
+density proxy would hide the axis one most wants visible.
+
+`KNearest.check(dataset)` verifies the declaration against the graph rather than trusting it:
+after or-symmetrisation every vertex has degree at least $k$, and $nk/2 \le m \le nk$. Neither is
+implied by $n$ and $m$, so neither shows up in a shape pin — and they are exactly what a file
+re-exported at a different $k$ breaks. A dataset whose edge set *is* the data (a football season,
+a karate club) declares nothing; there was no choice to record.
+
+A general sparsifier for a dense stored distance is **deliberately not built** — no dataset has
+one, so it would be untested code for a case that does not occur. Same call as
+`largest_component()`.
+
+#### What sparsification costs, and why the graph is the ground truth
+
+Sparsifying means the target SNS and Sil\* score against is the shortest-path closure of the
+graph — a **graph geodesic**, which for Euclidean edge weights is an Isomap distance, not the
+ambient metric. It is *exact* on the $k$-NN edges, since an edge's weight is the ambient distance
+and no path can beat it, and strictly larger elsewhere. So the distortion is a one-sided inflation
+of **long-range** distances: local metrics (kNN recall, NND, edge lengths) are undistorted, and
+the global ones score against a proxy. It converges to the ambient metric as $k$ grows.
+
+> **The graph is the stipulated ground truth.** A layout is not expected to recover distances the
+> method was never shown, and is not scored as though it should be.
+
+Every method sees the same graph, so the ablation between $A_V$, $A_E$ and $A_{tne}$ is
+internally valid. Two consequences to state rather than leave to be discovered:
+
+- Sparsification does not *disadvantage* stress methods inside the comparison; it relocates their
+  advantage. Kamada-Kawai and neato optimise approximately the functional SNS measures, so **SNS
+  on a KK layout is closer to a measure of optimiser success than of the representation.** Report
+  it beside metrics that are not KK's objective.
+- The equal constraint is on what each method is *given*, not on what it spends: KK and neato
+  expand to all-pairs internally regardless. That asymmetry is measured per case by `runtime_s`,
+  `representation_s` and `peak_mem_mb`, not assumed away.
+
+For `digits` and `tabula` the unsparsified source is *available* and is declined, so the cost is
+measured rather than acknowledged — `source_points` is retained for that and for nothing else.
+See §0.5 for the measured values and `docs/DATASET_REPORT.md` for the current table.
+
 **Labels.** A `LabelSet` carries the vector plus how it was derived:
 
 ```python
@@ -1210,15 +1361,23 @@ artifact and feeds the thesis's experimental-setup section.
 
 ### 3.5 What each layout method consumes
 
-Every `LayoutGraph` exposes **both** forms, so a layout method asks for the side it needs rather
-than being handed one by a runner that guessed. This is the other half of the fix for bug §1.6.
+Every `LayoutGraph` exposes **all three** forms, so a layout method asks for the one it needs
+rather than being handed one by a runner that guessed. This is the other half of the fix for bug
+§1.6.
 
 ```python
 def embed(self, layout_graph: LayoutGraph, y0=None) -> np.ndarray:
-    A = layout_graph.affinity     # SG-t-SNE, graph t-SNE, spectral, spring (FR), ForceAtlas2
+    C = layout_graph.combinatorial   # Yifan Hu (sfdp)
     # or
-    G = layout_graph.distance     # Kamada-Kawai, neato, Yifan Hu
+    A = layout_graph.affinity        # SG-t-SNE, graph t-SNE, spectral, spring (FR), ForceAtlas2
+    # or
+    G = layout_graph.distance        # Kamada-Kawai, neato
 ```
+
+**Yifan Hu is a combinatorial method, not a distance one.** Hu's is a multilevel force method —
+attractive $d^2/K$ along edges, repulsive $-CK^2/d$ between all pairs, with $K$ a *global*
+constant. There is no per-edge target length in the formulation, so it is handed the structure
+and nothing else.
 
 The `mode="distance"|"similarity"` parameters are deleted from `KamadaKawaiLayout` and
 `NeatoLayout`. That decision never belonged to the layout class, and it is not a runner decision
@@ -1228,7 +1387,8 @@ either — it is a property of the graph being laid out.
 @dataclass
 class EmbeddingSpec:
     cls: type
-    expects: Literal["affinity", "distance"]   # declared metadata for the manifest and report
+    # declared metadata for the manifest and report
+    expects: Literal["combinatorial", "affinity", "distance"]
     stochastic: bool
     has_lambda: bool
 ```
@@ -1238,9 +1398,19 @@ size a run, but **the runner no longer branches on it** — nothing converts at 
 
 Because nothing branches on it, nothing keeps it honest either: it can drift from what a method
 actually reads and no test would notice. **Assert it.** Pass each method a `LayoutGraph` that
-records which of `.affinity` / `.distance` was touched, embed a small graph, and check the
-accessed set matches the declaration. One parametrised test over the embedding registry covers
-every method, costs almost nothing, and fails the moment a method starts reading the other side.
+records which of the three forms was touched, embed a small graph, and check the accessed set
+matches the declaration. One parametrised test over the embedding registry covers every method,
+costs almost nothing, and fails the moment a method starts reading a different one.
+
+⚠️ **Reading the right form is not the same as it arriving intact, and the conformance test
+cannot see the difference.** A backend that serialises its input can still misread what it is
+given. The case in hand: both graphviz methods go through `nx.nx_pydot`, which writes edge
+attributes into the dot source as `weight=`, and graphviz reads `weight` as a *spring-strength
+multiplier* while `len` is the *desired edge length*. A distance passed as `weight` therefore
+means "far apart, pull harder" — bug §1.6 again, one layer further out. Both graphviz methods
+build their own input graph rather than handing over a form directly: `sfdp` receives a graph
+with **no edge attributes at all**, and `neato` receives `len=`. Any new backend that serialises
+its input needs its plumbing tested separately from `expects`.
 
 **Derived graphs are built from affinities, or they are nonsense.** $A_E = B^{\top}B$ and
 $A_{tne} = \sum_k \alpha^k \tilde A^k$ are affinity algebra: larger entry means stronger coupling.
@@ -1248,13 +1418,16 @@ The polynomial accumulates multi-step coupling strength, so feeding it distances
 meaning of every term and makes the matrix uninterpretable. `edge_graph` and `twin_graph`
 therefore take the **vertex graph's affinity form**, always.
 
-**Which distance form each graph exposes:**
+**Which form each graph exposes:**
 
-| Graph | `affinity` | `distance` |
-|---|---|---|
-| `vertex_graph` | $A_V$ | the dataset's distance — stored, or derived once by §3.4's rules |
-| `edge_graph` | $A_E$ | generic fallback from $A_E$ |
-| `twin_graph` | $A_{tne}$ | generic fallback from $A_{tne}$ |
+| Graph | `combinatorial` | `affinity` | `distance` |
+|---|---|---|---|
+| `vertex_graph` | $BB^{\top}$, binarised | $A_V$ | the dataset's distance — stored, or derived once by §3.4's rules |
+| `edge_graph` | $B^{\top}B$, binarised | $A_E$ | generic fallback from $A_E$ |
+| `twin_graph` | `twin_adjacency(B, α, k)`, binarised | $A_{tne}$ | generic fallback from $A_{tne}$ |
+
+The combinatorial column is the same algebra over the **unweighted** incidence $B$, so the three
+forms share one support by construction rather than by coincidence.
 
 $A_V$ is a **faithful** view: $B_w^{1/2}(B_w^{1/2})^{\top}$ reproduces $w_{ij}$ on edges, so the
 classical vertex layout can use the dataset's own distances — tabula's *measured* `D` drives a
@@ -1671,7 +1844,7 @@ them in code comments or propose alternatives in the implementation.
 | `Unweighted` | Combinatorial: affinity = 0/1 indicator; distance = 1 on edges, absent otherwise, so shortest paths are hop counts. | §3.4 |
 | Both sides stored | No transform is applied in either direction — but run `check_weight_consistency`, since independent sources can disagree silently. | §3.4 |
 | digits | Retained, as the representative point-cloud-derived $k$-NN network — present to test whether the transform improves on *t*-SNE-style point-cloud embeddings. | §3.4 |
-| Representation input | $A_E$ and $A_{tne}$ are built from the vertex graph's **affinity** form, always. Every `LayoutGraph` exposes both forms and the layout method asks for the side it needs; nothing converts at the runner boundary. | §3.5 |
+| Representation input | $A_E$ and $A_{tne}$ are built from the vertex graph's **affinity** form, always. Every `LayoutGraph` exposes all three forms — combinatorial, affinity, distance — and the layout method asks for the one it needs; nothing converts at the runner boundary. | §3.5 |
 
 ### Deliberately unresolved — do not pick a value, make it configurable
 
