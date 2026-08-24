@@ -296,6 +296,40 @@ than the difference of medians, and do not claim an improvement in ADR or SNS. C
 the protocol: five seeds is the floor (§4.1) and seven were used; a single-seed table here would
 have shown a difference of 0.006 against an unstated spread of 0.004 and been worthless.
 
+## `exp_decay` versus `exp_decay_sq` on digits — measured, and the default stands
+
+§3.4 lists the distance → affinity rule as deliberately unresolved and configurable, and it had
+never been compared. Same protocol as the §1.6 re-measurement above and read against the same
+noise floor: SG-*t*-SNE on $A_V$ of `digits`, seven seeds, **matched initialisation per seed**,
+$k = 16$, one shared target for both arms — the default rule's evaluation context. Matched
+inits make this a *paired* experiment, which is what makes a difference this small readable at
+all.
+
+SNS is legitimate here specifically because digits' distance side is **stored**: changing the
+affinity rule does not move the ideal distances, so both arms are scored against an identical
+target. ADR's affinity target is the default rule's, for the same reason.
+
+| metric | `exp_decay`, median [IQR] | `exp_decay_sq`, median [IQR] | paired wins |
+|---|---|---|---|
+| `knn_recall` @ *k*=16 | **0.6393** [0.6387, 0.6401] | 0.6361 [0.6351, 0.6368] | 6 / 7 |
+| ADR | **0.0835** [0.0828, 0.0836] | 0.0842 [0.0841, 0.0853] | 7 / 7 |
+| SNS | **0.3452** [0.3417, 0.3509] | 0.3524 [0.3463, 0.3614] | 5 / 7 |
+
+`exp_decay` is better or equal on all three. The evidence is strongest for ADR — every seed,
+and the ranges almost disjoint — and weakest for SNS. For recall the IQRs are disjoint but the
+*ranges* are not: one seed out of seven reverses, so this is a weaker result than the §1.6 one
+above, where all seven were disjoint.
+
+Mechanically the two rules differ in the tail: at digits' $d_{\text{scale}} = 21.84$ the
+squared rule spreads the affinities over 0.050–0.943 where the plain one spans 0.177–0.785, both
+with the same median by construction. The squared rule therefore sharpens the contrast between
+near and far edges — and on a graph that is *already* a $k$-NN sparsification, sharpening it
+again costs neighbourhood recovery rather than buying it.
+
+**The default does not change on the strength of this**, and did not need to: `exp_decay` is
+already the default, and §3.4 keeps the choice configurable. Recorded so that the assumption is
+now a measurement.
+
 ## Ideal distances: one source, one owner
 
 > Ideal distances come from **`vertex_graph(dataset).distance`**, computed once per dataset per
