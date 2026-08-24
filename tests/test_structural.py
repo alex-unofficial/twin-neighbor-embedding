@@ -12,7 +12,13 @@ import pytest
 from twin.datasets import load_dataset
 from twin.forms import stamp_form
 from twin.layoutgraph import vertex_graph
-from twin.metrics.common import default_k, mean_pairwise_distance
+from twin.metrics.common import (
+    condensed,
+    default_k,
+    ideal_distances,
+    mean_pairwise_distance,
+    pairwise_distances,
+)
 from twin.metrics.structural import (
     NeighborPreservationReport,
     adjacency_distance_ratio,
@@ -22,6 +28,10 @@ from twin.metrics.structural import (
     knn_precision_report,
     knn_recall,
     knn_recall_report,
+    normalized_stress,
+    optimal_scale,
+    raw_stress,
+    scale_normalized_stress,
     weighted_recall,
 )
 
@@ -417,3 +427,146 @@ def test_default_k_rounds_to_nearest_not_to_even():
 def test_default_k_has_a_floor_of_one():
     assert default_k(nx.empty_graph(10)) == 1
     assert default_k(nx.empty_graph(0)) == 1
+
+
+# --------------------------------------------------------------------------- #
+#                 SNS and the two stresses it is contrasted with               #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def collinear_path():
+    """A 5-path drawn on a line at unit spacing: an *exact* realisation of its hop counts."""
+    return nx.path_graph(5), np.column_stack([np.arange(5.0), np.zeros(5)])
+
+
+def test_an_exact_embedding_has_zero_stress_of_every_kind(collinear_path):
+    G, X = collinear_path
+    assert scale_normalized_stress(X, G) == pytest.approx(0.0)
+    assert normalized_stress(X, G) == pytest.approx(0.0)
+    assert raw_stress(X, G) == pytest.approx(0.0)
+
+
+def test_sns_is_invariant_under_scaling_the_layout(karate, karate_structured_layout):
+    X = karate_structured_layout
+    assert scale_normalized_stress(7 * X, karate) == pytest.approx(
+        scale_normalized_stress(X, karate), rel=1e-12
+    )
+
+
+def test_sns_is_invariant_under_scaling_the_ideal_distances(karate, karate_structured_layout):
+    D = ideal_distances(karate)
+    assert scale_normalized_stress(karate_structured_layout, ideal=7 * D) == pytest.approx(
+        scale_normalized_stress(karate_structured_layout, ideal=D), rel=1e-12
+    )
+
+
+def test_raw_stress_moves_under_both_scalings(karate, karate_structured_layout):
+    """The asymmetry is the point: it is why all three functions exist (§2.1)."""
+    X, D = karate_structured_layout, ideal_distances(karate)
+    base = raw_stress(X, ideal=D)
+    assert raw_stress(7 * X, ideal=D) != pytest.approx(base, rel=1e-6)
+    assert raw_stress(X, ideal=7 * D) != pytest.approx(base, rel=1e-6)
+
+
+def test_normalized_stress_moves_under_both_scalings_separately(karate, karate_structured_layout):
+    """Pinned because the plan predicted "under one" and it is under both.
+
+    Eq. (41) fixes alpha at 1, so it is invariant only when X and d are scaled *together* —
+    see the test below. Neither scaling alone leaves it fixed, and that is exactly the
+    scale-dependence SNS removes.
+    """
+    X, D = karate_structured_layout, ideal_distances(karate)
+    base = normalized_stress(X, ideal=D)
+    assert normalized_stress(7 * X, ideal=D) != pytest.approx(base, rel=1e-6)
+    assert normalized_stress(X, ideal=7 * D) != pytest.approx(base, rel=1e-6)
+
+
+def test_normalized_stress_is_invariant_under_the_joint_scaling(karate, karate_structured_layout):
+    """And raw stress is not, which is the difference between eqs. (40) and (41)."""
+    X, D = karate_structured_layout, ideal_distances(karate)
+    assert normalized_stress(7 * X, ideal=7 * D) == pytest.approx(
+        normalized_stress(X, ideal=D), rel=1e-12
+    )
+    assert raw_stress(7 * X, ideal=7 * D) != pytest.approx(raw_stress(X, ideal=D), rel=1e-6)
+
+
+def test_alpha_star_is_the_minimiser(karate, karate_structured_layout):
+    """Closed form, checked against a coarse search: no optimiser, and none needed."""
+    from twin.metrics.common import condensed as to_condensed
+    from twin.metrics.common import pairwise_distances as pdist_of
+
+    d = to_condensed(ideal_distances(karate))
+    x = pdist_of(karate_structured_layout)
+    alpha = optimal_scale(d, x)
+
+    def objective(a):
+        residual = d - a * x
+        return residual @ residual
+
+    grid = alpha * np.array([0.5, 0.9, 0.99, 1.01, 1.1, 1.5])
+    assert objective(alpha) < min(objective(a) for a in grid)
+
+
+def test_sns_at_alpha_one_is_normalized_stress(karate, karate_structured_layout):
+    """The two differ by exactly the rescaling, which is the §3 argument in one line."""
+    X = karate_structured_layout
+    D = ideal_distances(karate)
+    alpha = optimal_scale(condensed(D), pairwise_distances(X))
+    assert scale_normalized_stress(X, ideal=D) == pytest.approx(
+        normalized_stress(alpha * X, ideal=D), rel=1e-12
+    )
+
+
+def test_a_collapsed_layout_is_nan_rather_than_a_number(k4):
+    """alpha* is 0/0 there. The limit is 1, but reporting it would present it as a score."""
+    assert np.isnan(scale_normalized_stress(np.zeros((4, 2)), k4))
+
+
+def test_the_disconnected_mask_needs_no_second_code_path(disjoint_paths):
+    """Infinite pairs are dropped by `finite_pair_mask`, in all three functions."""
+    X = np.random.default_rng(15).normal(size=(disjoint_paths.number_of_nodes(), 2))
+    for policy in ("lcc", "mask"):
+        D = ideal_distances(disjoint_paths, disconnected=policy)
+        assert np.isfinite(scale_normalized_stress(X, ideal=D))
+        assert np.isfinite(raw_stress(X, ideal=D))
+
+    # ... and the two policies score different pair sets, so they give different numbers.
+    assert scale_normalized_stress(
+        X, ideal=ideal_distances(disjoint_paths)
+    ) != pytest.approx(
+        scale_normalized_stress(X, ideal=ideal_distances(disjoint_paths, disconnected="mask"))
+    )
+
+
+def test_a_condensed_ideal_vector_is_accepted(karate, karate_structured_layout):
+    """The runner holds a square array; a caller that already condensed one need not square it."""
+    D = ideal_distances(karate)
+    assert scale_normalized_stress(karate_structured_layout, ideal=condensed(D)) == pytest.approx(
+        scale_normalized_stress(karate_structured_layout, ideal=D), rel=1e-12
+    )
+
+
+def test_supplying_both_ideal_distances_and_their_parameters_raises(karate, karate_structured_layout):
+    """They would be silently ignored: the closure they configure has already happened."""
+    with pytest.raises(ValueError, match="already happened"):
+        scale_normalized_stress(
+            karate_structured_layout, ideal=ideal_distances(karate), disconnected="mask"
+        )
+
+
+def test_neither_a_graph_nor_ideal_distances_raises(karate_structured_layout):
+    with pytest.raises(ValueError, match="either a graph or"):
+        scale_normalized_stress(karate_structured_layout)
+
+
+def test_sns_checks_orientation(karate, karate_structured_layout):
+    with pytest.raises(ValueError, match=r"\(n_points, d\)"):
+        scale_normalized_stress(karate_structured_layout.T, karate)
+
+
+def test_the_sns_docstring_carries_the_kamada_kawai_caveat():
+    """It has to exist before anyone reads a number; the reporting flag is step 11."""
+    doc = scale_normalized_stress.__doc__
+    assert "Kamada-Kawai" in doc
+    assert "optimiser success" in doc

@@ -35,6 +35,11 @@ REQUIRED_EXPORTS = {
     "weighted_recall_report",
     "NeighborPreservationReport",
     "default_k",
+    # spec §2.1, added at step 3 commit 8.
+    "scale_normalized_stress",
+    "raw_stress",
+    "normalized_stress",
+    "optimal_scale",
     # spec §2.0, added at step 3 commit 4.
     "ideal_distances",
     "finite_pair_mask",

@@ -11,7 +11,14 @@ import networkx as nx
 import scipy.sparse as sp
 
 from twin.forms import SOURCE_KEY, graph_side
-from twin.metrics.common import _loo_neighbors, mean_pairwise_distance, require_n_by_d
+from twin.metrics.common import (
+    _loo_neighbors,
+    condensed,
+    ideal_distances,
+    mean_pairwise_distance,
+    pairwise_distances,
+    require_n_by_d,
+)
 
 
 @dataclass
@@ -262,3 +269,138 @@ def adjacency_distance_ratio(X: np.ndarray, G: nx.Graph, weight: str = "weight")
         return float("nan")
 
     return float((w @ edge_lengths) / W / mean_pairwise)
+
+
+# --------------------------------------------------------------------------- #
+#                        Stress and scale-normalised stress                    #
+# --------------------------------------------------------------------------- #
+
+
+def _stress_pairs(X: np.ndarray, G: nx.Graph | None, ideal, **kw):
+    """The two condensed vectors every stress here works on, aligned and masked.
+
+    Returns ``(d, x)``: the ideal distances and the layout's pairwise distances over exactly
+    the pairs that were scored. Masking with :func:`~twin.metrics.common.finite_pair_mask` here
+    is what lets ``disconnected="mask"`` — and any future disconnected dataset — need no second
+    code path in any of the three metrics.
+    """
+    if ideal is None:
+        if G is None:
+            raise ValueError("pass either a graph or precomputed ideal distances")
+        ideal = ideal_distances(G, **kw)
+    elif kw:
+        raise ValueError(
+            f"ideal distances were supplied, so {sorted(kw)} would be ignored. They configure "
+            "how ideal distances are computed, which has already happened."
+        )
+
+    ideal = np.asarray(ideal, dtype=float)
+    if ideal.ndim == 2:
+        n = ideal.shape[0]
+        d = condensed(ideal)
+    else:
+        d = ideal
+        n = int(round((1 + np.sqrt(1 + 8 * d.size)) / 2))
+        if n * (n - 1) // 2 != d.size:
+            raise ValueError(f"{d.size} is not a condensed pair count")
+
+    X = require_n_by_d(X, n, "X")
+    x = pairwise_distances(X)
+
+    finite = np.isfinite(d)
+    return d[finite], x[finite]
+
+
+def optimal_scale(d: np.ndarray, x: np.ndarray) -> float:
+    r"""$\alpha^{*}=\sum d_{ij}\lVert x_i-x_j\rVert / \sum \lVert x_i-x_j\rVert^{2}$ (eq. 44).
+
+    Closed form. There is no optimiser here and no iterative fallback: the objective is a
+    quadratic in $\alpha$ with a single stationary point, so an optimiser could only add a
+    tolerance to disagree with.
+    """
+    denominator = float(x @ x)
+    if denominator == 0:
+        return float("nan")
+    return float((d @ x) / denominator)
+
+
+def raw_stress(X: np.ndarray, G: nx.Graph | None = None, ideal=None, **kw) -> float:
+    r"""$\sigma = \sum_{i<j}(d_{ij}-\lVert x_i-x_j\rVert)^{2}$ (eq. 40).
+
+    **Not for the results tables.** It exists so that the §3 argument — that raw and normalised
+    stress are scale-dependent and therefore cannot compare layouts of different sizes — can be
+    *demonstrated* rather than asserted. See :func:`scale_normalized_stress`.
+    """
+    d, x = _stress_pairs(X, G, ideal, **kw)
+    residual = d - x
+    return float(residual @ residual)
+
+
+def normalized_stress(X: np.ndarray, G: nx.Graph | None = None, ideal=None, **kw) -> float:
+    r"""$\sqrt{\sum(d_{ij}-\lVert x_i-x_j\rVert)^{2}/\sum d_{ij}^{2}}$ (eq. 41).
+
+    Eq. (43) with $\alpha$ fixed at 1 — which is exactly the assumption that makes it
+    scale-dependent: it is invariant when $X$ **and** $d$ are scaled together, and not when
+    either moves alone. A layout method free to choose its own units is therefore scored on its
+    units as much as on its structure. That is what :func:`scale_normalized_stress` removes.
+    """
+    d, x = _stress_pairs(X, G, ideal, **kw)
+    residual = d - x
+    denominator = float(d @ d)
+    if denominator == 0:
+        return float("nan")
+    return float(np.sqrt((residual @ residual) / denominator))
+
+
+def scale_normalized_stress(X: np.ndarray, G: nx.Graph | None = None, ideal=None, **kw) -> float:
+    r"""SNS — normalised stress at the optimal uniform rescaling (eqs. 43-45).
+
+    .. math::
+
+        \alpha^{*}=\frac{\sum_{i<j} d_{ij}\lVert x_i-x_j\rVert}
+                        {\sum_{i<j}\lVert x_i-x_j\rVert^{2}},
+        \qquad
+        \mathrm{SNS}=\sqrt{\frac{\sum_{i<j}(d_{ij}-\alpha^{*}\lVert x_i-x_j\rVert)^{2}}
+                                {\sum_{i<j}d_{ij}^{2}}}
+
+    Invariant under $X \mapsto \beta X$ and under $d \mapsto \beta d$ separately, which is what
+    makes it comparable across layout methods that do not agree on a unit. 0 means the layout
+    is a similarity transform of the ideal distances; a layout carrying no information about
+    them tends to 1.
+
+    ⚠️ **SNS on a Kamada-Kawai or neato layout is close to a measure of optimiser success**,
+    because KK minimises approximately what SNS measures — a stress against the same
+    shortest-path distances. It is not wrong to report it there, but it is not independent
+    evidence either, and it should be read beside metrics that are not KK's own objective. The
+    reporting layer flags this at spec §7 step 11; the sentence has to exist before anyone reads
+    a number.
+
+    Args:
+        X: an ``(n, d)`` layout.
+        G: the distance-valued graph, if ``ideal`` is not supplied.
+        ideal: precomputed ideal distances, square ``(n, n)`` or condensed. **This is the
+            correct call on the results path**: the runner computes one array per dataset from
+            ``vertex_graph(dataset).distance`` and shares it across every representation, so
+            that $A_V$, $A_E$ and $A_{tne}$ are scored against the same target (spec §2.0,
+            `DECISIONS.md`). Passing ``G`` instead recomputes an $O(n^2)$ closure per call and,
+            if the graph came off a derived representation, scores against a different target
+            altogether. The primitive accepts ``G`` so the analytic tests of §6 can stand alone.
+        **kw: forwarded to :func:`~twin.metrics.common.ideal_distances`; refused when ``ideal``
+            is supplied, since it would silently do nothing.
+
+    Returns:
+        SNS in $[0, \infty)$, or ``nan`` if every ideal distance is zero, or if the layout has
+        collapsed to a single point — then $\alpha^{*}$ is $0/0$ and undefined. The limit is 1,
+        but returning it would present an undefined quantity as a score.
+    """
+    d, x = _stress_pairs(X, G, ideal, **kw)
+    denominator = float(d @ d)
+    if denominator == 0:
+        return float("nan")
+
+    alpha = optimal_scale(d, x)
+    if not np.isfinite(alpha):
+        return float("nan")
+
+    residual = d - alpha * x
+    return float(np.sqrt((residual @ residual) / denominator))
