@@ -13,6 +13,7 @@ import scipy.sparse as sp
 import twin.graphmatrix as gm
 from twin.config import REAL_WORLD_DIR
 from twin.datasets import Dataset, Stored, StoredMatrix, Unweighted, load_dataset
+from twin.forms import SOURCE_KEY, graph_side, stamp_form
 from twin.layoutgraph import (
     LayoutGraph,
     affinity_matrix_to_distance,
@@ -397,3 +398,52 @@ def test_point_provenance_is_declared_per_representation(strength_dataset):
     assert vg.point_provenance == {"V": "primary", "E": "derived"}
     assert edge_graph(vg).point_provenance == {"V": "derived", "E": "primary"}
     assert twin_graph(vg).point_provenance == {"V": "primary", "E": "primary"}
+
+
+# --------------------------------------------------------------------------- #
+#            The stamp: which valuation a bare nx.Graph carries                #
+# --------------------------------------------------------------------------- #
+#
+# The assertion ships with the stamp, not with the first consumer of it. Metadata that nothing
+# reads is metadata that drifts — which is exactly what happened to `EmbeddingSpec.expects`
+# (`DECISIONS.md`, "`expects` must be asserted").
+
+
+@pytest.mark.parametrize("kind", ["vertex", "edge", "twin"])
+def test_every_distance_graph_the_layer_hands_out_is_stamped(strength_dataset, kind):
+    vg = vertex_graph(strength_dataset)
+    lg = {"vertex": lambda: vg, "edge": lambda: edge_graph(vg), "twin": lambda: twin_graph(vg)}[
+        kind
+    ]()
+
+    D = lg.distance
+    assert graph_side(D) == "distance"
+    assert lg.dataset_name in D.graph[SOURCE_KEY]
+
+
+def test_the_vertex_stamp_names_the_derivation_and_the_fallback_names_itself(strength_dataset):
+    """The stamp is what an error message quotes, so it has to distinguish the two cases."""
+    vg = vertex_graph(strength_dataset)
+    assert "resistance model" in vg.distance.graph[SOURCE_KEY]
+    assert "fallback" in edge_graph(vg).distance.graph[SOURCE_KEY]
+
+
+def test_a_graph_that_never_passed_through_the_layer_has_no_side():
+    """Unstamped is a legitimate state: §6's analytic tests build graphs by hand."""
+    assert graph_side(nx.complete_graph(4)) is None
+
+
+def test_a_stored_distance_side_is_stamped_as_stored(strength_dataset):
+    dataset = Dataset(
+        name="measured",
+        graph=strength_dataset.graph,
+        affinity=Stored(meaning="strength"),
+        distance=Stored(meaning="distance"),
+    )
+    assert "stored" in vertex_graph(dataset).distance.graph[SOURCE_KEY]
+
+
+def test_stamping_is_idempotent_and_returns_the_same_object():
+    G = nx.path_graph(3)
+    assert stamp_form(G, side="affinity", source="by hand") is G
+    assert graph_side(G) == "affinity"

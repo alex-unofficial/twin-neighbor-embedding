@@ -21,6 +21,7 @@ import numpy as np
 import scipy.sparse as sp
 
 from twin.datasets.sparsify import SparsityModel
+from twin.forms import Side, stamp_form
 
 #: What a stored weight vector *means*. This names a model, not merely a direction: it is what
 #: lets ``vertex_graph`` derive the missing side rather than guess it. ``count`` is an alias of
@@ -354,6 +355,36 @@ class Dataset:
             missing = [p for p in parts if p not in self.label_sets]
             if missing:
                 raise ValueError(f"{self.name}: composite {name!r} names unknown label sets {missing}")
+
+        side = self.graph_weight_side()
+        if side is not None:
+            stamp_form(
+                self.graph,
+                side=side,
+                source=f"dataset:{self.name} graph edge attribute \"weight\"",
+            )
+
+    def graph_weight_side(self) -> Side | None:
+        """What this dataset's own graph ``weight`` attribute holds, when it declares one.
+
+        The declaration already exists — a side stored as :class:`Stored` *is* the graph's edge
+        attribute — but it lives on the `Dataset` and the `nx.Graph` travels without it. Stamping
+        it is what lets a metric refuse the wrong valuation instead of silently inverting: on
+        `digits` the attribute is a stored Euclidean **distance** (5.3-37.8), on
+        `karate_weighted` an affinity, and on the six unweighted datasets it is absent. ADR reads
+        an affinity and `ideal_distances` reads a distance, so exactly one of them is right for
+        any given dataset, and neither can tell from the numbers.
+
+        None when nothing declares it: `tabula` stores both sides as separate matrices, and the
+        weights on its graph came from the same export as its affinity matrix but are not
+        themselves a declared side. An unstamped graph is accepted everywhere, as it was before.
+        """
+        for side, source in (("distance", self.distance), ("affinity", self.affinity)):
+            if isinstance(source, Stored) and source.weight == "weight":
+                return side
+        if isinstance(self.affinity, Unweighted) and isinstance(self.distance, Unweighted):
+            return "combinatorial"
+        return None
 
     # ------------------------------------------------------------------ shape
 

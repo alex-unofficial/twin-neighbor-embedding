@@ -4,7 +4,7 @@ import networkx as nx
 import numpy as np
 import pytest
 
-from twin.metrics import knn_accuracy, knn_neighbor_preservation_accuracy, require_n_by_d
+from twin.metrics import knn_accuracy, knn_recall, require_n_by_d
 
 
 def test_require_n_by_d_accepts_canonical_orientation():
@@ -33,7 +33,7 @@ def test_require_n_by_d_does_not_sniff_square_input():
 @pytest.mark.parametrize(
     "metric",
     [
-        lambda X, G, labels: knn_neighbor_preservation_accuracy(X, G, 5),
+        lambda X, G, labels: knn_recall(X, G, 5),
         lambda X, G, labels: knn_accuracy(X, labels, 5),
     ],
     ids=["neighbor_preservation", "knn_accuracy"],
@@ -47,11 +47,11 @@ def test_metrics_reject_d_by_n_layouts(karate, karate_labels, karate_random_layo
 
 def test_metric_rejects_wrong_point_count(karate, karate_random_layout):
     with pytest.raises(ValueError, match="n_points=34"):
-        knn_neighbor_preservation_accuracy(karate_random_layout[:20], karate, 5)
+        knn_recall(karate_random_layout[:20], karate, 5)
 
 
 def test_square_layout_is_not_reoriented_by_a_metric():
     """A 2-vertex graph in 2-D: n == d, so sniffing would have been a coin flip."""
     G = nx.path_graph(2)
     X = np.array([[0.0, 0.0], [1.0, 1.0]])  # (n=2, d=2)
-    assert knn_neighbor_preservation_accuracy(X, G, 1) == pytest.approx(1.0)
+    assert knn_recall(X, G, 1) == pytest.approx(1.0)

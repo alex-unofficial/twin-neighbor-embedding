@@ -31,6 +31,7 @@ import networkx as nx
 import numpy as np
 import scipy.sparse as sp
 
+from twin.forms import SIDE_KEY, SOURCE_KEY, Side, graph_side, stamp_form  # noqa: F401
 from twin.graphmatrix import compute_slopes
 from twin.twin_embedding import twin_adjacency
 
@@ -90,6 +91,7 @@ class LayoutGraph:
         default=None, repr=False, compare=False
     )
     _distance: nx.Graph | None = field(default=None, repr=False, compare=False)
+    _affinity_graph: nx.Graph | None = field(default=None, repr=False, compare=False)
     _combinatorial: sp.sparray | None = field(default=None, repr=False, compare=False)
 
     # ------------------------------------------------------------- the forms
@@ -148,6 +150,28 @@ class LayoutGraph:
         if self._distance is None:
             self._distance = self._build_distance()
         return self._distance
+
+    def affinity_graph(self) -> nx.Graph:
+        """The affinity form as a graph, stamped ``twin_side="affinity"``.
+
+        The counterpart of :attr:`distance`, for the metrics that weight a pair by how strongly
+        it is coupled rather than by how far apart it should be: ADR and `weighted_recall`
+        (spec §2.1). Its node set is this representation's, so it is the **vertex** graph's
+        affinity a vertex-indexed metric wants — $A_E$'s nodes are edges.
+
+        Why not just ``dataset.graph``: on `digits` that graph's ``weight`` is a stored
+        Euclidean distance, so a metric reading it scores the inverse of what it means
+        (`DECISIONS.md`, step-3 decisions). This form is an affinity by construction on every
+        dataset, derived or stored.
+        """
+        if self._affinity_graph is None:
+            G = nx.from_scipy_sparse_array(sp.csr_array(self.affinity))
+            self._affinity_graph = stamp_form(
+                G,
+                side="affinity",
+                source=f"{self.name} of {self.dataset_name}: {self.derivation}",
+            )
+        return self._affinity_graph
 
     def chain(self) -> list[str]:
         """The derivation chain, root first — structural, not a maintained string."""
@@ -403,7 +427,12 @@ def vertex_graph(
         derivation=affinity_derivation + (" [degree-normalised]" if normalize else ""),
         distance_derivation=distance_derivation,
         params={"normalize": normalize, "affinity_rule": affinity_rule},
-        _build_distance=lambda: _weighted_graph(graph.number_of_nodes(), edges, distance_w),
+        _build_distance=lambda: _weighted_graph(
+            graph.number_of_nodes(),
+            edges,
+            distance_w,
+            source=f"A_V of {dataset.name}: {distance_derivation}",
+        ),
     )
 
 
@@ -465,8 +494,12 @@ def _derived(
         derivation=derivation,
         distance_derivation="generic fallback: normalise, symmetrise, -log",
         params={**vertex.params, **params},
-        _build_distance=lambda: nx.from_scipy_sparse_array(
-            affinity_matrix_to_distance(affinity)
+        _build_distance=lambda: stamp_form(
+            nx.from_scipy_sparse_array(affinity_matrix_to_distance(affinity)),
+            side="distance",
+            # Named as the fallback it is: this is the form ideal distances must never come
+            # from, and the stamp is what lets a consumer say so in its error message.
+            source=f"{name} of {vertex.dataset_name}: generic fallback (normalise, symmetrise, -log)",
         ),
     )
 
@@ -509,7 +542,9 @@ def _require_vertex_graph(graph: LayoutGraph, where: str) -> None:
         )
 
 
-def _weighted_graph(n: int, edges: list[tuple[int, int]], weights: np.ndarray) -> nx.Graph:
+def _weighted_graph(
+    n: int, edges: list[tuple[int, int]], weights: np.ndarray, source: str
+) -> nx.Graph:
     """A distance graph: every edge present with its weight, every non-edge **absent**.
 
     Absence is the point. `Unweighted` distance must give hop counts, so non-edges cannot be
@@ -518,4 +553,4 @@ def _weighted_graph(n: int, edges: list[tuple[int, int]], weights: np.ndarray) -
     G = nx.Graph()
     G.add_nodes_from(range(n))
     G.add_weighted_edges_from((u, v, float(w)) for (u, v), w in zip(edges, weights))
-    return G
+    return stamp_form(G, side="distance", source=source)
