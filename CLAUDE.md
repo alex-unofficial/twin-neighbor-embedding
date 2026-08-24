@@ -48,6 +48,11 @@ Background and design record, in reading order:
 - **Sparsity is declared in the dataset factory, never in `vertex_graph`.** The graph's edge set
   defines the original edge indexing, so a layout-layer knob must not change it. `k` is a
   declared budget parameter, and `KNearest.check()` verifies the declaration against the graph.
+- **A metric takes its graph from the `EvaluationContext`, not from `dataset.graph`.**
+  `ctx.affinity` is affinity-valued on every dataset; `dataset.graph`'s `weight` attribute is a
+  stored *distance* on digits. ADR and `weighted_recall` refuse a graph stamped
+  `twin_side="distance"`, and `ideal_distances` refuses one stamped `"affinity"` — but `tabula`'s
+  graph is unstamped, so the refusal is a backstop and not a substitute for asking the context.
 - **Ideal distances come from `vertex_graph(dataset).distance`** — the least-derived form —
   computed once per dataset by the runner and shared by every representation. Never from
   `edge_graph`/`twin_graph`'s generic fallback: that would score A_V, A_E and A_tne against three
@@ -76,7 +81,12 @@ Present:
 - `twin/instrumentation.py` — `RSSSampler`; runtime and memory for the embed step
 - `twin/twin_embedding.py` — `twin_adjacency` (the method; treat as given)
 - `twin/embedding.py` — layout methods and `EMBEDDING_REGISTRY`
-- `twin/metrics.py` — the metric suite so far
+- `twin/forms.py` — which valuation a bare `nx.Graph` carries (`twin_side` / `twin_source`),
+  stamped by both the `Dataset` and `LayoutGraph` layers and read by the metric guards.
+  Dependency-free on purpose: it must not pull in `sgtsnepi`
+- `twin/metrics/` — the metric suite as a package: `common` (ideal distances, the condensed pair
+  ordering, the `pdist` cache, `default_k`), `structural` (ADR, the kNN family, SNS),
+  `label` (kNN accuracy), `context` (`EvaluationContext`)
 - `twin/batching.py` — generic batch-spec engine; domain-agnostic, do not rewrite
 - `twin/pipelines.py` — runners tying the above together
 - `twin/plots.py`, `twin/paper_figures.py` — rendering
@@ -89,7 +99,7 @@ Present:
 
 Planned, not yet present:
 
-- `twin/metrics/` — the metric suite as a package (steps 3–6)
+- `twin/metrics/visual.py`, `crossings.py`, `registry.py` — steps 4–7
 - `runs/` — experiment output (step 7); output, not source, and ignored by git
 
 ## Commands

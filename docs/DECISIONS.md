@@ -255,6 +255,68 @@ ordering. On digits at $k = 5/12/30/60$ the rank correlation rises 0.61 → 0.85
 ratio falls 3.78 → 1.74, so fidelity and tractability are the same knob and both ends of it are
 in `docs/DATASET_REPORT.md`.
 
+## Step 3 departures from `plans/step3-metrics.md`, and why
+
+Following step 2's precedent. The plan was written without implementing anything; these are the
+places it did not survive contact. Fourteen commits landed against thirteen planned.
+
+**The form stamp had to reach `dataset.graph`, so it does not live in `layoutgraph`.** The plan
+puts the stamp in `layoutgraph` (commit 3) and then expects ADR to refuse
+`load_dataset("digits").graph` (Verification). Those two cannot both hold: a dataset's graph
+never passes through the `LayoutGraph` layer. The declaration already existed on the `Dataset`
+— a side stored as `Stored` *is* the graph's `weight` attribute — so `Dataset.graph_weight_side()`
+reads it and `__post_init__` stamps it. The primitives moved to a new dependency-free
+`twin/forms.py`, because `twin.layoutgraph` pulls in `sgtsnepi` through `twin.twin_embedding`
+and neither the dataset layer nor the metric layer should load a C extension to ask what a
+`weight` attribute means. `tabula` is stamped None: both its sides are separate matrices, so
+nothing declares the attribute, and unstamped is accepted everywhere as before.
+
+A consequence worth stating: `ideal_distances` now refuses `karate_weighted.graph`, whose
+weights are Zachary's interaction strengths. That is correct — they are affinities, and the
+ideal-distance source is `vertex_graph(dataset).distance`, which applies the declared $1/w$
+resistance model.
+
+**`LayoutGraph.affinity_graph()` landed with ADR, not with the context.** ADR refuses a
+distance-valued graph, and a guard whose legitimate alternative does not exist yet is an
+obstruction rather than a guard. It is cached like `.distance` and stamped `"affinity"`.
+
+**Query-at-max(k)-and-slice is not equivalent to re-querying, on a layout with exact
+duplicates.** Neither the plan nor the spec anticipated this. Which of nine coincident points
+count as "the five nearest" depends on how many neighbours were asked for, and no leave-one-out
+convention fixes it, because the arbitrariness is in the data rather than in the code. Pinned as
+behaviour in `test_characterisation.py`; on a layout without duplicates — every registered
+dataset, every real layout so far — slicing and re-querying agree exactly.
+
+**Two pinned values moved, both on the coincident fixture, and they are the reason commit 1
+existed.** Adopting `_loo_neighbors` for both metric families — one leave-one-out convention in
+the package instead of two — changed `("jaccard", 5)` from 0.08954566675154911 to
+0.09206667515491045 and `("weighted recall", 5)` from 0.1460194654084813 to 0.1482819088473953.
+All sixteen karate pins reproduce at `rel=1e-12` with only the keys renamed.
+
+**`weighted_recall` uses unit weights on a graph stamped `"combinatorial"`.** `football_2023`
+declares `Unweighted()` on both sides and *still* carries a stray `weight` attribute from its
+`.mat` — 732 edges at 1 and three at 2. The declaration is what the representation is built
+from, so it is what the metric reads; otherwise eq. (39) fails on a graph the dataset says is
+unweighted, and fails by three edges in 735, which is exactly the size of error that gets
+explained away.
+
+**Normalised stress is scale-dependent in *both* arguments, not one.** The plan predicts
+"`raw_stress` changes under both, `normalized_stress` under one — pin which". Eq. (41) is eq.
+(43) with $\alpha$ fixed at 1, so it is invariant only when $X$ and $d$ are scaled *together*.
+That joint invariance, which raw stress does not have, is the real asymmetry between eqs. (40)
+and (41), and it is what the tests pin.
+
+**The evaluation context is `twin/metrics/context.py`, not `common.py`.** §2's file list does
+not name it, but it is a noun about evaluation rather than a distance helper, and step 7's
+`evaluate_layout` belongs beside it.
+
+**A collapsed layout gives SNS `nan`, not 1.** $\alpha^{*}$ is $0/0$ there. The limit is 1, but
+reporting a limit as a score is how an undefined quantity reaches a table.
+
+**Seven seeds, not five, for both measurements.** §4.1's five is a floor and the runs are cheap
+on `digits`; the §1.6 result is disjoint over all seven, which is a stronger statement than any
+comparison of medians would have been.
+
 ## The §1.6 fix, re-measured in quality terms
 
 Session 2 could show only that the correction *moved* the layout: Procrustes disparity between

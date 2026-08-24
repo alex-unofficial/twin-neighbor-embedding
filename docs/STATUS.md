@@ -2,8 +2,8 @@
 
 Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
-**Last updated:** end of session 2 (2026-08-24), which closed spec §7 step 2. Branch
-`experiment-setup` @ `b86ee02`.
+**Last updated:** end of session 3 (2026-08-24), which closed spec §7 step 3. Branch
+`experiment-setup` @ `0974282`.
 
 ---
 
@@ -13,8 +13,8 @@ Read `CLAUDE.md` first, then this. Updated at the end of each session.
 |---|---|
 | **1. Correctness and conventions groundwork** | **Done** — merged `b220cb8`, `e0428de` |
 | **2. `Dataset` and `LayoutGraph` (§3.4, §3.5)** | **Done** — session 2, plus the step-2b follow-up; plan: [`docs/plans/step2-datasets.md`](plans/step2-datasets.md) |
-| **3. `common.py` + `structural.py` — ADR, kNN family, SNS** | **Next** — plan: [`docs/plans/step3-metrics.md`](plans/step3-metrics.md) |
-| 4. `visual.py` — NND, NR/VNR, distributions, edge lengths | not started |
+| **3. `common.py` + `structural.py` — ADR, kNN family, SNS** | **Done** — session 3; plan: [`docs/plans/step3-metrics.md`](plans/step3-metrics.md), departures in `DECISIONS.md` |
+| **4. `visual.py` — NND, NR/VNR, distributions, edge lengths** | **Next** |
 | 5. `crossings.py` — curves, detection, Cr/LWCr, detour | not started |
 | 6. `label.py` — silhouette, accuracy, graph-side checks | not started (step 2 unblocked it) |
 | 7. Registry, `evaluate_layout`, `batch_layout_metrics`, persistence | not started |
@@ -36,12 +36,44 @@ Section 5 numbers before step 8.
 4. `docs/DATASET_PROVENANCE.md` — where each dataset's weights actually come from. Assertions
    here are executable: `tests/test_dataset_provenance.py`.
 5. `docs/DATASET_REPORT.md` — the generated roster table (`python -m twin.report`).
-6. [`docs/plans/step3-metrics.md`](plans/step3-metrics.md) — the commit sequence and
-   verification for the step in progress. The design lives in the spec; a plan says what to do in
-   what order. [`step2-datasets.md`](plans/step2-datasets.md) is history, kept for its record of
-   where the implementation departed from it.
+6. [`docs/plans/step2-datasets.md`](plans/step2-datasets.md) and
+   [`step3-metrics.md`](plans/step3-metrics.md) are **history**, kept for their record of where
+   the implementation departed from them — the departures themselves are in `DECISIONS.md`.
+   There is no plan for step 4 yet.
 
 ---
+
+## What landed in session 3
+
+Spec §7 step 3, in one merge of nine commits plus four on top — **487 tests, up from 299**; all
+eight `paper_figures` functions still render.
+
+- **`twin/metrics/` is a package**: `common.py` (orientation, the ideal-distance model, the
+  condensed pair ordering, the capped `pdist` cache, `default_k`, the one leave-one-out
+  convention), `structural.py` (ADR, the four kNN criteria, `weighted_recall`, SNS and the two
+  stresses it is contrasted with), `label.py` (the existing kNN accuracy family, moved two steps
+  early because §2's layout puts it there), `context.py` (the evaluation context).
+- **`twin/forms.py`** — which valuation a bare `nx.Graph` carries. Both the `Dataset` layer and
+  the `LayoutGraph` layer stamp; ADR and `ideal_distances` refuse the wrong side rather than
+  inverting silently. `digits` is stamped `"distance"`, `karate_weighted` `"affinity"`.
+- **`EvaluationContext`** — one ideal-distance target per dataset, lazily computed, shared by
+  $A_V$, $A_E$ and $A_{tne}$. The central ablation now has an object that enforces it.
+- **The last `mode=` string is gone.** `knn_neighbor_preservation_accuracy` became
+  `knn_recall` / `knn_precision` / `knn_jaccard` / `weighted_recall`, each with a `*_report`
+  sibling carrying `n_excluded` and `n_scored`.
+- **A golden metric suite** on `karate_weighted`, keyed by metric name so steps 4-6 add keys.
+
+### What the measurements said
+
+- **The §1.6 fix is visible in recall and nowhere else.** Seven seeds, matched init, one shared
+  target: `knn_recall@16` 0.6332 → **0.6393**, *disjoint over all seven seeds*, while ADR and SNS
+  do not separate. This is the first evidence that the bug mattered rather than merely changed
+  something — Procrustes could not show it. `DECISIONS.md` has the table.
+- **`exp_decay` beats `exp_decay_sq` on digits**, 6/7 paired seeds on recall and 7/7 on ADR, but
+  one seed reverses — weaker than the §1.6 result. The default does not change on the strength
+  of it; §3.4 keeps the choice configurable.
+- **Two pinned values moved**, both on the coincident-points fixture added for exactly this, when
+  the two metric families were put on one leave-one-out convention. Declared in the commit.
 
 ## What landed in session 2
 
@@ -144,14 +176,15 @@ Two things about the step worth knowing before opening either:
 ## Health check
 
 ```bash
-venv/bin/python -m pytest -q     # 299 passing
+venv/bin/python -m pytest -q     # 487 passing
 python -m twin.report            # the roster table; regenerates docs/DATASET_REPORT.md with -o
 git status --short               # clean; if notebooks appear modified, the filter is unset
 ```
 
 Figures: the six fast `paper_figures` functions render in seconds; `tabula_sapiens_teaser` takes
 about three minutes and internally calls `tabula_sapiens_blockadj`, so rendering it covers both.
-All eight render as of `b86ee02`.
+All eight render as of `0974282`. (`barabasi_albert` is commented out in the source and is not
+one of the eight.)
 
 ---
 
@@ -159,11 +192,13 @@ All eight render as of `b86ee02`.
 
 | Item | Bites at |
 |---|---|
-| Ideal distances have a single owner but no consumer yet: `common.ideal_distances` and its `max_n` guard do not exist. Take them from `vertex_graph(dataset).distance` | **step 3** — planned, commit 4 |
-| The `exp_decay` vs `exp_decay_sq` affinity rule is selectable but has never been compared. Spec §3.4 asks for one comparison on digits | **step 3** — planned, commit 11 |
-| A metric needs the **vertex** `LayoutGraph`, not just points + `Dataset`. Build it as an evaluation context per dataset, not as a field on `LayoutResult` — `DECISIONS.md` (5) | **step 3** — planned, commit 9 |
-| SNS on a Kamada-Kawai layout is close to a measure of optimiser success, since KK optimises approximately what SNS measures. Report it beside metrics that are not KK's objective | **step 3** goes in the docstring (commit 8); the reporting flag is step 11 |
-| Re-measure the §1.6 fix in quality terms — Procrustes said the layout *changed*, not that it improved | **step 3** — planned, commit 10 |
+| ~~Ideal distances have no consumer~~ — `common.ideal_distances`, the `max_n` guard and `EvaluationContext` landed in step 3 | discharged |
+| ~~`exp_decay` vs `exp_decay_sq` never compared~~ — measured on digits, `DECISIONS.md` | discharged |
+| ~~A metric needs the vertex `LayoutGraph`~~ — `twin/metrics/context.py` | discharged |
+| SNS on a Kamada-Kawai or neato layout is close to a measure of optimiser success. The caveat is in the SNS docstring; the **reporting flag that acts on it** is not built | step 11 |
+| `EvaluationContext.release()` exists but nothing calls it. A batch runner over several datasets must drop the closure between them — tabula's is 200 MB | step 7 |
+| The neighbourhood metrics are not sweep-consistent on a layout with exact duplicates (`DECISIONS.md`). No registered dataset produces one; a crowding-heavy layout at large λ might | whenever a layout first collapses two points |
+| ~~Re-measure the §1.6 fix in quality terms~~ — done: recall separates disjointly over seven seeds, ADR and SNS do not | discharged |
 | ⚠️ **Spec §2.5's cost class is wrong.** It says SNS and Sil\* are what will not run on tabula; the largest n is 5007, so the O(n²) closure is 200 MB and `max_n=20000` never trips. The expensive metrics scale with **m** — crossings, 49368 edges on tabula | a run planner built on it would size the wrong thing: **steps 5 and 7** |
 | Memory runs need **one case per process**: `peak_mem_mb` is a delta from the entry baseline, and glibc does not always return freed memory, so later cases in a batch measure from a higher floor | step 7 |
 | A persisted layout must store the dataset's registry **name and params**, never the `Dataset` object | step 7 |
@@ -187,6 +222,10 @@ All eight render as of `b86ee02`.
   regression passed the `expects` conformance test the whole time, because the test checks which
   form was *read*, not what the backend took it to mean. Any new backend that serialises its
   input needs its plumbing tested separately.
+- **`dataset.graph`'s `weight` attribute is stamped now, and `tabula`'s is not.** A metric that
+  needs a valuation should take it from `EvaluationContext` — `ctx.affinity` or `ctx.ideal` —
+  rather than from `dataset.graph`, which is stamped only where the dataset declares the
+  attribute.
 - **Pin derived data before refactoring it.** The step-2 pins (`tests/fixtures/step2_labels.npz`
   plus the digest table in `tests/test_step2_characterisation.py`) are what made the label and
   colour move provably behaviour-preserving. Regenerating the fixture without updating the
