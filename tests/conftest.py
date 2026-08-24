@@ -119,3 +119,15 @@ def karate_coincident_layout(karate_structured_layout) -> np.ndarray:
     X = karate_structured_layout.copy()
     X[1:9] = X[0]
     return X
+
+
+@pytest.fixture
+def disjoint_paths() -> nx.Graph:
+    """A 4-path and a triangle, disconnected — 7 nodes, two components.
+
+    Every registered dataset is connected, so without this fixture the ``"lcc"`` / ``"mask"``
+    policies and ``finite_pair_mask`` are exercised only on graphs where every pair is finite,
+    and an inverted comparison inside either is invisible. Both counts are hand-computable:
+    6 finite pairs under ``"lcc"`` (the 4-path alone), 9 under ``"mask"`` (6 + 3).
+    """
+    return nx.disjoint_union(nx.path_graph(4), nx.cycle_graph(3))

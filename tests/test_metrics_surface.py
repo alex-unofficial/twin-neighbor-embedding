@@ -24,6 +24,10 @@ REQUIRED_EXPORTS = {
     "knn_accuracy_report",
     "knn_accuracy",
     "knn_neighbor_preservation_accuracy",
+    # spec §2.0, added at step 3 commit 4.
+    "ideal_distances",
+    "finite_pair_mask",
+    "condensed",
 }
 
 #: Names the current ``import *`` leaks because the module has no ``__all__``. Permitted, never

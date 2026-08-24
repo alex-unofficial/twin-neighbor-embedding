@@ -15,7 +15,12 @@ it, ``*`` would re-export every name any submodule happens to bind, and the surf
 with the imports rather than with the design (`tests/test_metrics_surface.py`).
 """
 
-from twin.metrics.common import require_n_by_d
+from twin.metrics.common import (
+    condensed,
+    finite_pair_mask,
+    ideal_distances,
+    require_n_by_d,
+)
 from twin.metrics.label import (
     KnnAccuracyReport,
     knn_accuracy,
@@ -26,6 +31,9 @@ from twin.metrics.structural import knn_neighbor_preservation_accuracy
 
 __all__ = [
     "KnnAccuracyReport",
+    "condensed",
+    "finite_pair_mask",
+    "ideal_distances",
     "knn_accuracy",
     "knn_accuracy_report",
     "knn_neighbor_preservation_accuracy",
