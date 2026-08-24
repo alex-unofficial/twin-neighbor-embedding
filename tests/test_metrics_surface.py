@@ -40,6 +40,8 @@ REQUIRED_EXPORTS = {
     "raw_stress",
     "normalized_stress",
     "optimal_scale",
+    # spec §2.0 / DECISIONS.md (5), added at step 3 commit 9.
+    "EvaluationContext",
     # spec §2.0, added at step 3 commit 4.
     "ideal_distances",
     "finite_pair_mask",

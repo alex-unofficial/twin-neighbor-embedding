@@ -25,6 +25,7 @@ from twin.metrics.common import (
     pairwise_distances,
     require_n_by_d,
 )
+from twin.metrics.context import EvaluationContext
 from twin.metrics.label import (
     KnnAccuracyReport,
     knn_accuracy,
@@ -49,6 +50,7 @@ from twin.metrics.structural import (
 )
 
 __all__ = [
+    "EvaluationContext",
     "KnnAccuracyReport",
     "NeighborPreservationReport",
     "adjacency_distance_ratio",
