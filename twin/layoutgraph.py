@@ -211,6 +211,46 @@ def _vertex_points_from_edges(
 # --------------------------------------------------------------------------- #
 
 
+#: Graph attributes stamped on every `nx.Graph` this layer hands out.
+SIDE_KEY = "twin_side"
+SOURCE_KEY = "twin_source"
+
+Side = Literal["affinity", "distance", "combinatorial"]
+
+
+def stamp_form(G: nx.Graph, *, side: Side, source: str) -> nx.Graph:
+    """Record which valuation a bare `nx.Graph` carries, and where it came from.
+
+    A `LayoutGraph` knows whether it is handing out affinities or distances; the `nx.Graph` it
+    hands out does not, and once it has left the layer nothing about it says so — the edge
+    attribute is called ``weight`` either way. That is exactly the shape of bug §1.6, which was
+    a distance being consumed as if it were an affinity, and of the graphviz regression at step
+    2, where the declared form was right and what arrived was not.
+
+    Two step-3 guards read the stamp, and both guard against a *silent* misuse rather than a
+    loud one: :func:`~twin.metrics.common.ideal_distances` refuses a `LayoutGraph` distance form
+    handed to it together with an explicit ``weight_transform`` (`DECISIONS.md` (10)), and ADR
+    refuses a distance-valued graph outright. A bare unstamped graph stays acceptable to both,
+    so the analytic tests of §6 can build a $K_4$ by hand without a `Dataset`.
+
+    Args:
+        G: the graph to stamp, modified in place.
+        side: which valuation its ``weight`` attribute carries.
+        source: free-form provenance, for the error messages and the manifest.
+
+    Returns:
+        ``G``.
+    """
+    G.graph[SIDE_KEY] = side
+    G.graph[SOURCE_KEY] = source
+    return G
+
+
+def graph_side(G: nx.Graph) -> Side | None:
+    """The stamped side of a graph, or None if it never passed through this layer."""
+    return G.graph.get(SIDE_KEY)
+
+
 def affinity_matrix_to_distance(A: sp.sparray) -> sp.sparray:
     """Generic affinity -> distance fallback: normalise, **symmetrise**, then $-\\log$.
 
@@ -403,7 +443,12 @@ def vertex_graph(
         derivation=affinity_derivation + (" [degree-normalised]" if normalize else ""),
         distance_derivation=distance_derivation,
         params={"normalize": normalize, "affinity_rule": affinity_rule},
-        _build_distance=lambda: _weighted_graph(graph.number_of_nodes(), edges, distance_w),
+        _build_distance=lambda: _weighted_graph(
+            graph.number_of_nodes(),
+            edges,
+            distance_w,
+            source=f"A_V of {dataset.name}: {distance_derivation}",
+        ),
     )
 
 
@@ -465,8 +510,12 @@ def _derived(
         derivation=derivation,
         distance_derivation="generic fallback: normalise, symmetrise, -log",
         params={**vertex.params, **params},
-        _build_distance=lambda: nx.from_scipy_sparse_array(
-            affinity_matrix_to_distance(affinity)
+        _build_distance=lambda: stamp_form(
+            nx.from_scipy_sparse_array(affinity_matrix_to_distance(affinity)),
+            side="distance",
+            # Named as the fallback it is: this is the form ideal distances must never come
+            # from, and the stamp is what lets a consumer say so in its error message.
+            source=f"{name} of {vertex.dataset_name}: generic fallback (normalise, symmetrise, -log)",
         ),
     )
 
@@ -509,7 +558,9 @@ def _require_vertex_graph(graph: LayoutGraph, where: str) -> None:
         )
 
 
-def _weighted_graph(n: int, edges: list[tuple[int, int]], weights: np.ndarray) -> nx.Graph:
+def _weighted_graph(
+    n: int, edges: list[tuple[int, int]], weights: np.ndarray, source: str
+) -> nx.Graph:
     """A distance graph: every edge present with its weight, every non-edge **absent**.
 
     Absence is the point. `Unweighted` distance must give hop counts, so non-edges cannot be
@@ -518,4 +569,4 @@ def _weighted_graph(n: int, edges: list[tuple[int, int]], weights: np.ndarray) -
     G = nx.Graph()
     G.add_nodes_from(range(n))
     G.add_weighted_edges_from((u, v, float(w)) for (u, v), w in zip(edges, weights))
-    return G
+    return stamp_form(G, side="distance", source=source)
