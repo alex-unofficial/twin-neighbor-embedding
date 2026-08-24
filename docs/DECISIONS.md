@@ -255,6 +255,47 @@ ordering. On digits at $k = 5/12/30/60$ the rank correlation rises 0.61 → 0.85
 ratio falls 3.78 → 1.74, so fidelity and tractability are the same knob and both ends of it are
 in `docs/DATASET_REPORT.md`.
 
+## The §1.6 fix, re-measured in quality terms
+
+Session 2 could show only that the correction *moved* the layout: Procrustes disparity between
+the old and new digits layouts at matched initialisation was 0.02–0.46 while re-initialisation
+alone moved it 0.46–0.83, so the effect sat below the seed-noise floor of the instrument. That
+paragraph is corrected here, not withdrawn: Procrustes was the wrong instrument, and the right
+question is whether the layout is *better*, not whether it is different.
+
+**Protocol.** SG-*t*-SNE on $A_V$ of `digits`, seven seeds, matched initialisation per seed
+across the two arms, $k = 16$ (§0.5 decision 6: digits' mean degree is 16.4). Both arms are
+scored against **one** target — the corrected dataset's evaluation context — so only the matrix
+that is laid out differs. The pre-fix arm is the stored Euclidean distance used directly as the
+affinity, which is what `VertexMatrix` did when it built from $\sqrt{B_w}$ over the graph's
+`weight` attribute; Spearman between the two affinity vectors is **exactly −1** over all 14732
+edges, as in session 2. It is built in the measurement script and nowhere else — `vertex_graph`
+has no "legacy" flag.
+
+| metric | pre-fix, median [IQR] | corrected, median [IQR] | separates? |
+|---|---|---|---|
+| `knn_recall` @ *k*=16 | 0.6332 [0.6324, 0.6343] | **0.6393 [0.6387, 0.6401]** | **yes** |
+| ADR | 0.0823 [0.0821, 0.0829] | 0.0835 [0.0828, 0.0836] | no |
+| SNS | 0.3475 [0.3433, 0.3527] | 0.3452 [0.3417, 0.3509] | no |
+
+**Read it against the noise floor, which is the only way this measurement is worth anything.**
+For recall the two arms are *disjoint over all seven seeds* — the worst corrected seed (0.6364)
+beats the best pre-fix seed (0.6352) — so the effect is larger than re-initialisation, and this
+is the first evidence that §1.6 mattered rather than merely changed something. The gain is small
+in absolute terms, ≈ +0.006 recall, ≈ 1 % relative.
+
+ADR and SNS do not separate, and both ranges overlap across most of their IQR. That is not a
+failure of the fix; it is what those two measure. ADR compares edge lengths to the layout's own
+spread, and both arms compress edges by about as much relative to their own scale. SNS scores
+against a shortest-path closure that neither arm optimises, and an inverted affinity perturbs a
+*t*-SNE layout's local structure long before it perturbs its global stress. **The correction is
+visible where the corrupted quantity is used — in the neighbourhoods — and nowhere else.**
+
+Consequence for reporting: quote `knn_recall` when quoting §1.6, with the disjointness rather
+than the difference of medians, and do not claim an improvement in ADR or SNS. Consequence for
+the protocol: five seeds is the floor (§4.1) and seven were used; a single-seed table here would
+have shown a difference of 0.006 against an unstated spread of 0.004 and been worthless.
+
 ## Ideal distances: one source, one owner
 
 > Ideal distances come from **`vertex_graph(dataset).distance`**, computed once per dataset per
