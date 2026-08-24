@@ -7,10 +7,14 @@ inferred from ``shape`` — inference silently picks the wrong axis whenever ``n
 input is square (spec §1.3).
 """
 
+import hashlib
+from collections import OrderedDict
+
 import networkx as nx
 import numpy as np
 import scipy.sparse as sp
 from scipy.sparse import csgraph
+from scipy.spatial.distance import pdist
 
 from twin.layoutgraph import SOURCE_KEY, graph_side
 
@@ -231,3 +235,77 @@ def finite_pair_mask(D: np.ndarray) -> np.ndarray:
     the disconnected case.
     """
     return np.isfinite(condensed(D))
+
+
+# --------------------------------------------------------------------------- #
+#                     Pairwise layout distances (spec §2.0)                    #
+# --------------------------------------------------------------------------- #
+
+#: At most this many condensed vectors are kept. **Not** an `lru_cache(maxsize=128)`: tabula's
+#: condensed vector is 100 MB, so 128 of them is a 12 GB footgun that would look like a leak in
+#: the step-7 batch runner and be found the expensive way. Two is enough for the only pattern
+#: that matters — several metrics over one layout, then the next layout.
+PAIRWISE_CACHE_MAXSIZE = 2
+
+_pairwise_cache: "OrderedDict[tuple, np.ndarray]" = OrderedDict()
+
+
+def _layout_key(X: np.ndarray) -> tuple:
+    """A content digest, deliberately **not** ``id(X)``.
+
+    Python reuses ids after garbage collection, so an id-keyed cache would serve one layout's
+    distances for another's — silently, and only under memory pressure. Hashing 80 KB is
+    microseconds against a 12.5-million-pair ``pdist``.
+    """
+    contiguous = np.ascontiguousarray(X)
+    digest = hashlib.blake2b(contiguous.view(np.uint8).reshape(-1), digest_size=16).digest()
+    return (digest, contiguous.shape, str(contiguous.dtype))
+
+
+def pairwise_distances(X: np.ndarray, *, cache: bool = True) -> np.ndarray:
+    """Condensed Euclidean distances between the rows of ``X``, in :data:`CONDENSED_ORDERING`.
+
+    The condensed form is kept rather than squared up: several metrics need the full pairwise
+    vector, and materialising the square matrix twice is what makes the large datasets hurt.
+
+    Args:
+        X: an ``(n, d)`` layout.
+        cache: keep the result for reuse by the next metric over the same layout. The cache
+            holds at most :data:`PAIRWISE_CACHE_MAXSIZE` entries **on purpose** — see there.
+
+    Returns:
+        The ``n(n-1)/2`` condensed distances, aligned elementwise with
+        :func:`condensed` of an ideal-distance matrix.
+    """
+    X = np.asarray(X, dtype=float)
+    if X.ndim != 2:
+        raise ValueError(f"X must be 2-D (n_points, d), got shape {X.shape}")
+
+    if not cache:
+        return pdist(X)
+
+    key = _layout_key(X)
+    hit = _pairwise_cache.get(key)
+    if hit is not None:
+        _pairwise_cache.move_to_end(key)
+        return hit
+
+    value = pdist(X)
+    _pairwise_cache[key] = value
+    while len(_pairwise_cache) > PAIRWISE_CACHE_MAXSIZE:
+        _pairwise_cache.popitem(last=False)
+    return value
+
+
+def mean_pairwise_distance(X: np.ndarray) -> float:
+    r"""$\bar d$, the mean pairwise distance of a layout (thesis eq. 66).
+
+    The denominator of NND$_k$ (spec §2.2) and of ADR (§2.1), which is why it shares the cache
+    rather than recomputing ``pdist``.
+    """
+    return float(pairwise_distances(X).mean())
+
+
+def clear_pairwise_cache() -> None:
+    """Drop the cached condensed vectors. For tests, and for a runner between datasets."""
+    _pairwise_cache.clear()

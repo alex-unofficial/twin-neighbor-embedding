@@ -16,9 +16,12 @@ with the imports rather than with the design (`tests/test_metrics_surface.py`).
 """
 
 from twin.metrics.common import (
+    clear_pairwise_cache,
     condensed,
     finite_pair_mask,
     ideal_distances,
+    mean_pairwise_distance,
+    pairwise_distances,
     require_n_by_d,
 )
 from twin.metrics.label import (
@@ -33,10 +36,13 @@ __all__ = [
     "KnnAccuracyReport",
     "condensed",
     "finite_pair_mask",
+    "clear_pairwise_cache",
     "ideal_distances",
     "knn_accuracy",
     "knn_accuracy_report",
     "knn_neighbor_preservation_accuracy",
     "majority_class_rate",
+    "mean_pairwise_distance",
+    "pairwise_distances",
     "require_n_by_d",
 ]

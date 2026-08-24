@@ -13,9 +13,12 @@ import pytest
 from twin.datasets import load_dataset
 from twin.layoutgraph import stamp_form, vertex_graph
 from twin.metrics.common import (
+    clear_pairwise_cache,
     condensed,
     finite_pair_mask,
     ideal_distances,
+    mean_pairwise_distance,
+    pairwise_distances,
 )
 
 
@@ -234,3 +237,61 @@ def test_the_vertex_graphs_distance_form_closes_to_a_finite_target(name):
     assert D.shape == (dataset.n, dataset.n)
     assert np.isfinite(D).all()
     assert (D[~np.eye(dataset.n, dtype=bool)] > 0).all()
+
+
+# --------------------------------------------------------------------------- #
+#                      Pairwise layout distances and the cache                 #
+# --------------------------------------------------------------------------- #
+
+
+def test_pairwise_distances_are_scipy_pdist(karate_structured_layout):
+    from scipy.spatial.distance import pdist
+
+    assert pairwise_distances(karate_structured_layout) == pytest.approx(
+        pdist(karate_structured_layout)
+    )
+
+
+def test_pairwise_distances_align_with_condensed_ideal_distances(karate, karate_random_layout):
+    """The two vectors a stress metric subtracts must be the same length and ordering."""
+    D = condensed(ideal_distances(karate))
+    assert pairwise_distances(karate_random_layout).shape == D.shape
+
+
+def test_the_mean_is_the_mean_of_the_condensed_vector(karate_random_layout):
+    assert mean_pairwise_distance(karate_random_layout) == pytest.approx(
+        pairwise_distances(karate_random_layout).mean()
+    )
+
+
+def test_the_cache_is_keyed_on_content_not_identity():
+    """An id-keyed cache would serve one layout's distances for another's after a gc."""
+    clear_pairwise_cache()
+    X = np.random.default_rng(4).normal(size=(20, 2))
+    first = pairwise_distances(X).copy()
+
+    X[0] += 5.0  # same object, different content
+    assert not np.allclose(pairwise_distances(X), first)
+
+    # ... and an equal-content copy is a hit, not a recomputation.
+    assert pairwise_distances(X.copy()) is pairwise_distances(X)
+
+
+def test_the_cache_is_capped(karate_random_layout):
+    """Tabula's condensed vector is 100 MB; an lru_cache(maxsize=128) here is a 12 GB footgun."""
+    from twin.metrics.common import PAIRWISE_CACHE_MAXSIZE, _pairwise_cache
+
+    clear_pairwise_cache()
+    rng = np.random.default_rng(5)
+    for _ in range(PAIRWISE_CACHE_MAXSIZE + 3):
+        pairwise_distances(rng.normal(size=(15, 2)))
+    assert len(_pairwise_cache) == PAIRWISE_CACHE_MAXSIZE
+    assert PAIRWISE_CACHE_MAXSIZE <= 2
+
+
+def test_the_cache_can_be_bypassed(karate_random_layout):
+    from twin.metrics.common import _pairwise_cache
+
+    clear_pairwise_cache()
+    pairwise_distances(karate_random_layout, cache=False)
+    assert not _pairwise_cache

@@ -28,6 +28,9 @@ REQUIRED_EXPORTS = {
     "ideal_distances",
     "finite_pair_mask",
     "condensed",
+    "pairwise_distances",
+    "mean_pairwise_distance",
+    "clear_pairwise_cache",
 }
 
 #: Names the current ``import *`` leaks because the module has no ``__all__``. Permitted, never
