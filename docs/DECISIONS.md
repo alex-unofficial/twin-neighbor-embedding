@@ -392,6 +392,96 @@ again costs neighbourhood recovery rather than buying it.
 already the default, and §3.4 keeps the choice configurable. Recorded so that the assumption is
 now a measurement.
 
+## Step 4 decisions, pinned before they are discovered the hard way
+
+Eleven choices settled in advance so that [`plans/step4-visual.md`](plans/step4-visual.md) can be
+executed without re-deriving them. Each records the alternative and why it lost.
+
+**`detour_ratio` is step 5, not step 4.** §2.2 gives its signature under `visual.py`; §7 assigns it
+to step 5, and it needs the `edge_curves` layer. Building the curve geometry in `visual.py` would
+either duplicate it or make `visual.py` import a module that does not exist yet — and §2.4's layer 1
+exists precisely so that the drawn picture and the measured crossings come from one implementation.
+The alternative, pulling layer 1 forward into step 4, buys the straight-versus-curved cost one step
+earlier at the price of putting geometry in the module that does not consume it.
+
+**The visual metrics take `X` alone; only `edge_lengths` takes a graph, and that graph is
+`dataset.graph`.** No `EvaluationContext`: no ideal distances, no affinities, no labels. Only the
+edge *set* and its *order* are read, so **no stamp guard is needed** — worth stating explicitly,
+because every other graph-consuming metric in the package has one and the absence here should read
+as deliberate rather than forgotten.
+
+**Shared results are cached module-level and content-keyed, not on a new layout-scoped object.** A
+`LayoutView` bundling the pairwise distances, the neighbourhood and the per-vertex reductions would
+read better and would mirror `EvaluationContext` — but §2 fixes three metric signatures and step 7's
+`MetricSpec` calls them uniformly, so a required `view=` parameter would break the registry before
+it is written, and an optional one would be a second path that is never the tested one. The existing
+`pairwise_distances` cache is the pattern; the runner gets one `clear_*` per family, mirroring
+`EvaluationContext.release()`.
+
+**Each cache family sets its own capacity, from its own cost profile.** Measured at $n = 5007$:
+leave-one-out arrays are 1.6 MB and 33 ms, condensed distance vectors are 100 MB and 105 ms, and
+step 5's edge curves will be ~50 MB per variant and far more expensive than either. So: cache
+several neighbourhoods, two distance vectors, one curve set. A single global `maxsize` is what turns
+a cache into a memory incident — `lru_cache(maxsize=128)` over tabula's condensed vector is 12 GB.
+
+**The leave-one-out cache is keyed on `(digest, k_max)` exactly and never slices.** Serving $k = 5$
+out of a cached $k = 16$ is free and wrong: step 3 established that slicing is not equivalent to
+re-querying when the layout has exact duplicates, so the value of `knn_recall(X, G, 5)` would depend
+on which metric ran first. A cache that changes results is the worst kind available, and this one
+would be found the expensive way.
+
+The other alternative is genuinely attractive and is recorded as open: a canonical tie-break by
+`(distance, index)` inside `_loo_neighbors` would make slicing order-independent *and* make every
+neighbourhood metric reproducible under duplicates, which nothing currently is. It moves
+`knn_accuracy`'s coincident-point behaviour and the two coincident pins, so it is a declared-change
+commit of its own — never a side effect of adding a cache.
+
+**The condensed ideal and the finite-pair mask belong to `EvaluationContext`**, beside `ideal`, for
+the same reason `ideal` is there: derived, per-dataset, expensive, and shared by every
+representation. Today the three stress functions and `finite_pair_mask` condense the same array four
+times per case at a 301 MB transient peak each.
+
+**VNR's `"max"` normaliser is chunked, never squared up**, and the `"mean"` default is also the
+cheap path — it needs only $\bar d$ and the per-vertex min, both of which are already computed.
+§0.5's `[THESIS EDIT]` argues the modelling case; that the default is *also* the cheaper computation
+is recorded here so that nobody optimises back toward `max`.
+
+**NND$_k$ reuses `_loo_neighbors`** — one leave-one-out convention in the package, as of step 3 —
+and inherits its documented tie arbitrariness. It is the metric most likely to meet it, since
+crowding is what NND measures. The distances among coincident points are all zero either way, so the
+*value* is well defined; only the neighbour set is not.
+
+**A collapsed layout gives `nan`, not 0**, in NND, NR and VNR, as it does in SNS. The limit exists
+in each case and reporting a limit as a score is how an undefined quantity reaches a table.
+
+**The distributions are normalised by $\bar d$ inside the function and returned whole**, per eqs.
+(70)/(71) and §3.1.3's "diagnostics, not scores". Summarising them here would pre-empt the choice
+step 11 has to make from the data.
+
+**The golden file grows additively, and there is still no `registry.py`.** Step 4 adds keys to
+`make_metric_golden.py` and regenerates; the diff on `metric_golden.json` must contain no modified
+lines. Since the generator is both sides of the equality test, an additive diff is the *only*
+evidence the existing fourteen values did not move. `MetricSpec`, `METRIC_REGISTRY` and
+`evaluate_layout` remain step 7 — the same boundary step 3 held.
+
+## Reconciling the code with `thesis.pdf` — the decision, not the list
+
+The divergences themselves are a table in **spec §0.5's session-3 corrections**, which is their one
+authoritative copy: `[THESIS EDIT]` is a spec concept, every existing marker lives in that document,
+and two copies of a table like that drift inside a single session. What is settled here is what to
+*do* about them, which is: nothing yet, deliberately.
+
+- **Three are thesis prose**, and the code must not chase a draft. The `[THESIS EDIT]` mechanism
+  exists precisely so that the implementation is not "fixed" toward whichever revision of the PDF
+  happens to be on disk. They are the author's to make.
+- **Two are code work already scheduled** — `count_intersections` versus eq. (78) at step 5, where
+  §2.4 reimplements it anyway, and `fa2` → `fa2_modified` at step 9. Pulling either forward means
+  touching the legacy $(d, n)$ path twice.
+- **One is genuinely open**: `SpectralLayout` reads the symmetric-normalised Laplacian while the
+  thesis defines Hall's formulation on $L_w = D - W$. It is not obvious which side should move, and
+  the choice is a modelling one rather than a bug — so it wants the author's call before step 9
+  touches that method, not a decision taken here to close a table row.
+
 ## Ideal distances: one source, one owner
 
 > Ideal distances come from **`vertex_graph(dataset).distance`**, computed once per dataset per
