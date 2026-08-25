@@ -219,6 +219,33 @@ def test_condensed_refuses_a_non_square_matrix():
         condensed(np.zeros((3, 4)))
 
 
+def test_condensed_is_bit_identical_to_the_index_form_on_a_non_symmetric_matrix():
+    """The row-concatenation form must equal ``D[np.triu_indices(n, 1)]`` **exactly**.
+
+    Deliberately non-symmetric: on a symmetric matrix the lower triangle equals the upper one,
+    so reading the wrong triangle — or reading the right one transposed — produces the same
+    numbers and the substitution would be untestable. Here $D_{ij} = 100i + j$, so every entry
+    names its own position and both a reordering and a transposition are visible.
+
+    ``array_equal``, not ``approx``: this is a pure re-indexing and there is no arithmetic in it
+    to lose a bit to.
+    """
+    n = 7
+    D = np.arange(n)[:, None] * 100 + np.arange(n)[None, :]
+    assert not np.array_equal(D, D.T)
+    assert np.array_equal(condensed(D), D[np.triu_indices(n, k=1)])
+    # ... and the first few entries are row 0's tail, which is what "row-major upper triangle"
+    # means. A column-major reading would start 1, 2, 102.
+    assert list(condensed(D)[:3]) == [1, 2, 3]
+
+
+@pytest.mark.parametrize("n", [0, 1, 2, 3, 8, 33])
+def test_condensed_is_bit_identical_at_every_small_size(n):
+    """Including the degenerate sizes: `np.concatenate` refuses an empty sequence."""
+    D = np.random.default_rng(n).normal(size=(n, n))
+    assert np.array_equal(condensed(D), D[np.triu_indices(n, k=1)])
+
+
 def test_finite_pair_mask_is_condensed_and_not_square(disjoint_paths):
     n = disjoint_paths.number_of_nodes()
     assert finite_pair_mask(ideal_distances(disjoint_paths)).shape == (n * (n - 1) // 2,)

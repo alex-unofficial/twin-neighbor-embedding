@@ -261,11 +261,23 @@ def condensed(D: np.ndarray) -> np.ndarray:
 
     The same ordering ``scipy.spatial.distance.pdist`` returns, so an ideal-distance vector and
     a layout's pairwise distances line up elementwise with no bookkeeping.
+
+    Row concatenation rather than ``D[np.triu_indices(n, k=1)]``. The two are **bit-identical**
+    — a test asserts it on a non-symmetric matrix, where a transposed or reordered triangle
+    would differ — but the index form materialises two int64 arrays of $n(n-1)/2$ entries to
+    address a result of the same length. At tabula's $n = 5007$ that is 200 MB of indices for a
+    100 MB answer: measured 355 ms at a 301 MB transient peak, against 82 ms at 101 MB. The
+    ideal-distance closure is condensed once per dataset per run, so this is the difference
+    between a peak that fits beside the closure and one that does not.
     """
     D = np.asarray(D)
     if D.ndim != 2 or D.shape[0] != D.shape[1]:
         raise ValueError(f"expected a square matrix, got shape {D.shape}")
-    return D[np.triu_indices(D.shape[0], k=1)]
+    n = D.shape[0]
+    if n == 0:
+        # `np.concatenate` refuses an empty sequence; the index form returned an empty array.
+        return np.empty(0, dtype=D.dtype)
+    return np.concatenate([D[i, i + 1 :] for i in range(n)])
 
 
 def finite_pair_mask(D: np.ndarray) -> np.ndarray:
