@@ -18,7 +18,9 @@ the PDF, use it to check formulas; if not, the spec stands alone. Section number
 **`[THESIS EDIT]` markers.** A few places specify behaviour that deliberately differs from
 `thesis.pdf`. Implement what this spec says. **Do not "correct" the code back to match the
 PDF** — the document is being revised separately, and these markers record the known
-divergences.
+divergences. §0.5's session-3 corrections carry the full reconciliation table, including the
+divergences found *after* the markers were written and which of them are code work rather than
+prose.
 
 ---
 
@@ -457,6 +459,68 @@ raw `dataset.mnist()` factory survives as a graph builder); the representation l
 §0 tables describes the pre-restructure baseline; `twin/metrics.py` is 271 lines, not 112;
 `twin/features.py` is deleted; §1.1 and §1.2's line numbers no longer resolve; and the `mode=`
 sweep and registry names §7 step 2 warns `batches/batch.py` depends on were all fixed there.
+(Stale again after step 3: `twin/metrics.py` is now the package `twin/metrics/`, and the `mode=`
+string is gone from the metric layer as well.)
+
+### Session 3 corrections — what implementing step 3 established, and where the code and the thesis diverge
+
+Written after §7 step 3 shipped. Where a claim below contradicts the body, this wins.
+
+**§2.1's `weighted_recall` signature is superseded by the layering.** It reads the vertex graph's
+affinity form — `LayoutGraph.affinity_graph()`, reachable as `EvaluationContext.affinity` — and
+never `dataset.graph`'s `weight` attribute, which on digits is a stored Euclidean *distance*. ADR
+takes the same rule. Both refuse a graph stamped `twin_side="distance"`, so the wrong call is an
+error rather than an inversion. `DECISIONS.md` records why the layering wins over the written
+signature.
+
+**"Query at `max(k)` once and slice" is not equivalent to re-querying**, when the layout has exact
+duplicates, under *any* leave-one-out convention: which of several coincident points count as "the
+$k$ nearest" depends on how many were asked for. The §2.1 instruction stands — it is what the code
+does, and it is the right performance trade — but the equivalence the wording implies does not
+hold. It is also the reason a neighbourhood cache must be keyed on `k_max` exactly and must never
+serve a small $k$ out of a large one.
+
+**The side stamp reaches `dataset.graph`.** §3.4's `Dataset` still holds no derived information, but
+it now *declares* what its own `weight` attribute means (`Dataset.graph_weight_side()`), because a
+metric guard cannot otherwise refuse digits' distance-valued graph — the graph never passes through
+the `LayoutGraph` layer that would have stamped it. On the roster: digits `"distance"`,
+karate_weighted `"affinity"`, the unweighted four `"combinatorial"`, tabula **unstamped**, since
+both its sides are separate matrices and nothing declares the attribute. Unstamped remains
+acceptable everywhere, so §6's analytic cases still need no `Dataset`. The primitives live in
+`twin/forms.py`, deliberately dependency-free.
+
+**Two coincident-point values moved** when both metric families were put on one leave-one-out
+convention; the sixteen karate pins did not. Values and reasoning in `DECISIONS.md`.
+
+**§1.5's `[THESIS EDIT]` is discharged.** It claims `thesis/sota.typ` says "the $d$ dominant
+eigenvectors"; that file and the built PDF both say "the $d$ smallest non-zero eigenvalues", which
+is what the code implements.
+
+#### Verified against `thesis.pdf`, and the five places it does not match
+
+The PDF (draft of 12 Aug) was read against the tree at the end of step 3. **Everything implemented
+matches its equation exactly** — ADR (27)–(29), the $k$-NN family (32)–(35), weighted recall
+(36)–(39), the three stresses (40)–(45), the ideal-distance model of §2.1.1/§3.1.1, the
+zero-denominator and finite-pair exclusion conventions, and $k$-NN accuracy (57)–(59). This is
+recorded first because a list that contains only divergences reads as a defect list.
+
+⚠️ **§4–§7 of the thesis are placeholders.** The method itself — `twin_adjacency`, $\alpha$, the
+polynomial order, the `[edges; vertices]` block ordering, $\lambda$ — has no prose at all, so
+`twin/twin_embedding.py` is the one part of the code with nothing to be checked against. Treating
+it as given (CLAUDE.md) is a decision about *this* overhaul, not evidence that it is specified
+somewhere.
+
+The five divergences, each with what should happen to it:
+
+| divergence | disposition |
+|---|---|
+| `SpectralLayout` reads the symmetric-normalised Laplacian (`normed=True`, `twin/embedding.py`); thesis eqs. (12)–(14) define Hall's formulation on $L_w = D - W$ under $X^\top X = I$. Different objective, and a different trivial eigenvector — so "drop column 0, take the next $d$" rests on a premise the thesis does not state | **open**; needs the author's call before step 9 touches that method |
+| `knn_accuracy`'s default `tie_rule="fractional"` makes eq. (60) an expectation over tie-breakings rather than an Iverson-bracket fraction of vertices. §2.3 asks for it deliberately; the thesis states no tie convention at all | new **[THESIS EDIT]** — prose |
+| `plots.py::count_intersections` skips edge pairs sharing a vertex and counts only `Point` intersections; eq. (78) says explicitly that such pairs are **not** excluded, and §2.4's degeneracy convention counts collinear overlap as 1. Latent today: its only caller is `tree_of_cliques`, on straight segments, where a shared endpoint cannot produce a crossing | code, **step 5**, which reimplements it on layer 2 anyway |
+| §2.3 of the thesis names the `fa2` package; §1.7 here plans the move to `fa2_modified` for reproducibility | code, **step 9**; the prose follows the code |
+| §2.1.1 says a disconnected graph's components "can be identified and the algorithm applied to each component separately"; §0.5 decision 3 refuses exactly that (`"components"` raises). §3.1.1 already defers to "the convention specified in the experimental setup", so only that one sentence diverges | new **[THESIS EDIT]** — prose |
+
+`DECISIONS.md` records the decision not to reconcile any of them now, and why.
 
 ---
 
