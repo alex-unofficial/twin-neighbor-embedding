@@ -11,6 +11,12 @@ So there is deliberately **no stamp guard** here — every other graph-consuming
 package has one, and its absence in this module is a consequence of reading no valuation rather
 than an omission.
 
+**Edge length here is the chord, never the arc** (CLAUDE.md, thesis eq. 79). Step 5's LWCr
+weights each crossing by the lengths of the two edges involved, and it takes them from
+:func:`edge_lengths`; measuring the arc instead would score the curved variant of a layout
+against a different set of weights than the straight one and confound "fewer crossings" with
+"longer curves". The arc-over-chord ratio is its own metric — ``detour_ratio``, step 5.
+
 ⚠️ **A metric of ``X`` alone cannot check its own orientation.** Everywhere else in the package
 ``require_n_by_d`` catches a ``(d, n)`` array against the graph's node count; here there is
 nothing to check against, so a transposed layout yields a number rather than an error. That is
@@ -20,10 +26,16 @@ the strongest reason for these to be reached through
 All layout arrays are ``(n_points, d)``.
 """
 
+import networkx as nx
 import numpy as np
 from scipy.spatial.distance import cdist
 
-from twin.metrics.common import _loo_neighbors, mean_pairwise_distance, pairwise_distances
+from twin.metrics.common import (
+    _loo_neighbors,
+    mean_pairwise_distance,
+    pairwise_distances,
+    require_n_by_d,
+)
 
 #: Row budget for the chunked row-wise maximum, in bytes. The ``normalize="max"`` branch of
 #: :func:`node_resolution_vertexwise` is the **only** $O(n^2)$-memory computation in this module,
@@ -275,3 +287,79 @@ def nn_distance_distribution(X: np.ndarray) -> np.ndarray:
     if mean_pairwise == 0:
         return np.full(X.shape[0], np.nan)
     return nearest[:, 0] / mean_pairwise
+
+
+# --------------------------------------------------------------------------- #
+#                      Edge lengths (eqs. 79, 80)                              #
+# --------------------------------------------------------------------------- #
+
+
+def edge_lengths(X: np.ndarray, G: nx.Graph) -> np.ndarray:
+    r"""$L(e_{ij}) = \lVert x_i - x_j\rVert$ per edge, **in ``G.edges()`` order** (eq. 79).
+
+    **The chord, never the arc** (CLAUDE.md). The thesis is explicit that the length of an edge
+    is the distance between its endpoints "regardless of the shape of the curve used to draw
+    it", because it is the distance spanned across the layout, not the path taken, that decides
+    how much of the drawing a crossing on that edge can disrupt. This is what keeps the
+    straight-versus-curved comparison interpretable: under the arc, the curved variant of a
+    layout would be scored against a *different* set of weights than the straight one, and LWCr
+    would confound "fewer crossings" with "longer curves". The arc-over-chord ratio is a metric
+    in its own right — ``detour_ratio``, step 5 — and is deliberately not folded in here.
+
+    ⚠️ **The order is ``G.edges()``, and that is load-bearing.** ADR computes the same chord
+    lengths off the CSR upper triangle (:func:`~twin.metrics.structural.adjacency_distance_ratio`),
+    which is a *different* order: on `digits`, 12377 of 14732 positions disagree. Edge points,
+    incidence-matrix columns and step 5's per-edge crossing weights are all indexed by
+    ``G.edges()``, so this must be too. The two are not unified: ADR keeps the CSR order because
+    its lengths have to align with the weights it reads out of the same matrix.
+
+    Args:
+        X: an ``(n, d)`` layout, in the original vertex indexing.
+        G: the graph. Only its **edge set and their order** are read — no weights, no valuation,
+            hence no side stamp to check (see the module docstring). Nodes must be
+            ``0..n-1``, the indexing convention the whole package uses.
+
+    Returns:
+        One length per edge, ``(m,)``, in ``G.edges()`` order. Empty for an edgeless graph.
+    """
+    n = G.number_of_nodes()
+    X = require_n_by_d(X, n, "X")
+
+    m = G.number_of_edges()
+    if m == 0:
+        return np.empty(0)
+
+    edges = np.fromiter(
+        (v for edge in G.edges() for v in edge), dtype=np.int64, count=2 * m
+    ).reshape(m, 2)
+    if edges.min() < 0 or edges.max() >= n:
+        raise ValueError(
+            "edge_lengths indexes X by node label, so nodes must be 0..n-1 — the convention "
+            f"`nodelist=range(n)` enforces everywhere else in the package. Got labels outside "
+            f"[0, {n})."
+        )
+    return np.linalg.norm(X[edges[:, 0]] - X[edges[:, 1]], axis=1)
+
+
+def edge_length_cv(X: np.ndarray, G: nx.Graph) -> float:
+    r"""The coefficient of variation of the edge lengths: $\sigma_L/\bar L$.
+
+    Uniform edge length is a classical drawing aesthetic, and $\bar L$ is eq. (80) — but the
+    **CV itself is not a thesis equation**; it is spec §2.2's addition, a scale-invariant
+    summary of the spread that eq. (80)'s mean alone does not carry. 0 means every edge is drawn
+    at the same length; large means the drawing mixes very short and very long edges.
+
+    The standard deviation is the population one (``ddof=0``), so the CV of a fixed drawing is a
+    property of that drawing rather than an estimate of a population it was sampled from.
+
+    Returns:
+        $\sigma_L/\bar L$, or ``nan`` for a graph with no edges or a layout whose every edge has
+        collapsed to zero length.
+    """
+    lengths = edge_lengths(X, G)
+    if lengths.size == 0:
+        return float("nan")
+    mean = float(lengths.mean())
+    if mean == 0:
+        return float("nan")
+    return float(lengths.std()) / mean

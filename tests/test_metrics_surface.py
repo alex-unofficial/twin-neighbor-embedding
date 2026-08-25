@@ -59,6 +59,8 @@ REQUIRED_EXPORTS = {
     "node_resolution_vertexwise",
     "pairwise_distance_distribution",
     "nn_distance_distribution",
+    "edge_lengths",
+    "edge_length_cv",
 }
 
 #: Names the current ``import *`` leaks because the module has no ``__all__``. Permitted, never

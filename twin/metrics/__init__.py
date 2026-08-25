@@ -35,6 +35,8 @@ from twin.metrics.label import (
     majority_class_rate,
 )
 from twin.metrics.visual import (
+    edge_length_cv,
+    edge_lengths,
     nn_distance_distribution,
     node_resolution,
     node_resolution_vertexwise,
@@ -64,6 +66,8 @@ __all__ = [
     "NeighborPreservationReport",
     "adjacency_distance_ratio",
     "condensed",
+    "edge_length_cv",
+    "edge_lengths",
     "default_k",
     "finite_pair_mask",
     "clear_loo_cache",

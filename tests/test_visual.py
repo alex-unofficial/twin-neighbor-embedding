@@ -11,6 +11,8 @@ import pytest
 
 from twin.metrics.common import clear_loo_cache
 from twin.metrics.visual import (
+    edge_length_cv,
+    edge_lengths,
     nn_distance_distribution,
     node_resolution,
     node_resolution_vertexwise,
@@ -393,3 +395,109 @@ def test_the_distributions_are_returned_whole(karate_random_layout):
     """§3.1.3: diagnostics, not scores. Summarising here would pre-empt step 11's choice."""
     assert pairwise_distance_distribution(karate_random_layout).ndim == 1
     assert nn_distance_distribution(karate_random_layout).ndim == 1
+
+
+# --------------------------------------------------------------------------- #
+#                        Edge lengths (eqs. 79, 80)                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_edge_lengths_are_the_chords(path5):
+    """A path laid out on the x-axis at spacing 1, 2, 3, 4."""
+    X = np.array([[0.0, 0.0], [1.0, 0.0], [3.0, 0.0], [6.0, 0.0], [10.0, 0.0]])
+    assert edge_lengths(X, path5) == pytest.approx([1.0, 2.0, 3.0, 4.0])
+
+
+def test_edge_lengths_are_in_G_edges_order_not_csr_order():
+    """The trap this function exists to avoid, on the dataset where the two orders diverge.
+
+    ADR computes the same chord lengths off the CSR upper triangle. On `digits` that is a
+    different order in 12377 of 14732 positions, and edge points, incidence columns and step 5's
+    per-edge crossing weights are all indexed by ``G.edges()``. Two orderings that agree on
+    nothing and look identical is how §1.6 happened one layer down.
+    """
+    import networkx as nx
+    import scipy.sparse as sp
+
+    from twin.datasets import load_dataset
+
+    G = load_dataset("digits").graph
+    n = G.number_of_nodes()
+    X = np.random.default_rng(11).normal(size=(n, 2))
+
+    A = sp.coo_array(nx.adjacency_matrix(G, nodelist=range(n), weight=None))
+    upper = A.coords[0] < A.coords[1]
+    rows, cols = A.coords[0][upper], A.coords[1][upper]
+    csr_order = np.linalg.norm(X[rows] - X[cols], axis=1)
+
+    lengths = edge_lengths(X, G)
+    assert lengths.shape == csr_order.shape
+    # The same multiset of lengths ...
+    assert np.allclose(np.sort(lengths), np.sort(csr_order))
+    # ... in a different sequence, in most positions.
+    assert (lengths != csr_order).sum() > 10000
+
+    # And the sequence is exactly G.edges().
+    by_hand = np.array([np.linalg.norm(X[u] - X[v]) for u, v in G.edges()])
+    assert lengths == pytest.approx(by_hand)
+
+
+def test_edge_lengths_do_not_assume_the_endpoints_are_sorted():
+    """`G.edges()` yields the pair in insertion order, which need not be (min, max)."""
+    import networkx as nx
+
+    G = nx.Graph()
+    G.add_edges_from([(2, 3), (0, 1), (1, 2)])
+    assert any(u > v for u, v in G.edges()), "the fixture no longer exercises the case"
+
+    X = np.array([[0.0, 0.0], [10.0, 0.0], [0.0, 1.0], [0.0, 4.0]])
+    lengths = edge_lengths(X, G)
+    assert lengths == pytest.approx([np.linalg.norm(X[u] - X[v]) for u, v in G.edges()])
+
+
+def test_edge_lengths_scale_with_the_layout(karate, karate_random_layout):
+    """Not scale-invariant, and must not be: LWCr normalises by the mean edge length itself."""
+    doubled = edge_lengths(2 * karate_random_layout, karate)
+    assert doubled == pytest.approx(2 * edge_lengths(karate_random_layout, karate))
+
+
+def test_edge_lengths_are_one_per_edge(karate, karate_random_layout):
+    assert edge_lengths(karate_random_layout, karate).shape == (karate.number_of_edges(),)
+
+
+def test_edge_lengths_refuse_a_transposed_layout(karate):
+    """`require_n_by_d`, because here there *is* something to check the orientation against."""
+    X = np.random.default_rng(12).normal(size=(2, karate.number_of_nodes()))
+    with pytest.raises(ValueError, match="probably a .d, n. array"):
+        edge_lengths(X, karate)
+
+
+def test_edge_lengths_are_empty_on_an_edgeless_graph():
+    import networkx as nx
+
+    assert edge_lengths(np.zeros((3, 2)), nx.empty_graph(3)).shape == (0,)
+
+
+def test_edge_length_cv_is_zero_when_every_edge_is_the_same_length(triangle):
+    X = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, np.sqrt(3) / 2]])
+    assert edge_length_cv(X, triangle) == pytest.approx(0.0)
+
+
+def test_edge_length_cv_is_its_closed_form(path5):
+    """Lengths 1, 2, 3, 4: mean 2.5, population sd $\\sqrt{5}/2$."""
+    X = np.array([[0.0, 0.0], [1.0, 0.0], [3.0, 0.0], [6.0, 0.0], [10.0, 0.0]])
+    assert edge_length_cv(X, path5) == pytest.approx(np.sqrt(5) / 2 / 2.5)
+
+
+def test_edge_length_cv_is_scale_invariant(karate, karate_random_layout):
+    """Both the sd and the mean carry the layout's units, so the ratio does not."""
+    assert edge_length_cv(similarity(karate_random_layout), karate) == pytest.approx(
+        edge_length_cv(karate_random_layout, karate)
+    )
+
+
+def test_edge_length_cv_is_nan_when_there_is_nothing_to_vary():
+    import networkx as nx
+
+    assert np.isnan(edge_length_cv(np.zeros((3, 2)), nx.empty_graph(3)))
+    assert np.isnan(edge_length_cv(np.zeros((3, 2)), nx.path_graph(3)))
