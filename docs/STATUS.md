@@ -32,8 +32,9 @@ Section 5 numbers before step 8.
 
 1. `CLAUDE.md` — non-negotiable conventions and the version-control policy.
 2. `docs/EXPERIMENT_SETUP_SPEC.md` **§0.5 first** — it supersedes the rest of the document. It
-   now carries three correction blocks, one per session; the newest wins. Session 3's also holds
-   the reconciliation table against `thesis.pdf` and the two new `[THESIS EDIT]`s.
+   now carries four correction blocks, one per session; the newest wins. Session 3's also holds
+   the reconciliation table against `thesis.pdf` and the two new `[THESIS EDIT]`s; session 4's
+   corrects §0.5's own VNR entry.
 3. `docs/DECISIONS.md` — the open questions the implementer was asked to settle, with reasoning.
 4. `docs/DATASET_PROVENANCE.md` — where each dataset's weights actually come from. Assertions
    here are executable: `tests/test_dataset_provenance.py`.
