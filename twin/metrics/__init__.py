@@ -16,6 +16,7 @@ with the imports rather than with the design (`tests/test_metrics_surface.py`).
 """
 
 from twin.metrics.common import (
+    clear_loo_cache,
     clear_pairwise_cache,
     default_k,
     condensed,
@@ -57,6 +58,7 @@ __all__ = [
     "condensed",
     "default_k",
     "finite_pair_mask",
+    "clear_loo_cache",
     "clear_pairwise_cache",
     "ideal_distances",
     "knn_accuracy",
