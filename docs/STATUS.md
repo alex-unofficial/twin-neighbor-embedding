@@ -74,10 +74,10 @@ were separately mergeable.
 - **The crowding metrics are quiet instruments.** Seven seeds of SG-*t*-SNE on `digits`: NND's
   relative IQR is **0.4 %**, VNR's 1.3-1.8 %, `edge_length_cv`'s 2.4 %. Two orders of magnitude
   tighter than the effect step 3 had to strain to see in `knn_recall`.
-- **⚠️ NR is not a usable score on a layout this size.** $1\times10^{-5}$ on 1797 vertices, with
-  a **54 %** relative IQR across seeds — it measures which seed put two points nearest each
-  other. This is the thesis's own argument for VNR, measured. Report it with its spread beside
-  it, never as a score.
+- **NR is the foil for VNR, not a reported metric**, and the measurement corroborates the
+  thesis's reason for that: $1\times10^{-5}$ on 1797 vertices with a **54 %** relative IQR across
+  seeds — it reports which seed put two points nearest each other. Implemented and pinned because
+  VNR is defined by contrast with it; **VNR is the point-crowding score**, with NND$_k$.
 - **VNR(mean) is exactly NND$_1$** — an identity, not an approximation, and one §0.5 does not
   state. The `[THESIS EDIT]` makes VNR the $k = 1$ member of NND's family rather than a second
   measurement. **This needs the author's call.**
@@ -275,7 +275,6 @@ one of the eight.)
 | Two scheduled code divergences from the thesis: `count_intersections` versus eq. (78), and `fa2` → `fa2_modified` — spec §0.5's table | **steps 5 and 9** |
 | Cache loop order: evaluate every metric of one layout before moving to the next, or a two-entry cache evicts on every switch. Nothing enforces it yet | **step 7**, the batch runner |
 | **Open, needs the author's call:** VNR's `"mean"` normaliser is **exactly** NND$_1$, so under the `[THESIS EDIT]` the point-crowding column is NND at two values of $k$; the thesis's `"max"` is a genuinely second measurement but is distorted by outlier vertices. Both are implemented, both are in the golden file, and the comparison §0.5 asked for is done — `DECISIONS.md` | before the results tables are designed: **step 11**, but the decision can be taken now |
-| ⚠️ **NR is not a score on a large layout** — 1e-5 on digits with a 54 % relative IQR across seeds. It needs the same kind of reporting flag SNS's docstring caveat needs, and neither is built | step 11 |
 | The three visual metrics have a measured seed-noise band on `digits` (NND 0.4 %, VNR 1.3-1.8 %, `edge_length_cv` 2.4 %). Nothing reads it yet; a λ sweep that reports differences smaller than it would be reporting noise | step 8 |
 | The notebooks import modules that have moved | whenever someone opens one |
 

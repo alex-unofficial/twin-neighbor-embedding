@@ -91,10 +91,11 @@ def test_the_golden_values_are_not_degenerate(golden):
     # mean of all of them, so it lies in (0, 1) and rises with k.
     assert 0.0 < values["normalized_nn_distance@k=5"] < values["normalized_nn_distance@k=10"] < 1.0
 
-    # NR is a worst-case detector and VNR is not, and NR <= VNR under either normaliser is an
-    # identity, not an observation: each vertex's own minimum is at least the global minimum and
-    # its own maximum at most the diameter. The gap here is a factor of 35, which is what makes
-    # this fixture worth pinning — its jitter put two vertices very close together.
+    # NR is the foil VNR is defined against, not a reported metric. NR <= VNR under either
+    # normaliser is an identity, not an observation: each vertex's own minimum is at least the
+    # global minimum and its own maximum at most the diameter. The gap here is a factor of 35 —
+    # this fixture's jitter put two vertices very close together, which is exactly the case that
+    # sends NR to near zero while VNR stays informative.
     assert 0.0 < values["node_resolution"] < values["node_resolution_vertexwise@max"]
     assert values["node_resolution_vertexwise@max"] > 30 * values["node_resolution"]
 

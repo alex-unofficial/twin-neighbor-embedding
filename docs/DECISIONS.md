@@ -530,15 +530,20 @@ protocol as step 3's two measurements. Median, IQR and range over seeds.
 | `edge_length_cv` | 1.5280 | [1.5062, 1.5425] | [1.4987, 1.6023] | 0.024 |
 | **NR** | **0.0000** | [0.0000, 0.0001] | [0.0000, 0.0001] | **0.540** |
 
-**The crowding metrics are quiet instruments, and NR is not one at all.** NND's relative IQR is
-0.4 % — two orders of magnitude tighter than the effect step 3 had to strain to see in
-`knn_recall`, so a step-8 difference of a few percent in NND will be readable where the same
-difference in recall was not. NR, by contrast, is $1\times10^{-5}$ on a 1797-vertex layout and
-swings by 54 % of its median between seeds: it is determined by the single closest pair, so on a
-layout this size it measures which seed happened to put two points nearest each other. That is
-the thesis's own argument for introducing VNR, now measured rather than asserted. **Report NR
-only as a diagnostic with its seed spread beside it, never as a score** — a step-11 flag, of the
-same kind SNS already carries.
+**The crowding metrics are quiet instruments.** NND's relative IQR is 0.4 % — two orders of
+magnitude tighter than the effect step 3 had to strain to see in `knn_recall`, so a step-8
+difference of a few percent in NND will be readable where the same difference in recall was not.
+
+**NR is in the table as a control, not as a candidate.** It is **not one of the reported
+metrics**: the thesis introduces it only to argue against it — "because it depends on the single
+closest pair of vertices, it behaves as a worst-case overlap detector… for this reason, we use a
+vertex-wise averaged version" — and its closing summary names NND$_k$ and VNR as the
+point-crowding scores. §2.2 asks for `node_resolution` in code, and it is implemented and pinned,
+because VNR is *defined* by contrast with it and because a metric one argues against should be
+computable. What the measurement adds is that the thesis's argument is quantitatively right on a
+real layout: NR is $1\times10^{-5}$ on 1797 vertices and swings by 54 % of its median between
+seeds, so it reports which seed happened to place two points nearest each other. Read the row as
+corroboration of the design decision, not as a warning about a metric anyone planned to report.
 
 **Mean versus max, on five real layouts of one graph.** Five layouts of `digits` — SG-*t*-SNE,
 spectral, spring, Kamada-Kawai and a random Gaussian control — ranked by each normaliser.

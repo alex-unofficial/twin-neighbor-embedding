@@ -553,12 +553,17 @@ well-separated row. What collapses is the spread of the per-vertex maxima, 0.140
 normaliser stops being per-vertex. The substance of the entry is right; the phrasing invites a
 check that fails.
 
-**⚠️ NR is not a usable score on a layout of any size, and §2.2 should say so.** On `digits`
-($n = 1797$) it is $1\times10^{-5}$ with a **54 % relative IQR across seeds** — it is determined
-by the single closest pair, so it reports which seed happened to place two points nearest each
-other. NND, VNR and `edge_length_cv` on the same runs have relative IQRs of 0.4 %, 1.3-1.8 % and
-2.4 %. Report NR as a diagnostic with its seed spread beside it; it needs the same kind of
-reporting flag §5.3 owes SNS on a Kamada-Kawai layout.
+**NR is implemented but is not one of the reported metrics, and §2.2 should say so.** The thesis
+introduces eq. (68) only to argue against it — it "behaves as a worst-case overlap detector", and
+"for this reason, we use a vertex-wise averaged version" — and its closing summary names NND$_k$
+and VNR as the point-crowding scores. §2.2 lists `node_resolution` beside `node_resolution_vertexwise`
+without saying that the first is the foil for the second, which invites it into a results table.
+It is implemented and pinned regardless, because VNR is defined by contrast with it.
+
+Measured, the thesis's argument is quantitatively right: on `digits` ($n = 1797$) NR is
+$1\times10^{-5}$ with a **54 % relative IQR across seeds**, against 0.4 % for NND, 1.3-1.8 % for
+VNR and 2.4 % for `edge_length_cv` on the same runs. It reports which seed happened to place two
+points nearest each other. That is corroboration of the design decision, not a new caveat.
 
 **§2.2's `edge_length_cv` is not a thesis equation.** Eq. (79) is the chord and eq. (80) is the
 *mean* edge length $\bar L$ — the quantity LWCr normalises by, now pinned in the golden file so

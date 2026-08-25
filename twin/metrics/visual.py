@@ -134,10 +134,19 @@ def node_resolution(X: np.ndarray) -> float:
         \mathrm{NR}(X) = \frac{\min_{i<j}\lVert x_i-x_j\rVert}
                               {\max_{i<j}\lVert x_i-x_j\rVert}
 
-    Scale-invariant, and a **worst-case overlap detector**: it is determined by a single pair,
-    so one nearly coincident pair drives it to near zero however readable the rest of the
-    drawing is. That is what :func:`node_resolution_vertexwise` exists to soften, and it is why
-    NR is reported beside it rather than instead of it.
+    ⚠️ **Not one of the reported metrics — VNR is.** The thesis introduces eq. (68) in order to
+    argue against it: it is determined by a single pair, so one nearly coincident pair drives it
+    to near zero however readable the rest of the drawing is, and "for this reason, we use a
+    vertex-wise averaged version". Its summary of the suite names NND$_k$ and VNR as the
+    point-crowding scores and does not include NR. This function exists because
+    :func:`node_resolution_vertexwise` is *defined* by contrast with it, and because a quantity
+    the argument rests on should be computable rather than asserted.
+
+    Measured on `digits`, the argument holds quantitatively: NR is $1\times10^{-5}$ over 1797
+    vertices with a 54 % relative IQR across seeds, where NND's is 0.4 % — it reports which seed
+    happened to place two points nearest each other (`DECISIONS.md`). Scale-invariant, and
+    useful as a diagnostic of the lower tail beside the distributions; not a score to rank
+    layouts by.
 
     Returns:
         The ratio, 0 when any two vertices coincide, ``nan`` for a layout collapsed to a single
