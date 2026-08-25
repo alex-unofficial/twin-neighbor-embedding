@@ -464,6 +464,115 @@ lines. Since the generator is both sides of the equality test, an additive diff 
 evidence the existing fourteen values did not move. `MetricSpec`, `METRIC_REGISTRY` and
 `evaluate_layout` remain step 7 — the same boundary step 3 held.
 
+## Step 4 departures from `plans/step4-visual.md`, and why
+
+Following the precedent of steps 2 and 3. Nine commits landed against nine planned, and the
+plan's own timing table reproduced on re-measurement — 355 → 82 ms and a 301 → 101 MB peak for
+`condensed()` at $n = 5007$, against the plan's 370 → 95 ms and 301 → 101 MB — so the argument
+for putting the machinery first stands as written. These are the places the plan did not survive
+contact.
+
+**VNR under the `"mean"` normaliser is *exactly* `normalized_nn_distance(X, 1)`.** Neither the
+plan nor §0.5 says so. Both are $\frac{1}{n}\sum_i \min_{j\neq i}\lVert x_i-x_j\rVert$ divided by
+$\bar d$; the sum and the division commute. So the `[THESIS EDIT]` does not merely put NND and
+VNR into one family with one normaliser — it makes VNR the $k = 1$ member of that family. The
+`"mean"` form therefore carries no information NND$_k$ does not, while the thesis's `"max"` form
+does. Pinned as an identity in `tests/test_visual.py`, and confirmed on real layouts below. This
+is **the author's call to make**, not the implementer's: the edit is still defensible on the
+grounds §0.5 gives, but "report NND$_k$ and VNR" is, under it, reporting one metric at two values
+of $k$.
+
+**"Collapses back toward the global NR" is a claim about the normaliser, not about the value.**
+Measured on a 4×4 grid plus one distant vertex: VNR$_{\max}$/NR *rises*, 1.21 → 3.74, because NR
+falls off as the diameter while VNR$_{\max}$ is held up by the outlier's own well-separated row.
+What does collapse is the *spread* of the per-vertex maxima — 0.140 → 0.023 — which is the actual
+mechanism: the normaliser stops being per-vertex. The test asserts that, and nothing about the
+ratio.
+
+**`edge_length_cv` is not a thesis equation.** The plan cites "eqs. (79), (80)" for it; eq. (79)
+is the chord and eq. (80) is the *mean* edge length $\bar L$ — the quantity LWCr normalises by.
+The coefficient of variation is spec §2.2's own addition. Both are now in the golden file, so
+step 5 inherits a fixed $\bar L$ rather than establishing one.
+
+**`_stress_pairs` takes the `EvaluationContext` itself as `ideal=`.** The plan says only that it
+"uses them when the ideal came from a context". A new parameter would have broken §2's three
+metric signatures before step 7's registry is written; `ideal=` already admitted a square array
+and a condensed vector, so admitting the object that owns both costs no surface. `release()`
+also clears the cache wholesale rather than popping `"ideal"`: a condensed vector outliving the
+array it was condensed from is a stale copy of the one target the whole ablation rests on.
+
+**The golden file pins the distributions by order statistics.** The plan does not say how to pin
+an array-valued metric, and the metric deliberately does not summarise itself (§3.1.3). Three
+order statistics each — a summary of the *fixture*, not of the metric — because otherwise a
+silent move in either distribution is invisible until step 11 plots it. The diff was 13
+insertions and 0 deletions.
+
+**The edge-order trap is real on `digits` and latent everywhere else.** `G.edges()` and the CSR
+upper triangle agree exactly on `karate` and on `football_2023`, because those graphs were built
+in sorted order — so a test on either would have passed against a wrong implementation. On
+`digits` they disagree in **12377 of 14732 positions**: the same multiset of lengths in a
+different sequence, which is the shape §1.6 had one layer down. `edge_lengths` is tested there.
+
+## The visual metrics on real layouts — the noise floor, and VNR's two normalisers
+
+Step 4 is greenfield, so unlike step 3 there is no arm to compare against. What had to be
+established is what a difference has to beat before it means anything at step 8, and the
+mean-versus-max comparison §0.5 promises will happen "once on real layouts".
+
+**Protocol.** SG-*t*-SNE on $A_V$ of `digits`, seven seeds, $k = 16$ (§0.5 decision 6), the same
+protocol as step 3's two measurements. Median, IQR and range over seeds.
+
+| metric | median | IQR | range | IQR/median |
+|---|---|---|---|---|
+| NND$_{16}$ | 0.0449 | [0.0448, 0.0450] | [0.0445, 0.0451] | **0.004** |
+| NND$_1$ = VNR(mean) | 0.0123 | [0.0122, 0.0123] | [0.0119, 0.0124] | 0.013 |
+| VNR(max) | 0.0069 | [0.0068, 0.0070] | [0.0068, 0.0070] | 0.018 |
+| `edge_length_cv` | 1.5280 | [1.5062, 1.5425] | [1.4987, 1.6023] | 0.024 |
+| **NR** | **0.0000** | [0.0000, 0.0001] | [0.0000, 0.0001] | **0.540** |
+
+**The crowding metrics are quiet instruments, and NR is not one at all.** NND's relative IQR is
+0.4 % — two orders of magnitude tighter than the effect step 3 had to strain to see in
+`knn_recall`, so a step-8 difference of a few percent in NND will be readable where the same
+difference in recall was not. NR, by contrast, is $1\times10^{-5}$ on a 1797-vertex layout and
+swings by 54 % of its median between seeds: it is determined by the single closest pair, so on a
+layout this size it measures which seed happened to put two points nearest each other. That is
+the thesis's own argument for introducing VNR, now measured rather than asserted. **Report NR
+only as a diagnostic with its seed spread beside it, never as a score** — a step-11 flag, of the
+same kind SNS already carries.
+
+**Mean versus max, on five real layouts of one graph.** Five layouts of `digits` — SG-*t*-SNE,
+spectral, spring, Kamada-Kawai and a random Gaussian control — ranked by each normaliser.
+
+| layout | VNR(mean) | VNR(max) | NND$_{16}$ | NR | spread of per-vertex maxima |
+|---|---|---|---|---|---|
+| spectral | 0.0078 | 0.0019 | 0.0256 | 0.0000 | **0.062** |
+| sgtsne | 0.0119 | 0.0068 | 0.0445 | 0.0001 | 0.142 |
+| spring | 0.0171 | 0.0085 | 0.0486 | 0.0004 | 0.171 |
+| kamada-kawai | 0.0278 | 0.0142 | 0.0740 | 0.0013 | 0.134 |
+| random | 0.0324 | 0.0115 | 0.0952 | 0.0003 | 0.135 |
+
+**The two normalisers disagree, and the disagreement is not noise.** They order the first three
+identically and swap the last two: `"mean"` ranks the random control as the least crowded layout
+(0.0319 over five seeds, range [0.0315, 0.0331]) and `"max"` ranks Kamada-Kawai above it
+(0.0142 against 0.0109, range [0.0105, 0.0112]) — **disjoint over all five seeds in both
+directions**. Spearman between the two columns is 0.90. So the choice of normaliser changes a
+reported ordering on real data, which is what §0.5 wanted to know.
+
+**The mechanism §0.5 predicted does occur, on `spectral`.** Its per-vertex maxima have a spread
+of 0.062 against 0.13–0.17 for every other layout — a few extreme vertices, so every denominator
+is approximately the diameter and `"max"` stops being a per-vertex quantity. It is also where
+the two normalisers disagree most in *degree*: spectral is 1.5× below SG-*t*-SNE under `"mean"`
+and 3.6× below it under `"max"`. Whether that exaggeration is a defect depends on what is being
+asked, which is exactly why both are kept selectable and both are in the golden file.
+
+**What is not settled here.** The Kamada-Kawai/random swap is not explained by the outlier
+mechanism — both have ordinary spread — so on that pair neither normaliser is demonstrably
+wrong, and this measurement discharges §0.5's promise to *compare* them without deciding which
+to feature. Taken with the identity above, the decision the author faces is sharper than §0.5
+framed it: `"mean"` is NND$_1$, so featuring it means the point-crowding column is NND at two
+values of $k$; `"max"` is a genuinely second measurement, at the cost of being distorted by
+outlier vertices on layouts like spectral's.
+
 ## Reconciling the code with `thesis.pdf` — the decision, not the list
 
 The divergences themselves are a table in **spec §0.5's session-3 corrections**, which is their one
