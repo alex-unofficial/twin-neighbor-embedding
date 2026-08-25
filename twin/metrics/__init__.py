@@ -35,9 +35,11 @@ from twin.metrics.label import (
     majority_class_rate,
 )
 from twin.metrics.visual import (
+    nn_distance_distribution,
     node_resolution,
     node_resolution_vertexwise,
     normalized_nn_distance,
+    pairwise_distance_distribution,
 )
 from twin.metrics.structural import (
     NeighborPreservationReport,
@@ -78,10 +80,12 @@ __all__ = [
     "weighted_recall",
     "weighted_recall_report",
     "majority_class_rate",
+    "nn_distance_distribution",
     "node_resolution",
     "node_resolution_vertexwise",
     "normalized_nn_distance",
     "normalized_stress",
+    "pairwise_distance_distribution",
     "optimal_scale",
     "raw_stress",
     "scale_normalized_stress",

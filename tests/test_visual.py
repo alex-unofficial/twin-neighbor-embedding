@@ -11,9 +11,11 @@ import pytest
 
 from twin.metrics.common import clear_loo_cache
 from twin.metrics.visual import (
+    nn_distance_distribution,
     node_resolution,
     node_resolution_vertexwise,
     normalized_nn_distance,
+    pairwise_distance_distribution,
 )
 
 
@@ -311,3 +313,83 @@ def test_vnr_with_the_mean_normaliser_is_exactly_nnd_at_k_equals_one(grid16, kar
     """
     for X in (grid16, karate_random_layout):
         assert node_resolution_vertexwise(X, "mean") == normalized_nn_distance(X, 1)
+
+
+# --------------------------------------------------------------------------- #
+#                    Distance distributions (eqs. 70, 71)                      #
+# --------------------------------------------------------------------------- #
+
+
+def test_the_pairwise_distribution_is_one_value_per_pair(grid16):
+    n = grid16.shape[0]
+    assert pairwise_distance_distribution(grid16).shape == (n * (n - 1) // 2,)
+
+
+def test_the_nn_distribution_is_one_value_per_vertex(grid16):
+    assert nn_distance_distribution(grid16).shape == (grid16.shape[0],)
+
+
+def test_the_pairwise_distribution_is_the_condensed_vector_over_its_mean(grid16):
+    """The ordering is `CONDENSED_ORDERING`, so it lines up with an ideal-distance vector."""
+    from twin.metrics.common import pairwise_distances
+
+    distances = pairwise_distances(grid16)
+    assert pairwise_distance_distribution(grid16) == pytest.approx(distances / distances.mean())
+
+
+def test_the_pairwise_distribution_has_mean_one(grid16, karate_random_layout):
+    """It is normalised by its own mean, which is what makes two layouts comparable."""
+    for X in (grid16, karate_random_layout):
+        assert pairwise_distance_distribution(X).mean() == pytest.approx(1.0)
+
+
+def test_the_nn_distributions_mean_is_vnr(grid16, karate_random_layout):
+    """Eq. (71) averages to eq. (69) under the `"mean"` normaliser — one family, one
+    normaliser."""
+    for X in (grid16, karate_random_layout):
+        assert nn_distance_distribution(X).mean() == pytest.approx(
+            node_resolution_vertexwise(X, "mean")
+        )
+
+
+def test_the_distributions_minimum_is_nrs_numerator_over_the_mean(grid16_plus_overlap):
+    """The lower tail is what the scalar crowding metrics are read against."""
+    from twin.metrics.common import pairwise_distances
+
+    distribution = pairwise_distance_distribution(grid16_plus_overlap)
+    distances = pairwise_distances(grid16_plus_overlap)
+    assert distribution.min() == pytest.approx(distances.min() / distances.mean())
+    assert nn_distance_distribution(grid16_plus_overlap).min() == pytest.approx(
+        distribution.min()
+    )
+
+
+@pytest.mark.parametrize(
+    "distribution", [pairwise_distance_distribution, nn_distance_distribution]
+)
+def test_the_distributions_are_invariant_under_similarity(grid16, distribution):
+    assert distribution(similarity(grid16)) == pytest.approx(distribution(grid16))
+
+
+@pytest.mark.parametrize(
+    "distribution", [pairwise_distance_distribution, nn_distance_distribution]
+)
+def test_the_distributions_are_nan_on_a_collapsed_layout(distribution):
+    assert np.isnan(distribution(np.zeros((5, 2)))).all()
+
+
+def test_the_pairwise_distribution_does_not_hand_back_the_cache(grid16):
+    """It divides by the mean, so a view would let a consumer scale the cached vector."""
+    from twin.metrics.common import clear_pairwise_cache, pairwise_distances
+
+    clear_pairwise_cache()
+    cached = pairwise_distances(grid16)
+    before = cached.copy()
+    pairwise_distance_distribution(grid16)[:] = 0.0
+    assert np.array_equal(pairwise_distances(grid16), before)
+
+
+def test_the_distributions_are_returned_whole(karate_random_layout):
+    """§3.1.3: diagnostics, not scores. Summarising here would pre-empt step 11's choice."""
+    assert pairwise_distance_distribution(karate_random_layout).ndim == 1
+    assert nn_distance_distribution(karate_random_layout).ndim == 1

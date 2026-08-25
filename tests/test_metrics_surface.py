@@ -57,6 +57,8 @@ REQUIRED_EXPORTS = {
     "normalized_nn_distance",
     "node_resolution",
     "node_resolution_vertexwise",
+    "pairwise_distance_distribution",
+    "nn_distance_distribution",
 }
 
 #: Names the current ``import *`` leaks because the module has no ``__all__``. Permitted, never

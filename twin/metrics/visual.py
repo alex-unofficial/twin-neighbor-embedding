@@ -217,3 +217,61 @@ def node_resolution_vertexwise(X: np.ndarray, normalize: str = "mean") -> float:
         # coincident with every other, which for n > 1 means the whole layout has collapsed.
         return float("nan")
     return float((nearest / widest).mean())
+
+
+# --------------------------------------------------------------------------- #
+#                   Distance distributions (eqs. 70, 71)                       #
+# --------------------------------------------------------------------------- #
+
+
+def pairwise_distance_distribution(X: np.ndarray) -> np.ndarray:
+    r"""$\{\lVert x_i-x_j\rVert/\bar d : i<j\}$ — every pair, normalised (eq. 70).
+
+    **A diagnostic, not a score.** §3.1.3 is explicit: these produce no scalar by which layouts
+    can be ordered, and they are returned whole rather than summarised because summarising them
+    here would pre-empt the choice the reporting layer has to make from the data (step 11).
+    They tell you whether one layout has a longer lower tail of very small distances, whether
+    its distances are more evenly spread, and whether NND or VNR is being driven by a handful of
+    near-overlaps.
+
+    ⚠️ **Large.** One value per pair: 561 for karate, 12.5 million — 100 MB — for tabula.
+    `DECISIONS.md` (20) is how step 7 persists it, in ``distributions/<key>.npz`` rather than in
+    the metric frame, with ``status="distribution"``.
+
+    Returns:
+        The condensed distances over $\bar d$, in
+        :data:`~twin.metrics.common.CONDENSED_ORDERING`, so it lines up elementwise with an
+        ideal-distance vector. All-``nan`` for a collapsed layout.
+    """
+    X = _as_layout(X)
+    distances = pairwise_distances(X)
+    mean_pairwise = distances.mean() if distances.size else np.nan
+    if not mean_pairwise:
+        return np.full(distances.shape, np.nan)
+    # A copy, not a view: `pairwise_distances` hands back the cached array itself.
+    return distances / mean_pairwise
+
+
+def nn_distance_distribution(X: np.ndarray) -> np.ndarray:
+    r"""$\{\min_{j\neq i}\lVert x_i-x_j\rVert/\bar d : i\in V\}$ — per vertex (eq. 71).
+
+    The per-vertex terms whose mean is VNR under the ``"mean"`` normaliser, and the local
+    spacing values NND$_1$ averages. One value per **vertex**, so it is ``n`` long rather than
+    $\binom{n}{2}$ — 5007 values on tabula against 12.5 million — and it is the cheaper of the
+    two diagnostics by four orders of magnitude.
+
+    A diagnostic, not a score; see :func:`pairwise_distance_distribution`.
+
+    Returns:
+        One normalised nearest-neighbour distance per vertex, in vertex order. All-``nan`` for a
+        collapsed layout.
+    """
+    X = _as_layout(X)
+    if X.shape[0] < 2:
+        return np.full(X.shape[0], np.nan)
+
+    nearest, _ = _loo_neighbors(X, 1)
+    mean_pairwise = mean_pairwise_distance(X)
+    if mean_pairwise == 0:
+        return np.full(X.shape[0], np.nan)
+    return nearest[:, 0] / mean_pairwise
