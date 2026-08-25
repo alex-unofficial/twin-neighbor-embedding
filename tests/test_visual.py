@@ -501,3 +501,30 @@ def test_edge_length_cv_is_nan_when_there_is_nothing_to_vary():
 
     assert np.isnan(edge_length_cv(np.zeros((3, 2)), nx.empty_graph(3)))
     assert np.isnan(edge_length_cv(np.zeros((3, 2)), nx.path_graph(3)))
+
+
+# --------------------------------------------------------------------------- #
+#                     Relations between the crowding metrics                   #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("normalize", ["mean", "max"])
+def test_nr_never_exceeds_vnr(grid16, grid16_plus_overlap, karate_random_layout, normalize):
+    r"""An identity, not an observation.
+
+    Each vertex's own minimum is at least the global minimum and its own maximum at most the
+    diameter, so every per-vertex ratio is at least NR and so is their mean. For ``"mean"`` the
+    same holds because $\bar d$ is at most the diameter. This is what "NR is a worst-case
+    detector and VNR is not" means arithmetically.
+    """
+    for X in (grid16, grid16_plus_overlap, karate_random_layout):
+        assert node_resolution(X) <= node_resolution_vertexwise(X, normalize) + 1e-12
+
+
+def test_nnd_is_non_decreasing_in_k(grid16, karate_random_layout):
+    """$d_k$ averages the $k$ smallest distances, so widening the neighbourhood cannot lower
+    it — and it reaches exactly 1 at $k = n-1$."""
+    for X in (grid16, karate_random_layout):
+        swept = normalized_nn_distance(X, list(range(1, X.shape[0])))
+        assert np.all(np.diff(swept) >= -1e-12)
+        assert swept[-1] == pytest.approx(1.0)

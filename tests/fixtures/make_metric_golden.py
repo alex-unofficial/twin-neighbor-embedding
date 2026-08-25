@@ -31,11 +31,18 @@ import numpy as np
 from twin.datasets import load_dataset
 from twin.metrics import (
     adjacency_distance_ratio,
+    edge_length_cv,
+    edge_lengths,
     knn_accuracy,
     knn_jaccard,
     knn_precision,
     knn_recall,
+    nn_distance_distribution,
+    node_resolution,
+    node_resolution_vertexwise,
+    normalized_nn_distance,
     normalized_stress,
+    pairwise_distance_distribution,
     raw_stress,
     scale_normalized_stress,
     weighted_recall,
@@ -71,13 +78,36 @@ def build() -> dict:
         "scale_normalized_stress": scale_normalized_stress(X, ideal=ctx.ideal),
         "raw_stress": raw_stress(X, ideal=ctx.ideal),
         "normalized_stress": normalized_stress(X, ideal=ctx.ideal),
+        # Spec §2.2, added at step 4. `node_resolution_vertexwise` is pinned under **both**
+        # normalisers: the default is a [THESIS EDIT] and the alternative is the thesis's own
+        # equation, so a change to either has to be declared.
+        "node_resolution": node_resolution(X),
+        "node_resolution_vertexwise": node_resolution_vertexwise(X),
+        "node_resolution_vertexwise@max": node_resolution_vertexwise(X, "max"),
+        "edge_length_cv": edge_length_cv(X, dataset.graph),
+        # Eq. (80), the mean edge length LWCr will normalise by — pinned now so that step 5
+        # inherits a fixed value rather than establishing one.
+        "edge_lengths@mean": float(edge_lengths(X, dataset.graph).mean()),
     }
+    # The two distributions are arrays and are deliberately not summarised by the metric
+    # (§3.1.3). They still have to be pinned, or a silent move in either is invisible until
+    # step 11 plots it — so three order statistics each, which is a summary of the *fixture*
+    # rather than of the metric.
+    for name, distribution in (
+        ("pairwise_distance_distribution", pairwise_distance_distribution(X)),
+        ("nn_distance_distribution", nn_distance_distribution(X)),
+    ):
+        values[f"{name}@min"] = float(distribution.min())
+        values[f"{name}@median"] = float(np.median(distribution))
+        values[f"{name}@max"] = float(distribution.max())
+
     for k in KS:
         values[f"knn_recall@k={k}"] = knn_recall(X, dataset.graph, k)
         values[f"knn_precision@k={k}"] = knn_precision(X, dataset.graph, k)
         values[f"knn_jaccard@k={k}"] = knn_jaccard(X, dataset.graph, k)
         values[f"weighted_recall@k={k}"] = weighted_recall(X, ctx.affinity, k)
         values[f"knn_accuracy@k={k}"] = knn_accuracy(X, labels, k)
+        values[f"normalized_nn_distance@k={k}"] = normalized_nn_distance(X, k)
 
     return {
         "dataset": "karate_weighted",
