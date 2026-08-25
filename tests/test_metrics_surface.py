@@ -55,6 +55,8 @@ REQUIRED_EXPORTS = {
     "clear_loo_cache",
     # spec §2.2, added at step 4.
     "normalized_nn_distance",
+    "node_resolution",
+    "node_resolution_vertexwise",
 }
 
 #: Names the current ``import *`` leaks because the module has no ``__all__``. Permitted, never

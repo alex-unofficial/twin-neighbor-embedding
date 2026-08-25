@@ -35,6 +35,8 @@ from twin.metrics.label import (
     majority_class_rate,
 )
 from twin.metrics.visual import (
+    node_resolution,
+    node_resolution_vertexwise,
     normalized_nn_distance,
 )
 from twin.metrics.structural import (
@@ -76,6 +78,8 @@ __all__ = [
     "weighted_recall",
     "weighted_recall_report",
     "majority_class_rate",
+    "node_resolution",
+    "node_resolution_vertexwise",
     "normalized_nn_distance",
     "normalized_stress",
     "optimal_scale",

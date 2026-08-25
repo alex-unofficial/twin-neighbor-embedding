@@ -10,7 +10,11 @@ import numpy as np
 import pytest
 
 from twin.metrics.common import clear_loo_cache
-from twin.metrics.visual import normalized_nn_distance
+from twin.metrics.visual import (
+    node_resolution,
+    node_resolution_vertexwise,
+    normalized_nn_distance,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -152,3 +156,158 @@ def test_nnd_refuses_a_k_with_no_neighbours(grid9):
 def test_nnd_refuses_a_non_2d_array():
     with pytest.raises(ValueError, match="must be 2-D"):
         normalized_nn_distance(np.zeros(10), 1)
+
+
+# --------------------------------------------------------------------------- #
+#                          NR and VNR (eqs. 68, 69)                            #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def grid16() -> np.ndarray:
+    """A 4x4 unit grid: no crowding and no outlier — the reference readable layout."""
+    xs, ys = np.meshgrid(np.arange(4.0), np.arange(4.0))
+    return np.column_stack([xs.ravel(), ys.ravel()])
+
+
+@pytest.fixture
+def grid16_plus_outlier(grid16) -> np.ndarray:
+    """`grid16` and one vertex 50 units away. Seventeen vertices, no near-overlap at all."""
+    return np.vstack([grid16, [50.0, 0.0]])
+
+
+@pytest.fixture
+def grid16_plus_overlap(grid16) -> np.ndarray:
+    """`grid16` and one vertex at a fifth of the grid spacing from a corner.
+
+    Seventeen vertices and a genuine near-overlap — the artifact VNR exists to detect.
+    """
+    return np.vstack([grid16, grid16[0] + 0.2])
+
+
+def test_nr_on_the_unit_square(unit_square):
+    r"""$1/\sqrt2$: sides against diagonals."""
+    assert node_resolution(unit_square) == pytest.approx(1 / np.sqrt(2))
+
+
+def test_nr_is_one_when_every_distance_is_equal():
+    X = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, np.sqrt(3) / 2]])
+    assert node_resolution(X) == pytest.approx(1.0)
+
+
+def test_nr_is_zero_on_any_coincident_pair(grid16):
+    """A worst-case detector: one duplicated vertex, and the rest of the layout is ignored."""
+    X = np.vstack([grid16, grid16[0]])
+    assert node_resolution(X) == 0.0
+
+
+@pytest.mark.parametrize("normalize", ["mean", "max"])
+def test_vnr_and_nr_are_invariant_under_similarity(grid16, normalize):
+    assert node_resolution_vertexwise(similarity(grid16), normalize) == pytest.approx(
+        node_resolution_vertexwise(grid16, normalize)
+    )
+    assert node_resolution(similarity(grid16)) == pytest.approx(node_resolution(grid16))
+
+
+@pytest.mark.parametrize("normalize", ["mean", "max"])
+def test_vnr_is_nan_on_a_collapsed_layout(normalize):
+    assert np.isnan(node_resolution_vertexwise(np.zeros((5, 2)), normalize))
+
+
+def test_nr_is_nan_on_a_collapsed_layout():
+    assert np.isnan(node_resolution(np.zeros((5, 2))))
+
+
+def test_vnr_refuses_an_unknown_normaliser(grid16):
+    with pytest.raises(ValueError, match="normalize must be"):
+        node_resolution_vertexwise(grid16, "median")
+
+
+def test_the_max_normaliser_is_chunked_but_not_changed_by_chunking(grid16, monkeypatch):
+    """A chunk boundary must not move the answer; the chunking is a memory bound, not a model."""
+    import twin.metrics.visual as visual
+
+    reference = node_resolution_vertexwise(grid16, "max")
+    monkeypatch.setattr(visual, "MAX_NORMALISER_CHUNK_BYTES", 8 * 4)  # a few rows at a time
+    assert node_resolution_vertexwise(grid16, "max") == pytest.approx(reference)
+
+
+# --------------------------------------------------------------------------- #
+#          The [THESIS EDIT]: what "mean" buys, and what it costs              #
+# --------------------------------------------------------------------------- #
+
+
+def test_the_two_normalisers_agree_on_ordering_without_an_outlier(grid16, grid16_plus_overlap):
+    """Where the thesis form is well behaved, the edit changes nothing that matters."""
+    for normalize in ("mean", "max"):
+        clean = node_resolution_vertexwise(grid16, normalize)
+        crowded = node_resolution_vertexwise(grid16_plus_overlap, normalize)
+        assert clean > crowded
+
+
+def test_the_two_normalisers_disagree_when_one_vertex_is_pushed_far_away(
+    grid16_plus_outlier, grid16_plus_overlap
+):
+    """The justification for the edit, as a test rather than as a paragraph (spec §0.5).
+
+    Two seventeen-vertex layouts. One is a clean grid plus a distant vertex — nothing overlaps
+    anything. The other is a clean grid plus a near-overlap, which is precisely the artifact VNR
+    is for. The ``"mean"`` normaliser ranks them correctly. The ``"max"`` normaliser ranks the
+    near-overlap as the *more readable* of the two, by a factor of three, because a single
+    distant vertex makes every per-vertex maximum approximately the diameter — at which point it
+    is no longer a per-vertex quantity at all.
+    """
+    outlier_mean = node_resolution_vertexwise(grid16_plus_outlier, "mean")
+    overlap_mean = node_resolution_vertexwise(grid16_plus_overlap, "mean")
+    outlier_max = node_resolution_vertexwise(grid16_plus_outlier, "max")
+    overlap_max = node_resolution_vertexwise(grid16_plus_overlap, "max")
+
+    assert outlier_mean > overlap_mean
+    assert outlier_max < overlap_max
+    assert overlap_max > 3 * outlier_max
+
+
+def test_an_outlier_makes_the_max_normaliser_stop_being_per_vertex(grid16, grid16_plus_outlier):
+    """The mechanism behind the edit, stated as what it actually is.
+
+    §0.5 says the ``"max"`` form "collapses back toward the global NR". That is a claim about
+    the *normaliser*, not about the value: with one distant vertex, every vertex's maximum is
+    approximately the diameter, so VNR stops dividing by a per-vertex quantity and starts
+    dividing by a global one — which is NR's normaliser. Measured here as the spread of the
+    per-vertex maxima, over the sixteen vertices that are not themselves the outlier.
+
+    Read as a *value*, the phrase does not hold and is not asserted: VNR$_{\\max}$/NR rises from
+    1.2 to 3.7 here, because NR falls off as the diameter while VNR$_\\max$ is held up by the
+    outlier's own well-separated row. `DECISIONS.md` records the correction.
+    """
+    from twin.metrics.visual import _rowwise_max_distance
+
+    def spread(X):
+        widest = _rowwise_max_distance(X)[:16]
+        return widest.std() / widest.mean()
+
+    # 0.140 -> 0.023: a genuinely per-vertex normaliser becomes an almost constant one.
+    assert spread(grid16) > 0.1
+    assert spread(grid16_plus_outlier) < spread(grid16) / 5
+
+
+def test_an_outlier_barely_moves_the_mean_normaliser(grid16, grid16_plus_outlier):
+    """Why: the outlier inflates the numerator — its own nearest neighbour is far away — about
+    as much as it inflates $\\bar d$, and the two largely cancel."""
+    assert node_resolution_vertexwise(grid16_plus_outlier, "mean") == pytest.approx(
+        node_resolution_vertexwise(grid16, "mean"), rel=0.1
+    )
+    assert node_resolution_vertexwise(grid16_plus_outlier, "max") < 0.4 * (
+        node_resolution_vertexwise(grid16, "max")
+    )
+
+
+def test_vnr_with_the_mean_normaliser_is_exactly_nnd_at_k_equals_one(grid16, karate_random_layout):
+    r"""Not an approximation — the same expression with the sum and the division commuted.
+
+    Worth pinning because it is a consequence of the edit that §0.5 does not state: the
+    ``"mean"`` form does not merely join NND's family, it *is* NND$_1$. The thesis's ``"max"``
+    form is the one that carries information NND$_k$ does not.
+    """
+    for X in (grid16, karate_random_layout):
+        assert node_resolution_vertexwise(X, "mean") == normalized_nn_distance(X, 1)

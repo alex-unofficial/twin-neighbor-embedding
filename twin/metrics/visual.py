@@ -21,8 +21,15 @@ All layout arrays are ``(n_points, d)``.
 """
 
 import numpy as np
+from scipy.spatial.distance import cdist
 
-from twin.metrics.common import _loo_neighbors, mean_pairwise_distance
+from twin.metrics.common import _loo_neighbors, mean_pairwise_distance, pairwise_distances
+
+#: Row budget for the chunked row-wise maximum, in bytes. The ``normalize="max"`` branch of
+#: :func:`node_resolution_vertexwise` is the **only** $O(n^2)$-memory computation in this module,
+#: and squaring up tabula's condensed vector would be 200 MB on top of the 100 MB vector it is
+#: already holding. Chunking bounds it at this instead, for one extra pass over the data.
+MAX_NORMALISER_CHUNK_BYTES = 32 << 20
 
 
 def _as_layout(X: np.ndarray, name: str = "X") -> np.ndarray:
@@ -100,3 +107,113 @@ def normalized_nn_distance(X: np.ndarray, k=10):
     dist, _ = _loo_neighbors(X, int(ks.max()))
     values = np.array([dist[:, :kk].mean() / mean_pairwise for kk in ks])
     return _scalar_or_array(values, k)
+
+
+# --------------------------------------------------------------------------- #
+#                    Node resolution: NR and VNR (eqs. 68, 69)                 #
+# --------------------------------------------------------------------------- #
+
+
+def node_resolution(X: np.ndarray) -> float:
+    r"""NR — the closest pair of vertices against the widest (eq. 68).
+
+    .. math::
+
+        \mathrm{NR}(X) = \frac{\min_{i<j}\lVert x_i-x_j\rVert}
+                              {\max_{i<j}\lVert x_i-x_j\rVert}
+
+    Scale-invariant, and a **worst-case overlap detector**: it is determined by a single pair,
+    so one nearly coincident pair drives it to near zero however readable the rest of the
+    drawing is. That is what :func:`node_resolution_vertexwise` exists to soften, and it is why
+    NR is reported beside it rather than instead of it.
+
+    Returns:
+        The ratio, 0 when any two vertices coincide, ``nan`` for a layout collapsed to a single
+        point — where the denominator is 0 and the quantity is undefined rather than 0 or 1.
+    """
+    X = _as_layout(X)
+    if X.shape[0] < 2:
+        return float("nan")
+
+    distances = pairwise_distances(X)
+    widest = float(distances.max())
+    if widest == 0:
+        return float("nan")
+    return float(distances.min()) / widest
+
+
+def _rowwise_max_distance(X: np.ndarray) -> np.ndarray:
+    r"""$\max_{j}\lVert x_i-x_j\rVert$ per row, in chunks.
+
+    The diagonal needs no masking: $\lVert x_i-x_i\rVert = 0$ can only be the row maximum when
+    every distance in the row is 0, and that is the collapsed case the caller refuses anyway.
+    """
+    n = X.shape[0]
+    rows = max(1, MAX_NORMALISER_CHUNK_BYTES // (8 * max(n, 1)))
+    out = np.empty(n)
+    for start in range(0, n, rows):
+        stop = min(start + rows, n)
+        out[start:stop] = cdist(X[start:stop], X).max(axis=1)
+    return out
+
+
+def node_resolution_vertexwise(X: np.ndarray, normalize: str = "mean") -> float:
+    r"""VNR — per-vertex nearest-neighbour distance against a normaliser (eq. 69).
+
+    .. math::
+
+        \mathrm{VNR}(X) = \frac{1}{n}\sum_{i\in V}
+            \frac{\min_{j\neq i}\lVert x_i-x_j\rVert}{N_i}
+
+    Unlike :func:`node_resolution` it is not decided by a single pair, so it stays sensitive to
+    crowding while reflecting the typical readability of the layout. Larger is better separated.
+
+    Args:
+        X: an ``(n, d)`` layout.
+        normalize: what $N_i$ is.
+
+            ``"mean"`` **(default)** — the global $\bar d$, so every vertex is judged against
+            one scale. **[THESIS EDIT]**: eq. (69) specifies ``"max"``, and this deliberately
+            differs (spec §0.5). With a single distant vertex, *every* per-vertex maximum is
+            approximately the diameter, so the ``"max"`` form stops being per-vertex at all and
+            collapses back toward the global NR it was introduced to fix — measured below.
+
+            ``"max"`` — the thesis's $\max_{j\neq i}\lVert x_i-x_j\rVert$, each vertex against
+            its own visual range. Kept selectable so the two can be compared on real layouts, as
+            §0.5 requires. Chunked: it is the only $O(n^2)$-memory computation in this module.
+
+    Returns:
+        The mean ratio, or ``nan`` for a layout collapsed to a single point.
+
+    Note:
+        ⚠️ **With ``normalize="mean"`` this is exactly** ``normalized_nn_distance(X, 1)``.
+        Both are $\frac{1}{n}\sum_i \min_{j\neq i}\lVert x_i-x_j\rVert$ over $\bar d$; the sum
+        and the division commute, so the edit does not merely put NND and VNR in one family, it
+        makes VNR the $k=1$ member of it. That is not a defect — NND$_k$ is reported at $k$ =
+        mean degree, which is a different number — but it does mean the ``"mean"`` form carries
+        no information NND$_k$ does not, whereas the thesis's ``"max"`` form does. A test pins
+        the identity, and `DECISIONS.md` records it as something the author should know when
+        deciding what to report.
+    """
+    if normalize not in ("mean", "max"):
+        raise ValueError(f"normalize must be 'mean' or 'max', got {normalize!r}")
+
+    X = _as_layout(X)
+    if X.shape[0] < 2:
+        return float("nan")
+
+    nearest, _ = _loo_neighbors(X, 1)
+    nearest = nearest[:, 0]
+
+    if normalize == "mean":
+        denominator = mean_pairwise_distance(X)
+        if denominator == 0:
+            return float("nan")
+        return float(nearest.mean() / denominator)
+
+    widest = _rowwise_max_distance(X)
+    if widest.min() == 0:
+        # Only possible when every distance is 0: a row's maximum is 0 iff that vertex is
+        # coincident with every other, which for n > 1 means the whole layout has collapsed.
+        return float("nan")
+    return float((nearest / widest).mean())
