@@ -124,6 +124,89 @@ def test_the_closure_can_be_released(context):
     assert not context.ideal_is_computed
 
 
+# --------------------------------------------------------------------------- #
+#                    The condensed form and the finite mask                    #
+# --------------------------------------------------------------------------- #
+
+
+def test_the_condensed_ideal_is_the_condensed_ideal(context):
+    """Same array, same ordering — the caching must not become a second definition."""
+    from twin.metrics.common import condensed
+
+    assert np.array_equal(context.ideal_condensed, condensed(context.ideal))
+
+
+def test_the_condensed_ideal_is_computed_once(context):
+    """The point of the property: four stress calls must not condense four times."""
+    assert context.ideal_condensed is context.ideal_condensed
+
+
+def test_the_finite_mask_is_the_condensed_masks_own_mask(context):
+    from twin.metrics.common import finite_pair_mask
+
+    assert np.array_equal(context.finite_pairs, finite_pair_mask(context.ideal))
+    assert context.finite_pairs.all()  # karate is connected
+
+
+def test_the_finite_mask_follows_the_disconnection_policy(disjoint_paths):
+    """The counts are the fixture's hand-computable 6 and 9 (`conftest.py`)."""
+    from twin.datasets import Dataset, Unweighted
+
+    dataset = Dataset(
+        name="two_components",
+        graph=disjoint_paths,
+        affinity=Unweighted(),
+        distance=Unweighted(),
+    )
+    assert EvaluationContext.for_dataset(dataset).finite_pairs.sum() == 6
+    assert EvaluationContext.for_dataset(dataset, disconnected="mask").finite_pairs.sum() == 9
+
+
+def test_neither_derived_form_is_computed_eagerly(karate_dataset):
+    ctx = EvaluationContext.for_dataset(karate_dataset)
+    assert not ctx.ideal_is_computed
+    ctx.finite_pairs
+    assert ctx.ideal_is_computed
+
+
+def test_release_drops_the_derived_forms_too(context):
+    """A derived array outliving the array it came from is a stale shared target."""
+    context.ideal_condensed
+    context.finite_pairs
+    context.release()
+
+    assert not context.ideal_is_computed
+    assert context._cache == {}
+
+
+def test_the_stresses_read_the_context_and_agree_with_the_array(context):
+    """Passing the context is the results-path call; it must not be a second implementation."""
+    from twin.metrics.structural import normalized_stress, raw_stress
+
+    X = np.random.default_rng(23).normal(size=(context.n, 2))
+    for metric in (scale_normalized_stress, raw_stress, normalized_stress):
+        assert metric(X, ideal=context) == metric(X, ideal=context.ideal)
+
+
+def test_a_context_passed_as_ideal_is_masked_like_an_array(disjoint_paths):
+    """The mask is the context's, so a disconnected dataset needs no second code path."""
+    from twin.datasets import Dataset, Unweighted
+    from twin.metrics.common import condensed
+
+    dataset = Dataset(
+        name="two_components",
+        graph=disjoint_paths,
+        affinity=Unweighted(),
+        distance=Unweighted(),
+    )
+    ctx = EvaluationContext.for_dataset(dataset)
+    X = np.random.default_rng(24).normal(size=(ctx.n, 2))
+
+    # `ideal=ctx.ideal` reaches the array path, whose mask is `np.isfinite` of the same vector.
+    assert scale_normalized_stress(X, ideal=ctx) == scale_normalized_stress(X, ideal=ctx.ideal)
+    assert np.isfinite(condensed(ctx.ideal)).sum() == 6
+
+
 def test_the_guard_is_carried_into_the_closure(karate_dataset):
     ctx = EvaluationContext.for_dataset(karate_dataset, max_n=10)
     with pytest.raises(ValueError, match="max_n=10"):
