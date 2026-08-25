@@ -3,7 +3,8 @@
 The flat ``twin/metrics.py`` became this package at spec §7 step 3. The split follows §2's
 layout: :mod:`~twin.metrics.common` for shared machinery, :mod:`~twin.metrics.structural` for
 metrics of points against the graph, :mod:`~twin.metrics.label` for metrics of points against a
-label vector. ``visual``, ``crossings`` and the registry arrive at steps 4-7.
+label vector. :mod:`~twin.metrics.visual` for metrics of the points alone — readability rather than
+correspondence. ``crossings`` and the registry arrive at steps 5-7.
 
 Every layout array here is ``(n_points, d)``. Conversion from the ``(d, n)`` orientation the
 embedding layer returns happens exactly once, in ``twin.results.LayoutResult.from_raw``; see
@@ -32,6 +33,9 @@ from twin.metrics.label import (
     knn_accuracy,
     knn_accuracy_report,
     majority_class_rate,
+)
+from twin.metrics.visual import (
+    normalized_nn_distance,
 )
 from twin.metrics.structural import (
     NeighborPreservationReport,
@@ -72,6 +76,7 @@ __all__ = [
     "weighted_recall",
     "weighted_recall_report",
     "majority_class_rate",
+    "normalized_nn_distance",
     "normalized_stress",
     "optimal_scale",
     "raw_stress",

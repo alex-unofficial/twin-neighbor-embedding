@@ -53,6 +53,8 @@ REQUIRED_EXPORTS = {
     "adjacency_distance_ratio",
     # Step 4 machinery: one `clear_*` per cache family, since the two have different capacities.
     "clear_loo_cache",
+    # spec §2.2, added at step 4.
+    "normalized_nn_distance",
 }
 
 #: Names the current ``import *`` leaks because the module has no ``__all__``. Permitted, never
