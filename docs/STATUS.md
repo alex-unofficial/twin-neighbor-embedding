@@ -2,8 +2,8 @@
 
 Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
-**Last updated:** end of session 3 (2026-08-24), which closed spec §7 step 3. Branch
-`experiment-setup` @ `0974282`.
+**Last updated:** end of session 3 (2026-08-24), which closed spec §7 step 3 and prepared the
+step 4 handoff. Branch `experiment-setup` @ `a29930c`.
 
 ---
 
@@ -31,15 +31,17 @@ Section 5 numbers before step 8.
 ## Read these before starting
 
 1. `CLAUDE.md` — non-negotiable conventions and the version-control policy.
-2. `docs/EXPERIMENT_SETUP_SPEC.md` **§0.5 first** — it supersedes the rest of the document.
+2. `docs/EXPERIMENT_SETUP_SPEC.md` **§0.5 first** — it supersedes the rest of the document. It
+   now carries three correction blocks, one per session; the newest wins. Session 3's also holds
+   the reconciliation table against `thesis.pdf` and the two new `[THESIS EDIT]`s.
 3. `docs/DECISIONS.md` — the open questions the implementer was asked to settle, with reasoning.
 4. `docs/DATASET_PROVENANCE.md` — where each dataset's weights actually come from. Assertions
    here are executable: `tests/test_dataset_provenance.py`.
 5. `docs/DATASET_REPORT.md` — the generated roster table (`python -m twin.report`).
-6. [`docs/plans/step2-datasets.md`](plans/step2-datasets.md) and
+6. [`docs/plans/step4-visual.md`](plans/step4-visual.md) — the commit sequence and verification
+   for the step in progress. [`step2-datasets.md`](plans/step2-datasets.md) and
    [`step3-metrics.md`](plans/step3-metrics.md) are **history**, kept for their record of where
    the implementation departed from them — the departures themselves are in `DECISIONS.md`.
-   There is no plan for step 4 yet.
 
 ---
 
@@ -74,6 +76,27 @@ eight `paper_figures` functions still render.
   of it; §3.4 keeps the choice configurable.
 - **Two pinned values moved**, both on the coincident-points fixture added for exactly this, when
   the two metric families were put on one leave-one-out convention. Declared in the commit.
+
+### Where step 4 starts
+
+[`docs/plans/step4-visual.md`](plans/step4-visual.md) has the commit sequence; the eleven decisions
+the spec left open at this step are pinned in
+[`DECISIONS.md`](DECISIONS.md#step-4-decisions-pinned-before-they-are-discovered-the-hard-way).
+Three things worth knowing before opening either:
+
+- **Scope is exactly NND$_k$, NR/VNR, the two distance distributions and the edge lengths.**
+  `detour_ratio` goes with `edge_curves` at step 5, and `MetricSpec` / `METRIC_REGISTRY` /
+  `evaluate_layout` are still step 7 — the same boundary step 3 held.
+- **The first three commits are shared machinery, not metrics, and the reason is measured.** The
+  leave-one-out neighbourhood has three consumers today and eight after this step and is not
+  cached at all; the condensed ideal-distance vector is rebuilt four times per case at a 301 MB
+  transient peak. Retrofitting either at step 7 means touching fifteen metrics behind a registry.
+  ⚠️ The neighbourhood cache must not slice a small *k* out of a large one — that would make a
+  metric's value depend on evaluation order whenever the layout has duplicates.
+- **Step 4 is greenfield, so there are no pins to preserve** — nothing in the tree computes a
+  visual metric today. The golden file is the only thing in the step that can catch a silent
+  move, and its one `[THESIS EDIT]` (VNR's normaliser) comes with an obligation to measure both
+  options on real layouts.
 
 ## What landed in session 2
 
@@ -134,22 +157,6 @@ from 94**; all eight `paper_figures` functions still render.
   is inert for the current roster; the report has the column to catch a future dataset that
   reintroduces it.
 
-### Where step 3 starts
-
-[`docs/plans/step3-metrics.md`](plans/step3-metrics.md) has the commit sequence; the five
-decisions the spec left open at this step are pinned in
-[`DECISIONS.md`](DECISIONS.md#step-3-decisions-pinned-before-they-are-discovered-the-hard-way).
-Two things about the step worth knowing before opening either:
-
-- **Scope is exactly ADR, the kNN family and SNS.** `twin/metrics.py` becomes a package, but
-  `visual.py`, `crossings.py`, `label.py`'s content and the whole
-  registry / `evaluate_layout` / persistence layer are steps 4–7. The plan states the boundary
-  because it is the easiest thing to drift across.
-- **Only one commit in it can move a number, and it touches all sixteen existing pins** — the one
-  that splits `knn_neighbor_preservation_accuracy`'s `mode=` string into four named functions.
-  The pin *keys* become function names there, which is exactly the cover a quiet value change
-  would need.
-
 ---
 
 ## Environment facts not visible in the tree
@@ -206,6 +213,9 @@ one of the eight.)
 | `openTSNE` and `fa2_modified` not installed | step 9 |
 | One legacy `(d, n)` surface: `graph_embedding_all` → `paper_figures` → `plots`, and with it `twin/graphmatrix.py`'s pre-restructure classes and their `.affinity` / `.distance` shim | converges at steps 5 and 10; tracked in `DECISIONS.md` (2) |
 | Tabula's Leiden partition is still computed inside `tabula_sapiens_teaser` rather than registered as a `detected:leiden` label set | step 10, where the consumer and the cost land together |
+| **Open, needs the author's call:** `SpectralLayout` reads the symmetric-normalised Laplacian; thesis eqs. (12)–(14) define Hall's formulation on $L_w = D - W$. Not obviously a bug on either side — spec §0.5 | before **step 9** touches that method |
+| Two scheduled code divergences from the thesis: `count_intersections` versus eq. (78), and `fa2` → `fa2_modified` — spec §0.5's table | **steps 5 and 9** |
+| Cache loop order: evaluate every metric of one layout before moving to the next, or a two-entry cache evicts on every switch. Nothing enforces it yet | **step 7**, the batch runner |
 | The notebooks import modules that have moved | whenever someone opens one |
 
 ## Traps
