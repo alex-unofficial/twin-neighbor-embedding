@@ -2,8 +2,8 @@
 
 Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
-**Last updated:** end of session 3 (2026-08-24), which closed spec §7 step 3 and prepared the
-step 4 handoff. Branch `experiment-setup` @ `a29930c`.
+**Last updated:** end of session 4 (2026-08-26), which closed spec §7 step 4. Branch
+`experiment-setup`.
 
 ---
 
@@ -14,8 +14,8 @@ step 4 handoff. Branch `experiment-setup` @ `a29930c`.
 | **1. Correctness and conventions groundwork** | **Done** — merged `b220cb8`, `e0428de` |
 | **2. `Dataset` and `LayoutGraph` (§3.4, §3.5)** | **Done** — session 2, plus the step-2b follow-up; plan: [`docs/plans/step2-datasets.md`](plans/step2-datasets.md) |
 | **3. `common.py` + `structural.py` — ADR, kNN family, SNS** | **Done** — session 3; plan: [`docs/plans/step3-metrics.md`](plans/step3-metrics.md), departures in `DECISIONS.md` |
-| **4. `visual.py` — NND, NR/VNR, distributions, edge lengths** | **Next** |
-| 5. `crossings.py` — curves, detection, Cr/LWCr, detour | not started |
+| **4. `visual.py` — NND, NR/VNR, distributions, edge lengths** | **Done** — session 4; plan: [`docs/plans/step4-visual.md`](plans/step4-visual.md), departures in `DECISIONS.md` |
+| **5. `crossings.py` — curves, detection, Cr/LWCr, detour** | **Next** |
 | 6. `label.py` — silhouette, accuracy, graph-side checks | not started (step 2 unblocked it) |
 | 7. Registry, `evaluate_layout`, `batch_layout_metrics`, persistence | not started |
 | 8. λ sweep and selection, seeds, straight/curved variants | not started |
@@ -32,18 +32,76 @@ Section 5 numbers before step 8.
 
 1. `CLAUDE.md` — non-negotiable conventions and the version-control policy.
 2. `docs/EXPERIMENT_SETUP_SPEC.md` **§0.5 first** — it supersedes the rest of the document. It
-   now carries three correction blocks, one per session; the newest wins. Session 3's also holds
-   the reconciliation table against `thesis.pdf` and the two new `[THESIS EDIT]`s.
+   now carries four correction blocks, one per session; the newest wins. Session 3's also holds
+   the reconciliation table against `thesis.pdf` and the two new `[THESIS EDIT]`s; session 4's
+   corrects §0.5's own VNR entry.
 3. `docs/DECISIONS.md` — the open questions the implementer was asked to settle, with reasoning.
 4. `docs/DATASET_PROVENANCE.md` — where each dataset's weights actually come from. Assertions
    here are executable: `tests/test_dataset_provenance.py`.
 5. `docs/DATASET_REPORT.md` — the generated roster table (`python -m twin.report`).
-6. [`docs/plans/step4-visual.md`](plans/step4-visual.md) — the commit sequence and verification
-   for the step in progress. [`step2-datasets.md`](plans/step2-datasets.md) and
-   [`step3-metrics.md`](plans/step3-metrics.md) are **history**, kept for their record of where
-   the implementation departed from them — the departures themselves are in `DECISIONS.md`.
+6. There is **no plan file for step 5 yet** — write one first, as steps 2-4 each did.
+   [`step2-datasets.md`](plans/step2-datasets.md), [`step3-metrics.md`](plans/step3-metrics.md)
+   and [`step4-visual.md`](plans/step4-visual.md) are all **history** now, kept for their record
+   of where the implementation departed from them — the departures themselves are in
+   `DECISIONS.md`.
 
 ---
+
+## What landed in session 4
+
+Spec §7 step 4, in nine commits — **571 tests, up from 487**; all eight `paper_figures`
+functions still render. Three of the nine are shared machinery and contain no metric, so they
+were separately mergeable.
+
+- **`twin/metrics/visual.py`** — NND$_k$ (eqs. 65-67), NR and VNR (68, 69), the two distance
+  distributions (70, 71), `edge_lengths` (79) and `edge_length_cv`. `detour_ratio` stays with
+  `edge_curves` at step 5, and `MetricSpec` / `METRIC_REGISTRY` / `evaluate_layout` are still
+  step 7 — the same boundary steps 3 and 4 held.
+- **`condensed()` stops building 200 MB of index arrays.** Row concatenation in place of
+  `np.triu_indices`, bit-identical, asserted against the old expression on a *non-symmetric*
+  fixture. Re-measured at $n = 5007$: 355 → 82 ms, 301 → 101 MB peak.
+- **The evaluation context caches the condensed ideal and the finite-pair mask**, and
+  `_stress_pairs` accepts the context itself as `ideal=`. Four condensings per case become one
+  per dataset. `release()` now clears the cache wholesale.
+- **The leave-one-out neighbourhood is cached**, keyed on `(digest, k_max)` **exactly**, with its
+  own capacity (8, against the pairwise cache's 2). It never slices a small $k$ out of a large
+  one; two tests, one of which asserts that slicing *would* have changed the answer.
+- **The golden file grew by 13 keys, additively** — 13 insertions, 0 deletions, which is the only
+  available evidence that the existing fourteen values did not move.
+
+### What the measurements said
+
+- **The crowding metrics are quiet instruments.** Seven seeds of SG-*t*-SNE on `digits`: NND's
+  relative IQR is **0.4 %**, VNR's 1.3-1.8 %, `edge_length_cv`'s 2.4 %. Two orders of magnitude
+  tighter than the effect step 3 had to strain to see in `knn_recall`.
+- **⚠️ NR is not a usable score on a layout this size.** $1\times10^{-5}$ on 1797 vertices, with
+  a **54 %** relative IQR across seeds — it measures which seed put two points nearest each
+  other. This is the thesis's own argument for VNR, measured. Report it with its spread beside
+  it, never as a score.
+- **VNR(mean) is exactly NND$_1$** — an identity, not an approximation, and one §0.5 does not
+  state. The `[THESIS EDIT]` makes VNR the $k = 1$ member of NND's family rather than a second
+  measurement. **This needs the author's call.**
+- **The two VNR normalisers disagree on real layouts**, and the disagreement is disjoint over
+  five seeds: `"mean"` ranks a random control as least crowded, `"max"` ranks Kamada-Kawai above
+  it. The outlier mechanism §0.5 predicts does occur — on `spectral`, whose per-vertex maxima
+  have a spread of 0.062 against 0.13-0.17 elsewhere. `DECISIONS.md` has both tables.
+- **The edge-order trap is real.** `G.edges()` and the CSR upper triangle disagree in **12377 of
+  14732** positions on `digits`, and agree exactly on `karate` and `football_2023` — so a test on
+  either of those would have passed against a wrong implementation.
+
+### Where step 5 starts
+
+No plan file exists yet; write one first. Three things it has to take account of:
+
+- **§2.5's cost class is wrong in the direction that matters for step 5.** The expensive metrics
+  scale with $m$ — 49368 edges on tabula — not with $n$. Nothing in step 4 hurt on tabula;
+  crossings will.
+- **`edge_lengths` is the per-edge order of record**, `G.edges()`, and LWCr's denominator
+  $\bar L$ (eq. 80) is already pinned in the golden file. ADR's CSR order is a different one and
+  the two must not be unified.
+- **`count_intersections` diverges from eq. (78)** — it skips edge pairs sharing a vertex and
+  counts only `Point` intersections — and step 5 reimplements it on layer 2 anyway. It is also
+  the first of the two remaining legacy $(d, n)$ consumers to converge.
 
 ## What landed in session 3
 
@@ -183,14 +241,14 @@ from 94**; all eight `paper_figures` functions still render.
 ## Health check
 
 ```bash
-venv/bin/python -m pytest -q     # 487 passing
+venv/bin/python -m pytest -q     # 571 passing
 python -m twin.report            # the roster table; regenerates docs/DATASET_REPORT.md with -o
 git status --short               # clean; if notebooks appear modified, the filter is unset
 ```
 
 Figures: the six fast `paper_figures` functions render in seconds; `tabula_sapiens_teaser` takes
 about three minutes and internally calls `tabula_sapiens_blockadj`, so rendering it covers both.
-All eight render as of `0974282`. (`barabasi_albert` is commented out in the source and is not
+All eight render as of step 4's close. (`barabasi_albert` is commented out in the source and is not
 one of the eight.)
 
 ---
@@ -203,7 +261,7 @@ one of the eight.)
 | ~~`exp_decay` vs `exp_decay_sq` never compared~~ — measured on digits, `DECISIONS.md` | discharged |
 | ~~A metric needs the vertex `LayoutGraph`~~ — `twin/metrics/context.py` | discharged |
 | SNS on a Kamada-Kawai or neato layout is close to a measure of optimiser success. The caveat is in the SNS docstring; the **reporting flag that acts on it** is not built | step 11 |
-| `EvaluationContext.release()` exists but nothing calls it. A batch runner over several datasets must drop the closure between them — tabula's is 200 MB | step 7 |
+| `EvaluationContext.release()` exists but nothing calls it, and it now drops three arrays rather than one — tabula's closure is 200 MB and its condensed form another 100 MB. `clear_pairwise_cache()` and `clear_loo_cache()` are the same story | step 7 |
 | The neighbourhood metrics are not sweep-consistent on a layout with exact duplicates (`DECISIONS.md`). No registered dataset produces one; a crowding-heavy layout at large λ might | whenever a layout first collapses two points |
 | ~~Re-measure the §1.6 fix in quality terms~~ — done: recall separates disjointly over seven seeds, ADR and SNS do not | discharged |
 | ⚠️ **Spec §2.5's cost class is wrong.** It says SNS and Sil\* are what will not run on tabula; the largest n is 5007, so the O(n²) closure is 200 MB and `max_n=20000` never trips. The expensive metrics scale with **m** — crossings, 49368 edges on tabula | a run planner built on it would size the wrong thing: **steps 5 and 7** |
@@ -216,10 +274,24 @@ one of the eight.)
 | **Open, needs the author's call:** `SpectralLayout` reads the symmetric-normalised Laplacian; thesis eqs. (12)–(14) define Hall's formulation on $L_w = D - W$. Not obviously a bug on either side — spec §0.5 | before **step 9** touches that method |
 | Two scheduled code divergences from the thesis: `count_intersections` versus eq. (78), and `fa2` → `fa2_modified` — spec §0.5's table | **steps 5 and 9** |
 | Cache loop order: evaluate every metric of one layout before moving to the next, or a two-entry cache evicts on every switch. Nothing enforces it yet | **step 7**, the batch runner |
+| **Open, needs the author's call:** VNR's `"mean"` normaliser is **exactly** NND$_1$, so under the `[THESIS EDIT]` the point-crowding column is NND at two values of $k$; the thesis's `"max"` is a genuinely second measurement but is distorted by outlier vertices. Both are implemented, both are in the golden file, and the comparison §0.5 asked for is done — `DECISIONS.md` | before the results tables are designed: **step 11**, but the decision can be taken now |
+| ⚠️ **NR is not a score on a large layout** — 1e-5 on digits with a 54 % relative IQR across seeds. It needs the same kind of reporting flag SNS's docstring caveat needs, and neither is built | step 11 |
+| The three visual metrics have a measured seed-noise band on `digits` (NND 0.4 %, VNR 1.3-1.8 %, `edge_length_cv` 2.4 %). Nothing reads it yet; a λ sweep that reports differences smaller than it would be reporting noise | step 8 |
 | The notebooks import modules that have moved | whenever someone opens one |
 
 ## Traps
 
+- **All three plan files are history, not instructions** — `step2-datasets.md`,
+  `step3-metrics.md` and now `step4-visual.md`. Each records where the implementation departed
+  from it; the departures are in `DECISIONS.md`. Step 5 has no plan yet.
+- **Two per-edge orderings coexist and look identical.** `G.edges()` is the order of record for
+  per-edge arrays; ADR alone uses the CSR upper triangle, because its lengths must align with
+  the weights from the same matrix. They agree on `karate` and `football_2023` and disagree in
+  12377 of 14732 positions on `digits`, so **a test on the small graphs proves nothing**.
+- **The leave-one-out cache must never learn to slice.** Serving `k=5` out of a cached `k=16` is
+  free, and it would make a metric's value depend on evaluation order whenever a layout has
+  exact duplicates. `tests/test_metrics_common.py` asserts both that it does not and that
+  slicing would have changed the answer.
 - **`docs/plans/step2-datasets.md` is now history, not instructions.** Where the implementation
   departed from it — `LayoutGraph`'s module, the commit ordering, the shim on the legacy classes
   — `DECISIONS.md` records why.

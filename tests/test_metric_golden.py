@@ -87,11 +87,35 @@ def test_the_golden_values_are_not_degenerate(golden):
     # edges run further than the average pair. It is pinned because it is informative.
     assert values["adjacency_distance_ratio"] > 1.0
 
+    # The visual metrics (spec §2.2, step 4). NND is a mean of the k smallest distances over the
+    # mean of all of them, so it lies in (0, 1) and rises with k.
+    assert 0.0 < values["normalized_nn_distance@k=5"] < values["normalized_nn_distance@k=10"] < 1.0
+
+    # NR is a worst-case detector and VNR is not, and NR <= VNR under either normaliser is an
+    # identity, not an observation: each vertex's own minimum is at least the global minimum and
+    # its own maximum at most the diameter. The gap here is a factor of 35, which is what makes
+    # this fixture worth pinning — its jitter put two vertices very close together.
+    assert 0.0 < values["node_resolution"] < values["node_resolution_vertexwise@max"]
+    assert values["node_resolution_vertexwise@max"] > 30 * values["node_resolution"]
+
+    # The distributions' lower tails coincide: the closest pair in the layout is some vertex's
+    # nearest neighbour, so the two minima are the same number.
+    assert (
+        values["pairwise_distance_distribution@min"]
+        == values["nn_distance_distribution@min"]
+    )
+    assert values["pairwise_distance_distribution@max"] > 1.0  # normalised by the mean
+    assert values["edge_length_cv"] > 0.0
+
 
 def test_the_golden_file_is_keyed_by_metric_name(golden):
     """Steps 4-6 must be able to add keys without touching the existing ones."""
     assert "adjacency_distance_ratio" in golden["values"]
     assert any(name.startswith("knn_recall@k=") for name in golden["values"])
+    # Step 4 added its keys without regenerating anything: the diff was 13 insertions and no
+    # deletions, which is the only available evidence that the first fourteen did not move.
+    assert "node_resolution" in golden["values"]
+    assert any(name.startswith("normalized_nn_distance@k=") for name in golden["values"])
 
 
 def test_the_context_is_the_one_the_golden_values_were_built_from():

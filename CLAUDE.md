@@ -62,7 +62,14 @@ Background and design record, in reading order:
   geodesic, not the ambient metric; a layout is not expected to recover distances the method was
   never shown. What that costs is measured per dataset, not asserted — `DECISIONS.md`.
 - **Edge length in crossing metrics is the chord**, never the arc. This is what keeps the
-  straight-vs-curved comparison interpretable.
+  straight-vs-curved comparison interpretable. It is computed by `metrics.visual.edge_lengths`;
+  the arc-over-chord ratio is `detour_ratio`, a separate metric at step 5.
+- **Per-edge arrays are indexed by `G.edges()`, not by the CSR upper triangle.** Edge points,
+  incidence-matrix columns, `edge_lengths` and step 5's per-edge crossing weights all use
+  `G.edges()` order. ADR deliberately uses the CSR order instead, because its lengths must align
+  with the weights it reads out of the same matrix — the two are **not** interchangeable: on
+  `digits` they disagree in 12377 of 14732 positions, the same multiset in a different sequence.
+  They agree on `karate` and `football_2023`, so a test on either proves nothing.
 - **No dataset names in logic.** Nothing outside `twin/datasets/` may branch on a dataset name.
   Dataset-specific behaviour goes on the `Dataset` object.
 - **`[THESIS EDIT]` in the spec** means the code intentionally differs from `thesis.pdf`. Do not
@@ -85,8 +92,12 @@ Present:
   stamped by both the `Dataset` and `LayoutGraph` layers and read by the metric guards.
   Dependency-free on purpose: it must not pull in `sgtsnepi`
 - `twin/metrics/` — the metric suite as a package: `common` (ideal distances, the condensed pair
-  ordering, the `pdist` cache, `default_k`), `structural` (ADR, the kNN family, SNS),
-  `label` (kNN accuracy), `context` (`EvaluationContext`)
+  ordering, the `pdist` and leave-one-out caches, `default_k`), `structural` (ADR, the kNN
+  family, SNS), `visual` (NND, NR/VNR, the two distance distributions, edge lengths),
+  `label` (kNN accuracy), `context` (`EvaluationContext`, and the condensed ideal it shares).
+  Each cache family has its own capacity and its own `clear_*` — 1.6 MB per leave-one-out entry
+  is not 100 MB per condensed vector — and **the leave-one-out cache never serves a small `k`
+  out of a larger cached one**, because slicing is not re-querying on a layout with duplicates.
 - `twin/batching.py` — generic batch-spec engine; domain-agnostic, do not rewrite
 - `twin/pipelines.py` — runners tying the above together
 - `twin/plots.py`, `twin/paper_figures.py` — rendering
@@ -99,7 +110,7 @@ Present:
 
 Planned, not yet present:
 
-- `twin/metrics/visual.py`, `crossings.py`, `registry.py` — steps 4–7
+- `twin/metrics/crossings.py`, `registry.py` — steps 5–7
 - `runs/` — experiment output (step 7); output, not source, and ignored by git
 
 ## Commands

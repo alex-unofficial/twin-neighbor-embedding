@@ -13,6 +13,8 @@ import pytest
 from twin.datasets import load_dataset
 from twin.layoutgraph import stamp_form, vertex_graph
 from twin.metrics.common import (
+    _loo_neighbors,
+    clear_loo_cache,
     clear_pairwise_cache,
     condensed,
     finite_pair_mask,
@@ -219,6 +221,33 @@ def test_condensed_refuses_a_non_square_matrix():
         condensed(np.zeros((3, 4)))
 
 
+def test_condensed_is_bit_identical_to_the_index_form_on_a_non_symmetric_matrix():
+    """The row-concatenation form must equal ``D[np.triu_indices(n, 1)]`` **exactly**.
+
+    Deliberately non-symmetric: on a symmetric matrix the lower triangle equals the upper one,
+    so reading the wrong triangle — or reading the right one transposed — produces the same
+    numbers and the substitution would be untestable. Here $D_{ij} = 100i + j$, so every entry
+    names its own position and both a reordering and a transposition are visible.
+
+    ``array_equal``, not ``approx``: this is a pure re-indexing and there is no arithmetic in it
+    to lose a bit to.
+    """
+    n = 7
+    D = np.arange(n)[:, None] * 100 + np.arange(n)[None, :]
+    assert not np.array_equal(D, D.T)
+    assert np.array_equal(condensed(D), D[np.triu_indices(n, k=1)])
+    # ... and the first few entries are row 0's tail, which is what "row-major upper triangle"
+    # means. A column-major reading would start 1, 2, 102.
+    assert list(condensed(D)[:3]) == [1, 2, 3]
+
+
+@pytest.mark.parametrize("n", [0, 1, 2, 3, 8, 33])
+def test_condensed_is_bit_identical_at_every_small_size(n):
+    """Including the degenerate sizes: `np.concatenate` refuses an empty sequence."""
+    D = np.random.default_rng(n).normal(size=(n, n))
+    assert np.array_equal(condensed(D), D[np.triu_indices(n, k=1)])
+
+
 def test_finite_pair_mask_is_condensed_and_not_square(disjoint_paths):
     n = disjoint_paths.number_of_nodes()
     assert finite_pair_mask(ideal_distances(disjoint_paths)).shape == (n * (n - 1) // 2,)
@@ -295,3 +324,104 @@ def test_the_cache_can_be_bypassed(karate_random_layout):
     clear_pairwise_cache()
     pairwise_distances(karate_random_layout, cache=False)
     assert not _pairwise_cache
+
+
+# --------------------------------------------------------------------------- #
+#                  The leave-one-out cache (spec §7 step 4)                    #
+# --------------------------------------------------------------------------- #
+
+
+def test_the_loo_cache_never_serves_a_small_k_out_of_a_large_one(karate_coincident_layout):
+    """The rule the whole cache is built around, on the fixture that can see it break.
+
+    Step 3 established that slicing a $k = 16$ query down to 5 is **not** the same as querying
+    5, when the layout has exact duplicates: which of nine coincident points count as the five
+    nearest depends on how many were asked for. So a cache keyed on the digest alone — serving
+    ``[:, :5]`` of a stored 16 — would make ``knn_recall(X, G, 5)`` depend on which metric ran
+    first. This asserts the value is the standalone one, in either order.
+    """
+    clear_loo_cache()
+    standalone = _loo_neighbors(karate_coincident_layout, 5)
+
+    clear_loo_cache()
+    _loo_neighbors(karate_coincident_layout, 16)
+    after_16 = _loo_neighbors(karate_coincident_layout, 5)
+
+    assert np.array_equal(after_16[0], standalone[0])
+    assert np.array_equal(after_16[1], standalone[1])
+
+
+def test_slicing_would_actually_have_changed_the_answer(karate_coincident_layout):
+    """Without this, the test above passes on a fixture where the hazard cannot occur.
+
+    Eleven of karate's 34 rows disagree: the nine coincident points, and the two whose own
+    neighbourhoods reach into the coincident block. The *distances* agree — they are zero either
+    way — so only the neighbour identities move, which is exactly what a recall computation
+    reads.
+    """
+    clear_loo_cache()
+    _, idx16 = _loo_neighbors(karate_coincident_layout, 16)
+    _, idx5 = _loo_neighbors(karate_coincident_layout, 5)
+    assert not np.array_equal(idx16[:, :5], idx5)
+
+
+def test_the_loo_cache_returns_the_same_arrays_on_a_hit(karate_random_layout):
+    clear_loo_cache()
+    first = _loo_neighbors(karate_random_layout, 5)
+    assert _loo_neighbors(karate_random_layout, 5) is first
+
+
+def test_the_loo_cache_is_keyed_on_content_not_identity():
+    """As the pairwise cache is: ids are reused after a gc, digests are not."""
+    clear_loo_cache()
+    X = np.random.default_rng(6).normal(size=(20, 2))
+    first = _loo_neighbors(X, 3)[0].copy()
+
+    X[0] += 5.0  # same object, different content
+    assert not np.allclose(_loo_neighbors(X, 3)[0], first)
+    assert _loo_neighbors(X.copy(), 3) is _loo_neighbors(X, 3)
+
+
+def test_the_loo_cache_keeps_k_max_in_the_key(karate_random_layout):
+    """Two entries for two k, not one entry reused — that is the no-slicing rule in the key."""
+    from twin.metrics.common import _loo_cache
+
+    clear_loo_cache()
+    _loo_neighbors(karate_random_layout, 5)
+    _loo_neighbors(karate_random_layout, 16)
+    assert len(_loo_cache) == 2
+
+
+def test_the_loo_cache_has_its_own_capacity():
+    """Not `PAIRWISE_CACHE_MAXSIZE`: 1.6 MB per entry is not 100 MB per entry, and one layout
+    is queried at several `k_max` within a single case."""
+    from twin.metrics.common import (
+        LOO_CACHE_MAXSIZE,
+        PAIRWISE_CACHE_MAXSIZE,
+        _loo_cache,
+    )
+
+    assert LOO_CACHE_MAXSIZE > PAIRWISE_CACHE_MAXSIZE
+
+    clear_loo_cache()
+    rng = np.random.default_rng(7)
+    for _ in range(LOO_CACHE_MAXSIZE + 3):
+        _loo_neighbors(rng.normal(size=(15, 2)), 3)
+    assert len(_loo_cache) == LOO_CACHE_MAXSIZE
+
+
+def test_the_loo_cache_can_be_bypassed(karate_random_layout):
+    from twin.metrics.common import _loo_cache
+
+    clear_loo_cache()
+    _loo_neighbors(karate_random_layout, 5, cache=False)
+    assert not _loo_cache
+
+
+def test_caching_does_not_change_the_neighbourhood(karate_coincident_layout):
+    """Including on the duplicate-heavy layout, where the query itself is order-sensitive."""
+    clear_loo_cache()
+    cached = _loo_neighbors(karate_coincident_layout, 7)
+    uncached = _loo_neighbors(karate_coincident_layout, 7, cache=False)
+    assert np.array_equal(cached[0], uncached[0])
+    assert np.array_equal(cached[1], uncached[1])

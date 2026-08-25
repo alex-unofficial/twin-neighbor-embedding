@@ -3,7 +3,8 @@
 The flat ``twin/metrics.py`` became this package at spec §7 step 3. The split follows §2's
 layout: :mod:`~twin.metrics.common` for shared machinery, :mod:`~twin.metrics.structural` for
 metrics of points against the graph, :mod:`~twin.metrics.label` for metrics of points against a
-label vector. ``visual``, ``crossings`` and the registry arrive at steps 4-7.
+label vector. :mod:`~twin.metrics.visual` for metrics of the points alone — readability rather than
+correspondence. ``crossings`` and the registry arrive at steps 5-7.
 
 Every layout array here is ``(n_points, d)``. Conversion from the ``(d, n)`` orientation the
 embedding layer returns happens exactly once, in ``twin.results.LayoutResult.from_raw``; see
@@ -16,6 +17,7 @@ with the imports rather than with the design (`tests/test_metrics_surface.py`).
 """
 
 from twin.metrics.common import (
+    clear_loo_cache,
     clear_pairwise_cache,
     default_k,
     condensed,
@@ -31,6 +33,15 @@ from twin.metrics.label import (
     knn_accuracy,
     knn_accuracy_report,
     majority_class_rate,
+)
+from twin.metrics.visual import (
+    edge_length_cv,
+    edge_lengths,
+    nn_distance_distribution,
+    node_resolution,
+    node_resolution_vertexwise,
+    normalized_nn_distance,
+    pairwise_distance_distribution,
 )
 from twin.metrics.structural import (
     NeighborPreservationReport,
@@ -55,8 +66,11 @@ __all__ = [
     "NeighborPreservationReport",
     "adjacency_distance_ratio",
     "condensed",
+    "edge_length_cv",
+    "edge_lengths",
     "default_k",
     "finite_pair_mask",
+    "clear_loo_cache",
     "clear_pairwise_cache",
     "ideal_distances",
     "knn_accuracy",
@@ -70,7 +84,12 @@ __all__ = [
     "weighted_recall",
     "weighted_recall_report",
     "majority_class_rate",
+    "nn_distance_distribution",
+    "node_resolution",
+    "node_resolution_vertexwise",
+    "normalized_nn_distance",
     "normalized_stress",
+    "pairwise_distance_distribution",
     "optimal_scale",
     "raw_stress",
     "scale_normalized_stress",

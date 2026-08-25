@@ -80,11 +80,43 @@ def require_n_by_d(X: np.ndarray, n_expected: int, name: str = "X") -> np.ndarra
 
 
 # --------------------------------------------------------------------------- #
+#                            Content-keyed caching                             #
+# --------------------------------------------------------------------------- #
+
+
+def _layout_key(X: np.ndarray) -> tuple:
+    """A content digest, deliberately **not** ``id(X)``.
+
+    Python reuses ids after garbage collection, so an id-keyed cache would serve one layout's
+    distances for another's — silently, and only under memory pressure. Hashing 80 KB is
+    microseconds against a 12.5-million-pair ``pdist``.
+
+    Shared by both caches in this module. Each keeps its **own** capacity, because their cost
+    profiles are opposite: a condensed distance vector is 100 MB and cheap to rebuild, a
+    leave-one-out neighbourhood is 1.6 MB and dearer.
+    """
+    contiguous = np.ascontiguousarray(X)
+    digest = hashlib.blake2b(contiguous.view(np.uint8).reshape(-1), digest_size=16).digest()
+    return (digest, contiguous.shape, str(contiguous.dtype))
+
+
+# --------------------------------------------------------------------------- #
 #                       Leave-one-out neighbourhoods                           #
 # --------------------------------------------------------------------------- #
 
 
-def _loo_neighbors(X: np.ndarray, k_max: int):
+#: How many leave-one-out neighbourhoods are kept. **Its own capacity, not**
+#: :data:`PAIRWISE_CACHE_MAXSIZE`: an entry here is 1.6 MB at tabula's $n = 5007$ where a
+#: condensed distance vector is 100 MB, and the access pattern is wider. One layout is queried
+#: at several ``k_max`` — the kNN family at $\max(k)$, NND$_k$ at its own, VNR and the
+#: nearest-neighbour distribution at 1 — so a capacity of 2 would evict within a single case.
+#: Eight holds roughly two layouts' worth at ~13 MB.
+LOO_CACHE_MAXSIZE = 8
+
+_loo_cache: "OrderedDict[tuple, tuple[np.ndarray, np.ndarray]]" = OrderedDict()
+
+
+def _loo_neighbors(X: np.ndarray, k_max: int, *, cache: bool = True):
     """Indices and distances of the ``k_max`` nearest *other* points, per point.
 
     Queries ``k_max + 1`` and drops the self column. With coincident points the self entry is
@@ -100,7 +132,35 @@ def _loo_neighbors(X: np.ndarray, k_max: int):
     Among exactly coincident points the choice of which duplicates to keep is arbitrary — there
     is no information to break the tie with — so a value computed on a layout with duplicates is
     reproducible for a fixed ``k_max`` but **not** invariant to it.
+
+    **Cached on ``(content digest, k_max)`` exactly, and never sliced out of a larger
+    ``k_max``.** Serving $k = 5$ from a cached $k = 16$ is free and wrong, precisely because of
+    the paragraph above: on a layout with duplicates the two neighbour sets differ, so
+    ``knn_recall(X, G, 5)`` would depend on which metric had run first. A cache that changes
+    results is the worst kind available and this one would be found the expensive way.
+
+    Args:
+        X: an ``(n, d)`` layout.
+        k_max: how many neighbours to return per point.
+        cache: reuse a previous query for the same layout and the same ``k_max``. The returned
+            arrays are the cached ones and are **shared**, as :func:`pairwise_distances`' are —
+            treat them as read-only.
+
+    Returns:
+        ``(distances, indices)``, each ``(n, k_max)``.
     """
+    if cache:
+        key = (_layout_key(X), int(k_max))
+        hit = _loo_cache.get(key)
+        if hit is not None:
+            _loo_cache.move_to_end(key)
+            return hit
+        value = _loo_neighbors(X, k_max, cache=False)
+        _loo_cache[key] = value
+        while len(_loo_cache) > LOO_CACHE_MAXSIZE:
+            _loo_cache.popitem(last=False)
+        return value
+
     n = X.shape[0]
     knn = NearestNeighbors(n_neighbors=k_max + 1).fit(X)
     dist, idx = knn.kneighbors(X, n_neighbors=k_max + 1)
@@ -261,11 +321,23 @@ def condensed(D: np.ndarray) -> np.ndarray:
 
     The same ordering ``scipy.spatial.distance.pdist`` returns, so an ideal-distance vector and
     a layout's pairwise distances line up elementwise with no bookkeeping.
+
+    Row concatenation rather than ``D[np.triu_indices(n, k=1)]``. The two are **bit-identical**
+    — a test asserts it on a non-symmetric matrix, where a transposed or reordered triangle
+    would differ — but the index form materialises two int64 arrays of $n(n-1)/2$ entries to
+    address a result of the same length. At tabula's $n = 5007$ that is 200 MB of indices for a
+    100 MB answer: measured 355 ms at a 301 MB transient peak, against 82 ms at 101 MB. The
+    ideal-distance closure is condensed once per dataset per run, so this is the difference
+    between a peak that fits beside the closure and one that does not.
     """
     D = np.asarray(D)
     if D.ndim != 2 or D.shape[0] != D.shape[1]:
         raise ValueError(f"expected a square matrix, got shape {D.shape}")
-    return D[np.triu_indices(D.shape[0], k=1)]
+    n = D.shape[0]
+    if n == 0:
+        # `np.concatenate` refuses an empty sequence; the index form returned an empty array.
+        return np.empty(0, dtype=D.dtype)
+    return np.concatenate([D[i, i + 1 :] for i in range(n)])
 
 
 def finite_pair_mask(D: np.ndarray) -> np.ndarray:
@@ -289,18 +361,6 @@ def finite_pair_mask(D: np.ndarray) -> np.ndarray:
 PAIRWISE_CACHE_MAXSIZE = 2
 
 _pairwise_cache: "OrderedDict[tuple, np.ndarray]" = OrderedDict()
-
-
-def _layout_key(X: np.ndarray) -> tuple:
-    """A content digest, deliberately **not** ``id(X)``.
-
-    Python reuses ids after garbage collection, so an id-keyed cache would serve one layout's
-    distances for another's — silently, and only under memory pressure. Hashing 80 KB is
-    microseconds against a 12.5-million-pair ``pdist``.
-    """
-    contiguous = np.ascontiguousarray(X)
-    digest = hashlib.blake2b(contiguous.view(np.uint8).reshape(-1), digest_size=16).digest()
-    return (digest, contiguous.shape, str(contiguous.dtype))
 
 
 def pairwise_distances(X: np.ndarray, *, cache: bool = True) -> np.ndarray:
@@ -350,6 +410,16 @@ def mean_pairwise_distance(X: np.ndarray) -> float:
 def clear_pairwise_cache() -> None:
     """Drop the cached condensed vectors. For tests, and for a runner between datasets."""
     _pairwise_cache.clear()
+
+
+def clear_loo_cache() -> None:
+    """Drop the cached leave-one-out neighbourhoods.
+
+    One ``clear_*`` per cache family rather than one for the module: the runner between datasets
+    wants both, but a test that is about eviction wants exactly one, and mirroring
+    :meth:`~twin.metrics.context.EvaluationContext.release` keeps the pattern uniform.
+    """
+    _loo_cache.clear()
 
 
 def default_k(G: nx.Graph) -> int:

@@ -522,6 +522,63 @@ The five divergences, each with what should happen to it:
 
 `DECISIONS.md` records the decision not to reconcile any of them now, and why.
 
+### Session 4 corrections — what implementing step 4 established
+
+Written after §7 step 4 shipped. Where a claim below contradicts the body — including §0.5's own
+VNR entry above — this wins.
+
+**§2.2's VNR `[THESIS EDIT]` has a consequence the entry does not state: with
+`normalize="mean"`, VNR is *exactly* `normalized_nn_distance(X, 1)`.** Both are
+$\frac{1}{n}\sum_i \min_{j\neq i}\lVert x_i-x_j\rVert$ over $\bar d$, and the sum and the
+division commute. So the edit does not merely make NND and VNR "one family with one normaliser";
+it makes VNR the $k = 1$ member of that family. Under it, reporting NND$_k$ and VNR is reporting
+one metric at two values of $k$, while the thesis's `"max"` form is a genuinely second
+measurement. The edit stands — the argument for it is unaffected — but **which to feature is the
+author's call**, and it is a sharper choice than the entry above implies. Both are implemented,
+both are pinned in the golden file, and the comparison the entry promises is done (below).
+
+**The promised comparison, done: the two normalisers disagree on real layouts.** Five layouts of
+`digits` ranked by each: they agree on the first three and swap the last two, with `"mean"`
+ranking a random Gaussian control least crowded and `"max"` ranking Kamada-Kawai above it —
+**disjoint over all five seeds in both directions**, Spearman 0.90 over the five layouts. The
+outlier mechanism the entry predicts does occur on a real layout: `spectral`'s per-vertex maxima
+have a spread of 0.062 against 0.13-0.17 for every other layout, so its denominators are all
+approximately the diameter, and it scores 3.6× below SG-*t*-SNE under `"max"` against 1.5× under
+`"mean"`. Tables in `DECISIONS.md`.
+
+**"Collapses back toward the global NR it was introduced to fix" is a claim about the
+normaliser, not the value.** Measured, VNR$_{\max}$/NR *rises* under an added outlier — 1.21 to
+3.74 — because NR falls off as the diameter while VNR$_{\max}$ is held up by the outlier's own
+well-separated row. What collapses is the spread of the per-vertex maxima, 0.140 to 0.023: the
+normaliser stops being per-vertex. The substance of the entry is right; the phrasing invites a
+check that fails.
+
+**⚠️ NR is not a usable score on a layout of any size, and §2.2 should say so.** On `digits`
+($n = 1797$) it is $1\times10^{-5}$ with a **54 % relative IQR across seeds** — it is determined
+by the single closest pair, so it reports which seed happened to place two points nearest each
+other. NND, VNR and `edge_length_cv` on the same runs have relative IQRs of 0.4 %, 1.3-1.8 % and
+2.4 %. Report NR as a diagnostic with its seed spread beside it; it needs the same kind of
+reporting flag §5.3 owes SNS on a Kamada-Kawai layout.
+
+**§2.2's `edge_length_cv` is not a thesis equation.** Eq. (79) is the chord and eq. (80) is the
+*mean* edge length $\bar L$ — the quantity LWCr normalises by, now pinned in the golden file so
+step 5 inherits it. The coefficient of variation is this document's own addition; it is a
+reasonable one, but a reader should not go looking for eq. (80) expecting to find it.
+
+**Two per-edge orderings coexist, and the small graphs cannot tell them apart.** `G.edges()` is
+the order of record for per-edge arrays — edge points, incidence columns, `edge_lengths`, and
+step 5's per-edge crossing weights. ADR uses the CSR upper triangle instead, correctly, because
+its lengths must align with the weights read from the same matrix. The two agree **exactly** on
+`karate` and `football_2023`, which were built in sorted order, and disagree in **12377 of 14732
+positions** on `digits`. A test on either small graph would pass against a wrong implementation;
+§2.4 and §4.3 should be read with this in mind.
+
+**§2.0's "query at max(k) once and slice" is safe for NND and not for the kNN family**, which
+sharpens the session-3 correction above. NND reads the neighbour *distances*, whose sorted
+multiset is unique; the kNN family reads the neighbour *identities*, which under exact
+duplicates depend on how many were asked for. Both are pinned on the coincident fixture, and the
+leave-one-out cache is keyed on `k_max` exactly for the second reason.
+
 ---
 
 ## 1. Bugs to fix first

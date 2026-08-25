@@ -11,6 +11,7 @@ import networkx as nx
 import scipy.sparse as sp
 
 from twin.forms import SOURCE_KEY, graph_side
+from twin.metrics.context import EvaluationContext
 from twin.metrics.common import (
     _loo_neighbors,
     condensed,
@@ -283,6 +284,11 @@ def _stress_pairs(X: np.ndarray, G: nx.Graph | None, ideal, **kw):
     the pairs that were scored. Masking with :func:`~twin.metrics.common.finite_pair_mask` here
     is what lets ``disconnected="mask"`` — and any future disconnected dataset — need no second
     code path in any of the three metrics.
+
+    ``ideal`` may be an :class:`~twin.metrics.context.EvaluationContext`, and on the results
+    path it should be: the context condenses its closure once per dataset, where each of the
+    three stresses condensing its own is 100 MB and 82 ms per call at tabula's size, for an
+    array that cannot vary within a dataset.
     """
     if ideal is None:
         if G is None:
@@ -293,6 +299,12 @@ def _stress_pairs(X: np.ndarray, G: nx.Graph | None, ideal, **kw):
             f"ideal distances were supplied, so {sorted(kw)} would be ignored. They configure "
             "how ideal distances are computed, which has already happened."
         )
+
+    if isinstance(ideal, EvaluationContext):
+        d = ideal.ideal_condensed
+        finite = ideal.finite_pairs
+        X = require_n_by_d(X, ideal.n, "X")
+        return d[finite], pairwise_distances(X)[finite]
 
     ideal = np.asarray(ideal, dtype=float)
     if ideal.ndim == 2:
@@ -378,8 +390,11 @@ def scale_normalized_stress(X: np.ndarray, G: nx.Graph | None = None, ideal=None
     Args:
         X: an ``(n, d)`` layout.
         G: the distance-valued graph, if ``ideal`` is not supplied.
-        ideal: precomputed ideal distances, square ``(n, n)`` or condensed. **This is the
-            correct call on the results path**: the runner computes one array per dataset from
+        ideal: precomputed ideal distances — square ``(n, n)``, condensed, or the
+            :class:`~twin.metrics.context.EvaluationContext` itself, which is the best of the
+            three because it condenses once per dataset rather than once per stress call.
+            **This is the correct call on the results path**: the runner computes one array
+            per dataset from
             ``vertex_graph(dataset).distance`` and shares it across every representation, so
             that $A_V$, $A_E$ and $A_{tne}$ are scored against the same target (spec §2.0,
             `DECISIONS.md`). Passing ``G`` instead recomputes an $O(n^2)$ closure per call and,

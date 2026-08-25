@@ -25,7 +25,7 @@ import networkx as nx
 import numpy as np
 
 from twin.layoutgraph import LayoutGraph, vertex_graph
-from twin.metrics.common import default_k, ideal_distances
+from twin.metrics.common import condensed, default_k, ideal_distances
 
 
 @dataclass(frozen=True)
@@ -125,10 +125,45 @@ class EvaluationContext:
         return self._cache["ideal"]
 
     @property
+    def ideal_condensed(self) -> np.ndarray:
+        r"""The ideal distances in :data:`~twin.metrics.common.CONDENSED_ORDERING`, condensed once.
+
+        Beside :attr:`ideal` for the same reason :attr:`ideal` is here: derived, per-dataset,
+        expensive, and shared by every representation. Without it SNS, ``raw_stress``,
+        ``normalized_stress`` and the finite-pair mask each condense the same array — four times
+        per case, for a quantity that cannot vary within a dataset.
+
+        The two forms are held together and cost 100 MB each at tabula's $n = 5007$; the square
+        one is what ``silhouette_graph`` will need at step 6 as a precomputed metric, and
+        :meth:`release` drops both.
+        """
+        if "ideal_condensed" not in self._cache:
+            self._cache["ideal_condensed"] = condensed(self.ideal)
+        return self._cache["ideal_condensed"]
+
+    @property
+    def finite_pairs(self) -> np.ndarray:
+        """Which condensed pairs the disconnection policy actually scored.
+
+        ``False`` marks a pair excluded by ``disconnected`` or unreachable in the graph. Every
+        registered dataset is connected, so this is all-True on the current roster — it exists
+        so that no stress metric grows a second code path for the disconnected case.
+        """
+        if "finite_pairs" not in self._cache:
+            self._cache["finite_pairs"] = np.isfinite(self.ideal_condensed)
+        return self._cache["finite_pairs"]
+
+    @property
     def ideal_is_computed(self) -> bool:
         """Whether :attr:`ideal` has been materialised yet. For tests and for a run planner."""
         return "ideal" in self._cache
 
     def release(self) -> None:
-        """Drop the cached closure. For a runner moving to the next dataset — tabula's is 200 MB."""
-        self._cache.pop("ideal", None)
+        """Drop the cached closure and everything derived from it.
+
+        For a runner moving to the next dataset — tabula's square closure is 200 MB and its
+        condensed form another 100 MB. Clears the cache wholesale rather than popping ``ideal``
+        alone: a derived array that outlives the array it was derived from is a stale target,
+        and this is the one place the ablation's shared target can go stale.
+        """
+        self._cache.clear()
