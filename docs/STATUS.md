@@ -2,8 +2,9 @@
 
 Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
-**Last updated:** end of session 4 (2026-08-26), which closed spec §7 step 4. Branch
-`experiment-setup`.
+**Last updated:** end of session 4 (2026-08-26). It closed spec §7 step 4, then closed both
+remaining open questions (`SpectralLayout`'s Laplacian, VNR's normaliser) and ran a pre-step-5
+audit of the test suite. Branch `experiment-setup`; 22 commits.
 
 ---
 
@@ -49,9 +50,10 @@ Section 5 numbers before step 8.
 
 ## What landed in session 4
 
-Spec §7 step 4, in nine commits — **571 tests, up from 487**; all eight `paper_figures`
-functions still render. Three of the nine are shared machinery and contain no metric, so they
-were separately mergeable.
+Spec §7 step 4, in nine commits plus a merge — 571 tests at that point, up from 487; all eight
+`paper_figures` functions still render. Three of the nine are shared machinery and contain no
+metric, so they were separately mergeable. **The session then continued past step 4** — see the
+two sections below — and ended at **656 tests**.
 
 - **`twin/metrics/visual.py`** — NND$_k$ (eqs. 65-67), NR and VNR (68, 69), the two distance
   distributions (70, 71), `edge_lengths` (79) and `edge_length_cv`. `detour_ratio` stays with
@@ -117,6 +119,37 @@ The last genuinely open item in §0.5's reconciliation table, settled by the aut
   spectral runs differ by eigenvector sign. Invisible to every metric, fatal to a persisted
   layout.
 
+### The pre-step-5 audit — what the test suite could and could not catch
+
+Nineteen mutations, each an implementation deliberately broken in a throwaway process, then the
+suite run against it. **Sixteen were caught.** The three that were not are now fixed, and the
+mutants re-run to confirm it. The technique is cheap and worth repeating before any step that
+will be built on top of existing code.
+
+- ⚠️ **`twin_adjacency` — the method itself — had no test.** Forcing `alpha` to 0.5, or the
+  polynomial order to 1, regardless of the caller left all 609 tests green while moving
+  $A_{tne}$ by max\|diff\| 22.7 and 34.7 on `karate_weighted`. **Cause, and it generalises:**
+  every test touching the twin representation compared `layoutgraph` against `graphmatrix`, and
+  *both call the same function* — a self-referential comparison. The vertex and edge comparisons
+  are fine, since those two modules implement that algebra independently.
+  `tests/test_twin_embedding.py` now pins it against an independent dense reimplementation of
+  $\sum_k \alpha^k A^k$.
+- **The batch key could drop its swept parameters** undetected — the contract step 7's
+  resumability rests on (`DECISIONS.md` (21)). Twelve tests in `tests/test_batch_key.py`.
+- **No test rendered a figure**, although the merge rule requires it.
+  `tests/test_paper_figures.py` now does, with the tabula one opt-in.
+
+Two facts about the transform that fell out of writing the pins, both easy to get wrong:
+
+- **The polynomial order is a reach in the *twin* graph, not in $G$.** The twin graph is
+  bipartite, so a vertex-to-vertex walk alternates $v \to e \to v$: on the path 0-1-2, $v_0$
+  and $v_2$ are two hops apart in $G$ but **four** in the twin graph, and the entry is zero at
+  orders 1-3. So `k = 2` couples a vertex through one intermediate edge — one hop of the line
+  graph — not two hops of $G$.
+- **`twin_graph` strips the diagonal** the transform produces at even order, and it is large
+  (1.44 against off-diagonal entries near 0.7). The stripping is in the wrapper, the diagonal is
+  produced in the transform, and neither file's tests covered the seam.
+
 ### Where step 5 starts
 
 No plan file exists yet; write one first. Three things it has to take account of:
@@ -129,7 +162,13 @@ No plan file exists yet; write one first. Three things it has to take account of
   the two must not be unified.
 - **`count_intersections` diverges from eq. (78)** — it skips edge pairs sharing a vertex and
   counts only `Point` intersections — and step 5 reimplements it on layer 2 anyway. It is also
-  the first of the two remaining legacy $(d, n)$ consumers to converge.
+  the first of the two remaining legacy $(d, n)$ consumers to converge. ⚠️ It now has a caller
+  in the test suite only indirectly, through the figure smoke test; a reimplementation needs its
+  own pins before the old one is retired.
+- **The self-referential-comparison trap generalises.** `twin_adjacency` was invisible because
+  the two things compared shared an implementation. Step 5 will be tempted to check
+  `crossings.py` against `plots.count_intersections` — that is legitimate *only* where the two
+  do not share code, and §0.5 records that they should disagree on shared-endpoint pairs anyway.
 
 ## What landed in session 3
 
@@ -269,7 +308,8 @@ from 94**; all eight `paper_figures` functions still render.
 ## Health check
 
 ```bash
-venv/bin/python -m pytest -q     # 571 passing
+venv/bin/python -m pytest -q          # 656 passing, 1 deselected (`-m slow`)
+venv/bin/python -m pytest -q -m slow  # the opt-in tabula figure, ~2 min
 python -m twin.report            # the roster table; regenerates docs/DATASET_REPORT.md with -o
 git status --short               # clean; if notebooks appear modified, the filter is unset
 ```
@@ -309,7 +349,10 @@ one of the eight.)
 | The three visual metrics have a measured seed-noise band on `digits` (NND 0.4 %, VNR 1.2 %, `edge_length_cv` 2.4 %). Nothing reads it yet; a λ sweep that reports differences smaller than it would be reporting noise | step 8 |
 | ⚠️ **NND and VNR reward uniformity, which a good layout of clustered data does not have** — a random control tops both and comes last on ADR and recall. The reporting layer must not rank on them alone, and the joint reading is not enforced anywhere yet | step 11 |
 | `NodeResolutionReport.n_zero_denominator` joins `n_ties` / `n_zero_distance` in the diagnostics table of `DECISIONS.md` (18); nothing collects that table yet | step 7 |
-| The notebooks import modules that have moved | whenever someone opens one |
+| ⚠️ **`notebooks/metrics.ipynb` cannot run at all** — it imports `twin.metadata`, deleted at step 2. It is also the sole consumer of `embedding_metrics_all` / `metrics_to_typ` / `metrics_to_df`, so notebook and functions share a fate | step 11 |
+| The other notebooks import modules that have moved; `twin-gui.ipynb` is the only consumer of `plots.application_plot`, which is **wanted** and needs porting to the new interface | step 10 |
+| `twin/batching.py` is 1562 lines with one smoke test plus the twelve key-contract tests added in session 4. The rest of the engine is unexercised; CLAUDE.md says not to rewrite it, so the question is what step 7 leans on | step 7 |
+| The figure check is a **smoke** test — it catches a raise, not a wrong picture. Real pixel baselines wait for the §3.6 refactor | step 10 |
 
 ## Traps
 

@@ -2,8 +2,10 @@
 
 A `Dataset` is a source of truth plus labels plus drawing instructions. It is **never laid
 out**, and it holds **no derived information**: it declares which of the affinity and distance
-sides are *stored* and what those numbers mean, and the `Dataset -> LayoutGraph` mapping in
-:mod:`twin.graphmatrix` is the single place a missing side is derived.
+sides are *stored* and what those numbers mean, and the `Dataset -> LayoutGraph` mapping
+:func:`twin.layoutgraph.vertex_graph` is the single place a missing side is derived.
+(:mod:`twin.graphmatrix` held that role before step 2 and is now the pre-restructure layer,
+alive only for `graph_embedding_all` and `paper_figures` until step 10.)
 
 The other half of the layering is that a `LayoutGraph` is never labelled. $A_E$'s nodes are
 edges and $A_{tne}$'s are edges *and* vertices, so a length-$n$ label vector must never reach

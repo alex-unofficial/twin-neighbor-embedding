@@ -1,8 +1,12 @@
-"""Characterisation tests — pinned values of the metric code *as it stands today*.
+"""Characterisation tests — pinned values of the metric code, from before the §2 rewrite.
 
-These exist to make "behaviour-preserving" checkable rather than asserted. The neighbourhood
-metrics get split into four named functions in spec §2.1 and the label metric is reimplemented
-in §2.3; both changes must reproduce these numbers.
+These exist to make "behaviour-preserving" checkable rather than asserted. They were written
+ahead of spec §2.1's split of the neighbourhood metrics into four named functions and §2.3's
+reimplementation of the label metric; **both landed at step 3, and reproduced these numbers**
+except where the commit said otherwise (`DECISIONS.md`, step-3 departures: two coincident-point
+values moved when the two metric families were put on one leave-one-out convention). The pins
+stay because their job now is the same one going forwards — steps 5-11 must not move them
+silently either.
 
 A value here changing is not automatically a failure — but it must be a *deliberate* change,
 declared in the commit message, with the pin updated in the same commit (CLAUDE.md, "Commit

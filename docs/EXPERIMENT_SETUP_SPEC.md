@@ -848,9 +848,16 @@ global mean pairwise distance $\bar d$ (eq. 66). Vectorise over `k` as above.
 
 #### NR and VNR — eq. (68), (69)
 
+> **Superseded on both counts — see §0.5's session-4 block.** The default normaliser is the
+> per-vertex **median**, not `"mean"`: a global constant factors out of the sum, so the `"mean"`
+> form below is *exactly* `normalized_nn_distance(X, 1)` and is not vertex-wise at all. And
+> `node_resolution` (eq. 68) is **not one of the reported metrics** — the thesis introduces it
+> only to argue against it, and VNR is the point-crowding score. The rest of this subsection is
+> the reasoning as it stood, kept because the outlier diagnosis in it is still right.
+
 ```python
-def node_resolution(X) -> float                                # eq. 68, global
-def node_resolution_vertexwise(X, normalize="max") -> float    # eq. 69
+def node_resolution(X) -> float                                   # eq. 68, the foil for VNR
+def node_resolution_vertexwise(X, normalize="median") -> float    # eq. 69
 ```
 
 **`normalize="mean"` is the default** — per vertex,

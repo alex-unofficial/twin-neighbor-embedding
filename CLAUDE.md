@@ -70,6 +70,14 @@ Background and design record, in reading order:
   with the weights it reads out of the same matrix — the two are **not** interchangeable: on
   `digits` they disagree in 12377 of 14732 positions, the same multiset in a different sequence.
   They agree on `karate` and `football_2023`, so a test on either proves nothing.
+- ⚠️ **NND and VNR are never read as standalone "higher is better" scores.** They reward
+  *uniform* point spacing, and density variation — tight clusters with space between them — is
+  the signature of a good layout of clustered data, so they penalise it by construction.
+  Measured on `digits`: a random Gaussian control is **first** on both (NND$_{16}$ 0.0952, VNR
+  0.0306) and **last** on ADR (0.9968, the value expected of a layout unrelated to the graph)
+  and recall (0.0090, chance). Report them beside the structural metrics; never rank on them
+  alone. `node_resolution` (NR) is not a reported metric at all — it is the foil VNR is defined
+  against.
 - **No dataset names in logic.** Nothing outside `twin/datasets/` may branch on a dataset name.
   Dataset-specific behaviour goes on the `Dataset` object.
 - **`[THESIS EDIT]` in the spec** means the code intentionally differs from `thesis.pdf`. Do not

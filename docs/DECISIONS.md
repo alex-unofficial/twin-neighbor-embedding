@@ -808,16 +808,24 @@ authoritative copy: `[THESIS EDIT]` is a spec concept, every existing marker liv
 and two copies of a table like that drift inside a single session. What is settled here is what to
 *do* about them, which is: nothing yet, deliberately.
 
-- **Three are thesis prose**, and the code must not chase a draft. The `[THESIS EDIT]` mechanism
+- **Five are thesis prose**, and the code must not chase a draft. The `[THESIS EDIT]` mechanism
   exists precisely so that the implementation is not "fixed" toward whichever revision of the PDF
-  happens to be on disk. They are the author's to make.
+  happens to be on disk. They are the author's to make, and `thesis/` is read-only to the
+  implementation (CLAUDE.md). Three from session 3 — the tie convention in eq. (60), the
+  disconnected-components sentence in §2.1.1, and `fa2`'s naming — plus two from session 4:
+  - **§2.2's "high-degree vertices tend to collapse toward the center" wants a qualifier.**
+    Measured on this roster it holds where there is hub structure ($\rho = -0.52$ on
+    `barabasi_albert`) and not on the $k$-NN graphs (+0.145 on `digits`). Table above.
+  - **§3 owes a sentence that NND$_k$ and VNR are not standalone scores**, since they reward
+    uniformity and a random control tops both while coming last on ADR and recall. Suggested
+    wording is in this file, beside the measurement.
 - **Two are code work already scheduled** — `count_intersections` versus eq. (78) at step 5, where
   §2.4 reimplements it anyway, and `fa2` → `fa2_modified` at step 9. Pulling either forward means
   touching the legacy $(d, n)$ path twice.
-- **One is genuinely open**: `SpectralLayout` reads the symmetric-normalised Laplacian while the
-  thesis defines Hall's formulation on $L_w = D - W$. It is not obvious which side should move, and
-  the choice is a modelling one rather than a bug — so it wants the author's call before step 9
-  touches that method, not a decision taken here to close a table row.
+- ~~**One is genuinely open**: `SpectralLayout`~~ — **closed in session 4** (`967d824`). The code
+  moved to Hall's $L_w = D - W$; Koren's variant is selectable and reported once. What settled it
+  was not that the old reading was weaker but that it contradicted §2.2's own description of the
+  baseline. See "`SpectralLayout`'s Laplacian — closed" above.
 
 ## Ideal distances: one source, one owner
 
