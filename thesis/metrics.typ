@@ -603,29 +603,6 @@ is relative to that vertex's full visual range. We use both as representative
 point-crowding metrics: $"NND"_k$ for local neighborhood crowding and $"VNR"$
 for node-resolution readability.
 
-Neither metric can be read on its own as a measure of layout quality, and
-this is a property of what they measure rather than a limitation of how they
-are computed. Both reward *uniform* point spacing, whereas a layout that
-preserves the structure of clustered data is deliberately non-uniform: it
-places tight groups with empty space between them, and the typical
-nearest-neighbor distance inside such a group is consequently small. A
-uniformly random point set, by contrast, has no such variation in density.
-The two effects act in the same direction, and the resulting degeneracy is
-easily large enough to invert a ranking. On the digits graph, a random
-Gaussian layout scores highest of every layout we consider on both crowding
-metrics --- $"NND"_16 = 0.095$ and $"VNR" = 0.031$, against $0.045$ and
-$0.012$ for #sgtsne --- while simultaneously scoring worst on both
-structural metrics, with $"ADR" = 0.997$, essentially the value expected of a
-layout bearing no relation to the graph, and neighborhood recall of $0.009$,
-which is chance.
-
-We therefore treat $"NND"_k$ and $"VNR"$ as measurements of readability that
-are meaningful only alongside the structural metrics of the preceding
-section, and never as scores by which layouts are ranked on their own. This
-is the same reasoning that motivates the pluralistic treatment described at
-the end of this section, made concrete: a layout can be driven to the top of
-both crowding metrics by discarding all structure.
-
 In addition to these scalar metrics, we also examine the distribution of 
 normalized pairwise vertex distances in the layout. 
 

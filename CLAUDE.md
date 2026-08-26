@@ -74,6 +74,15 @@ Background and design record, in reading order:
   Dataset-specific behaviour goes on the `Dataset` object.
 - **`[THESIS EDIT]` in the spec** means the code intentionally differs from `thesis.pdf`. Do not
   reconcile the code to the PDF.
+- 🚫 **`thesis/` is READ ONLY.** Every file under it — the `.typ` sources, `ref.yaml`, `images/`,
+  `thesis.pdf` — is the author's writing. Read it freely, cite it, measure the code against it,
+  and quote it in the design record. **Never create, edit, delete or reformat a file there**, and
+  do not build it in place (a compile writes `thesis.pdf`; if you must compile to check
+  something, send the output to a scratch path). This holds even when a finding clearly belongs
+  in the thesis and even when asked to "put it in §N": write the finding, the numbers and the
+  suggested wording into `docs/DECISIONS.md` and say where it belongs, and leave the prose to
+  the author. An agent drafting in someone's thesis is the one edit that cannot be reviewed by
+  running the tests.
 
 ## Layout of the package
 

@@ -87,7 +87,8 @@ were separately mergeable.
   density variation is the signature of a good layout of clustered data. On `digits` a random
   Gaussian control is **first** on both crowding metrics and **last** on ADR (0.9968) and recall
   (0.0090). They must be reported jointly with the structural metrics; §5 must not rank on them
-  alone. Written into thesis §3 and spec §0.5.
+  alone. In spec §0.5 as a reporting rule; **suggested thesis §3 wording is in `DECISIONS.md`,
+  for the author to place — `thesis/` is read-only (CLAUDE.md).**
 - **The edge-order trap is real.** `G.edges()` and the CSR upper triangle disagree in **12377 of
   14732** positions on `digits`, and agree exactly on `karate` and `football_2023` — so a test on
   either of those would have passed against a wrong implementation.

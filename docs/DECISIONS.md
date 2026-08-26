@@ -669,6 +669,32 @@ a layout can be driven to the top of both by discarding all structure. They must
 jointly with the structural metrics. This is the concrete demonstration of the degeneracy, on real
 data rather than in the abstract, and it arrived as a by-product of the normaliser question.
 
+### Suggested wording for thesis §3, for the author to place
+
+`thesis/` is read-only to this project's agents (CLAUDE.md), so the prose is offered here rather
+than inserted. It belongs after "We use both as representative point-crowding metrics", in
+`metrics.typ`. Numbers are the table above; `#sgtsne` is the existing macro and there is no
+`digits` macro.
+
+> Neither metric can be read on its own as a measure of layout quality, and this is a property of
+> what they measure rather than a limitation of how they are computed. Both reward *uniform* point
+> spacing, whereas a layout that preserves the structure of clustered data is deliberately
+> non-uniform: it places tight groups with empty space between them, and the typical
+> nearest-neighbor distance inside such a group is consequently small. A uniformly random point
+> set, by contrast, has no such variation in density. The two effects act in the same direction,
+> and the resulting degeneracy is easily large enough to invert a ranking. On the digits graph, a
+> random Gaussian layout scores highest of every layout we consider on both crowding metrics —
+> $\mathrm{NND}_{16} = 0.095$ and $\mathrm{VNR} = 0.031$, against $0.045$ and $0.012$ for
+> SG-$t$-SNE — while simultaneously scoring worst on both structural metrics, with
+> $\mathrm{ADR} = 0.997$, essentially the value expected of a layout bearing no relation to the
+> graph, and neighborhood recall of $0.009$, which is chance.
+>
+> We therefore treat $\mathrm{NND}_k$ and $\mathrm{VNR}$ as measurements of readability that are
+> meaningful only alongside the structural metrics of the preceding section, and never as scores
+> by which layouts are ranked on their own. This is the same reasoning that motivates the
+> pluralistic treatment described at the end of this section, made concrete: a layout can be
+> driven to the top of both crowding metrics by discarding all structure.
+
 ## `SpectralLayout`'s Laplacian — closed, and §2.2's claim measured
 
 The one genuinely open divergence in the §0.5 reconciliation table. Settled by the author:
