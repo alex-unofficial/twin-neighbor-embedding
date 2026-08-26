@@ -11,11 +11,13 @@ import pytest
 
 from twin.metrics.common import clear_loo_cache
 from twin.metrics.visual import (
+    _rowwise_denominator,
     edge_length_cv,
     edge_lengths,
     nn_distance_distribution,
     node_resolution,
     node_resolution_vertexwise,
+    node_resolution_vertexwise_report,
     normalized_nn_distance,
     pairwise_distance_distribution,
 )
@@ -205,7 +207,7 @@ def test_nr_is_zero_on_any_coincident_pair(grid16):
     assert node_resolution(X) == 0.0
 
 
-@pytest.mark.parametrize("normalize", ["mean", "max"])
+@pytest.mark.parametrize("normalize", ["median", "max", "mean"])
 def test_vnr_and_nr_are_invariant_under_similarity(grid16, normalize):
     assert node_resolution_vertexwise(similarity(grid16), normalize) == pytest.approx(
         node_resolution_vertexwise(grid16, normalize)
@@ -213,7 +215,7 @@ def test_vnr_and_nr_are_invariant_under_similarity(grid16, normalize):
     assert node_resolution(similarity(grid16)) == pytest.approx(node_resolution(grid16))
 
 
-@pytest.mark.parametrize("normalize", ["mean", "max"])
+@pytest.mark.parametrize("normalize", ["median", "max", "mean"])
 def test_vnr_is_nan_on_a_collapsed_layout(normalize):
     assert np.isnan(node_resolution_vertexwise(np.zeros((5, 2)), normalize))
 
@@ -224,16 +226,19 @@ def test_nr_is_nan_on_a_collapsed_layout():
 
 def test_vnr_refuses_an_unknown_normaliser(grid16):
     with pytest.raises(ValueError, match="normalize must be"):
-        node_resolution_vertexwise(grid16, "median")
+        node_resolution_vertexwise(grid16, "midrange")
 
 
-def test_the_max_normaliser_is_chunked_but_not_changed_by_chunking(grid16, monkeypatch):
+@pytest.mark.parametrize("normalize", ["median", "max"])
+def test_the_per_vertex_normalisers_are_chunked_but_not_changed_by_chunking(
+    grid16, monkeypatch, normalize
+):
     """A chunk boundary must not move the answer; the chunking is a memory bound, not a model."""
     import twin.metrics.visual as visual
 
-    reference = node_resolution_vertexwise(grid16, "max")
+    reference = node_resolution_vertexwise(grid16, normalize)
     monkeypatch.setattr(visual, "MAX_NORMALISER_CHUNK_BYTES", 8 * 4)  # a few rows at a time
-    assert node_resolution_vertexwise(grid16, "max") == pytest.approx(reference)
+    assert node_resolution_vertexwise(grid16, normalize) == pytest.approx(reference)
 
 
 # --------------------------------------------------------------------------- #
@@ -241,9 +246,9 @@ def test_the_max_normaliser_is_chunked_but_not_changed_by_chunking(grid16, monke
 # --------------------------------------------------------------------------- #
 
 
-def test_the_two_normalisers_agree_on_ordering_without_an_outlier(grid16, grid16_plus_overlap):
+def test_the_normalisers_agree_on_ordering_without_an_outlier(grid16, grid16_plus_overlap):
     """Where the thesis form is well behaved, the edit changes nothing that matters."""
-    for normalize in ("mean", "max"):
+    for normalize in ("median", "max", "mean"):
         clean = node_resolution_vertexwise(grid16, normalize)
         crowded = node_resolution_vertexwise(grid16_plus_overlap, normalize)
         assert clean > crowded
@@ -284,10 +289,8 @@ def test_an_outlier_makes_the_max_normaliser_stop_being_per_vertex(grid16, grid1
     1.2 to 3.7 here, because NR falls off as the diameter while VNR$_\\max$ is held up by the
     outlier's own well-separated row. `DECISIONS.md` records the correction.
     """
-    from twin.metrics.visual import _rowwise_max_distance
-
     def spread(X):
-        widest = _rowwise_max_distance(X)[:16]
+        widest = _rowwise_denominator(X, "max")[:16]
         return widest.std() / widest.mean()
 
     # 0.140 -> 0.023: a genuinely per-vertex normaliser becomes an almost constant one.
@@ -508,7 +511,7 @@ def test_edge_length_cv_is_nan_when_there_is_nothing_to_vary():
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("normalize", ["mean", "max"])
+@pytest.mark.parametrize("normalize", ["median", "max", "mean"])
 def test_nr_never_exceeds_vnr(grid16, grid16_plus_overlap, karate_random_layout, normalize):
     r"""An identity, not an observation.
 
@@ -528,3 +531,131 @@ def test_nnd_is_non_decreasing_in_k(grid16, karate_random_layout):
         swept = normalized_nn_distance(X, list(range(1, X.shape[0])))
         assert np.all(np.diff(swept) >= -1e-12)
         assert swept[-1] == pytest.approx(1.0)
+
+
+# --------------------------------------------------------------------------- #
+#          The median normaliser — the [THESIS EDIT] as it now stands          #
+# --------------------------------------------------------------------------- #
+
+
+def test_median_is_the_default():
+    """The default is what gets reported, so it is pinned rather than assumed."""
+    import inspect
+
+    assert (
+        inspect.signature(node_resolution_vertexwise).parameters["normalize"].default
+        == "median"
+    )
+
+
+@pytest.mark.parametrize("n", [2, 3, 4, 5, 8, 9, 33, 64])
+@pytest.mark.parametrize("normalize", ["median", "max"])
+def test_the_chunked_order_statistics_match_a_brute_force_reference(n, normalize):
+    r"""Against ``np.median``/``np.max`` over an explicitly self-deleted row.
+
+    Both parities of $m = n - 1$: the median of an even-sized set averages two order
+    statistics, and an off-by-one there is invisible on odd $n$ alone.
+    """
+    from scipy.spatial.distance import pdist, squareform
+
+    X = np.random.default_rng(n).normal(size=(n, 2))
+    D = squareform(pdist(X))
+    reduce = np.max if normalize == "max" else np.median
+    expected = np.array([reduce(np.delete(D[i], i)) for i in range(n)])
+    assert _rowwise_denominator(X, normalize) == pytest.approx(expected)
+
+
+def test_the_median_normaliser_excludes_the_self_distance(grid16):
+    """The diagonal zero is harmless for `max` and shifts `median` by half a rank.
+
+    Not a rounding detail: on the motivating fixture, including it moves VNR from 0.4860 to
+    0.5175. The two forms therefore cannot share the diagonal handling.
+    """
+    from scipy.spatial.distance import pdist, squareform
+
+    D = squareform(pdist(grid16))
+    with_self = np.median(D, axis=1)
+    without_self = _rowwise_denominator(grid16, "median")
+    assert not np.allclose(with_self, without_self)
+    assert (without_self >= with_self).all()  # dropping a zero can only raise the median
+
+
+def test_the_median_normaliser_is_robust_where_the_others_are_not(grid16, grid16_plus_overlap):
+    r"""The justification for the edit: a clean layout with one distant vertex must not be
+    ranked as more crowded than a layout with a genuine near-overlap.
+
+    ``"max"`` gets this backwards; so would a row-*mean*, whose denominator one distant vertex
+    inflates by $d_{\text{far}}/n$ for every vertex at once.
+    """
+    crowded = node_resolution_vertexwise(grid16_plus_overlap)
+    for distance in (10.0, 50.0, 200.0, 1000.0):
+        clean = node_resolution_vertexwise(np.vstack([grid16, [distance, 0.0]]))
+        assert clean > crowded, distance
+
+
+def test_the_median_normaliser_barely_moves_as_the_outlier_recedes(grid16):
+    """2.1 % from 10 units to 1000, where `max` falls by a factor of 2.5."""
+    at_10 = node_resolution_vertexwise(np.vstack([grid16, [10.0, 0.0]]))
+    at_1000 = node_resolution_vertexwise(np.vstack([grid16, [1000.0, 0.0]]))
+    assert at_1000 == pytest.approx(at_10, rel=0.05)
+
+    max_10 = node_resolution_vertexwise(np.vstack([grid16, [10.0, 0.0]]), "max")
+    max_1000 = node_resolution_vertexwise(np.vstack([grid16, [1000.0, 0.0]]), "max")
+    assert max_1000 < 0.5 * max_10
+
+
+@pytest.mark.parametrize("normalize", ["median", "max"])
+def test_vnr_is_bounded_in_the_unit_interval(normalize):
+    r"""$\min_{j\neq i}$ is no greater than any order statistic of the same set.
+
+    ``"mean"`` has no such bound, which is a small further argument for the default: a
+    naturally bounded score is easier to read across layouts.
+    """
+    rng = np.random.default_rng(31)
+    for _ in range(50):
+        X = rng.normal(size=(int(rng.integers(3, 40)), 2))
+        assert 0.0 <= node_resolution_vertexwise(X, normalize) <= 1.0
+
+
+def test_vnr_reaches_one_only_when_more_than_half_the_points_coincide():
+    """The upper bound is attained, so it is a real bound rather than an unreachable one."""
+    # Every distance equal: min == median, so every ratio is exactly 1.
+    triangle = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, np.sqrt(3) / 2]])
+    assert node_resolution_vertexwise(triangle, "median") == pytest.approx(1.0)
+
+    # Seven coincident points and one apart: each of the seven has a zero median *and* a zero
+    # minimum, so the clamp gives it 0; the lone point's own minimum is its own median, so it
+    # scores exactly 1. The mean is therefore 1/8 — not 0, and not 1.
+    X = np.vstack([np.zeros((7, 2)), [[5.0, 0.0]]])
+    report = node_resolution_vertexwise_report(X, "median")
+    assert report.value == pytest.approx(0.125)
+    assert report.n_zero_denominator == 7
+
+
+def test_a_zero_median_denominator_is_clamped_and_counted():
+    """Reachable only when **more than half** the other points coincide with a vertex.
+
+    Pathological, but it is the extreme collapse this metric exists to detect, so it is
+    surfaced rather than absorbed — the treatment `knn_accuracy` already gives d = 0.
+    """
+    five_of_eight = np.vstack([np.zeros((5, 2)), np.full((3, 2), 9.0)])
+    report = node_resolution_vertexwise_report(five_of_eight)
+    assert report.n_zero_denominator == 5
+    assert np.isfinite(report.value)
+
+    # Exactly half is not more than half: the median lands on the far cluster, not on 0.
+    four_of_eight = np.vstack([np.zeros((4, 2)), np.full((4, 2), 9.0)])
+    assert node_resolution_vertexwise_report(four_of_eight).n_zero_denominator == 0
+
+
+def test_the_report_carries_which_normaliser_produced_the_value(grid16):
+    """The three are not on a common scale, so a bare number does not say what it is."""
+    for normalize in ("median", "max", "mean"):
+        report = node_resolution_vertexwise_report(grid16, normalize)
+        assert report.normalize == normalize
+        assert report.value == node_resolution_vertexwise(grid16, normalize)
+
+
+def test_the_superseded_mean_normaliser_is_still_reachable_and_still_nnd_one(grid16):
+    """Kept selectable only so the identity that retired it stays demonstrable."""
+    assert node_resolution_vertexwise(grid16, "mean") == normalized_nn_distance(grid16, 1)

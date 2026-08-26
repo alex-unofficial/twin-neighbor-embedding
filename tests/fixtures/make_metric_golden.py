@@ -78,12 +78,15 @@ def build() -> dict:
         "scale_normalized_stress": scale_normalized_stress(X, ideal=ctx.ideal),
         "raw_stress": raw_stress(X, ideal=ctx.ideal),
         "normalized_stress": normalized_stress(X, ideal=ctx.ideal),
-        # Spec §2.2, added at step 4. `node_resolution_vertexwise` is pinned under **both**
-        # normalisers: the default is a [THESIS EDIT] and the alternative is the thesis's own
-        # equation, so a change to either has to be declared.
+        # Spec §2.2, added at step 4. `node_resolution_vertexwise` is pinned under **all three**
+        # normalisers: the default (`median`) is the [THESIS EDIT], `max` is the thesis's own
+        # equation, and `mean` is the superseded first edit kept only so the identity that
+        # retired it — `mean` is exactly NND_1 — stays demonstrable. A change to any of the
+        # three has to be declared.
         "node_resolution": node_resolution(X),
         "node_resolution_vertexwise": node_resolution_vertexwise(X),
         "node_resolution_vertexwise@max": node_resolution_vertexwise(X, "max"),
+        "node_resolution_vertexwise@mean": node_resolution_vertexwise(X, "mean"),
         "edge_length_cv": edge_length_cv(X, dataset.graph),
         # Eq. (80), the mean edge length LWCr will normalise by — pinned now so that step 5
         # inherits a fixed value rather than establishing one.

@@ -26,6 +26,8 @@ the strongest reason for these to be reached through
 All layout arrays are ``(n_points, d)``.
 """
 
+from dataclasses import dataclass
+
 import networkx as nx
 import numpy as np
 from scipy.spatial.distance import cdist
@@ -163,23 +165,100 @@ def node_resolution(X: np.ndarray) -> float:
     return float(distances.min()) / widest
 
 
-def _rowwise_max_distance(X: np.ndarray) -> np.ndarray:
-    r"""$\max_{j}\lVert x_i-x_j\rVert$ per row, in chunks.
+def _rowwise_denominator(X: np.ndarray, normalize: str) -> np.ndarray:
+    r"""The per-vertex normaliser $N_i$ of eq. (69), in chunks.
 
-    The diagonal needs no masking: $\lVert x_i-x_i\rVert = 0$ can only be the row maximum when
-    every distance in the row is 0, and that is the collapsed case the caller refuses anyway.
+    Chunked because this is the only $O(n^2)$-memory computation in the module: squaring up
+    tabula's condensed vector would be 200 MB on top of the 100 MB vector already held.
+
+    The diagonal is handled differently by the two per-vertex forms, and getting that wrong is
+    silent:
+
+    * ``"max"`` — $\lVert x_i-x_i\rVert = 0$ can only be a row's maximum when every distance in
+      the row is 0, which is the collapsed layout the caller has already refused. No masking
+      needed.
+    * ``"median"`` — a spurious zero **does** shift the median, by half a rank position. The
+      self entry is pushed to $+\infty$ so it sorts last, and the order statistics are then
+      taken over the $n-1$ genuine distances.
     """
     n = X.shape[0]
     rows = max(1, MAX_NORMALISER_CHUNK_BYTES // (8 * max(n, 1)))
     out = np.empty(n)
+
+    # Order statistics of the n-1 *other* distances, 0-indexed into the sorted row.
+    m = n - 1
+    lower, upper = (m // 2, m // 2) if m % 2 else (m // 2 - 1, m // 2)
+
     for start in range(0, n, rows):
         stop = min(start + rows, n)
-        out[start:stop] = cdist(X[start:stop], X).max(axis=1)
+        block = cdist(X[start:stop], X)
+        if normalize == "max":
+            out[start:stop] = block.max(axis=1)
+            continue
+        block[np.arange(stop - start), np.arange(start, stop)] = np.inf
+        if lower == upper:
+            out[start:stop] = np.partition(block, lower, axis=1)[:, lower]
+        else:
+            picked = np.partition(block, [lower, upper], axis=1)[:, [lower, upper]]
+            out[start:stop] = picked.mean(axis=1)
     return out
 
 
-def node_resolution_vertexwise(X: np.ndarray, normalize: str = "mean") -> float:
-    r"""VNR — per-vertex nearest-neighbour distance against a normaliser (eq. 69).
+@dataclass
+class NodeResolutionReport:
+    """VNR plus the diagnostic needed to read it (spec §2.2, `DECISIONS.md` (18)).
+
+    Attributes:
+        value: the score.
+        normalize: which normaliser produced it. Carried because the three are not on a common
+            scale and a bare number does not say which was used.
+        n_zero_denominator: how many vertices had $N_i = 0$ and were clamped to ``eps``.
+            Reachable only under ``"median"``, and only where **more than half** the other
+            points coincide with that vertex — pathological, but it is the extreme collapse
+            this metric exists to detect, so it is counted rather than absorbed. Belongs with
+            `n_ties` and `n_zero_distance` in the diagnostics table, not with `n_excluded`.
+    """
+
+    value: float
+    normalize: str
+    n_zero_denominator: int
+
+
+def node_resolution_vertexwise_report(
+    X: np.ndarray, normalize: str = "median", *, eps: float = 1e-12
+) -> NodeResolutionReport:
+    """VNR with its clamp count — see :func:`node_resolution_vertexwise`."""
+    if normalize not in ("median", "max", "mean"):
+        raise ValueError(
+            f"normalize must be 'median', 'max' or 'mean', got {normalize!r}"
+        )
+
+    X = _as_layout(X)
+    n = X.shape[0]
+    if n < 2:
+        return NodeResolutionReport(float("nan"), normalize, 0)
+
+    # One collapse test for all three forms, before any per-vertex work. A layout with every
+    # point at one location has no scale to normalise by under any of them, and the limit is
+    # not the score (`DECISIONS.md`, as in SNS).
+    if mean_pairwise_distance(X) == 0:
+        return NodeResolutionReport(float("nan"), normalize, 0)
+
+    nearest = _loo_neighbors(X, 1)[0][:, 0]
+    if normalize == "mean":
+        denominator = np.full(n, mean_pairwise_distance(X))
+    else:
+        denominator = _rowwise_denominator(X, normalize)
+
+    n_zero = int((denominator <= eps).sum())
+    ratios = nearest / np.maximum(denominator, eps)
+    return NodeResolutionReport(float(ratios.mean()), normalize, n_zero)
+
+
+def node_resolution_vertexwise(
+    X: np.ndarray, normalize: str = "median", *, eps: float = 1e-12
+) -> float:
+    r"""VNR — per-vertex nearest-neighbour distance against a per-vertex normaliser (eq. 69).
 
     .. math::
 
@@ -189,55 +268,47 @@ def node_resolution_vertexwise(X: np.ndarray, normalize: str = "mean") -> float:
     Unlike :func:`node_resolution` it is not decided by a single pair, so it stays sensitive to
     crowding while reflecting the typical readability of the layout. Larger is better separated.
 
+    ⚠️ **Not a "higher is better" score on its own.** VNR and NND reward *uniform* spread, and
+    density variation is the signature of a good layout of clustered data — so on `digits` a
+    random Gaussian control tops both while coming last on ADR and recall. Read them jointly
+    with the structural metrics, never alone (`DECISIONS.md`).
+
     Args:
         X: an ``(n, d)`` layout.
         normalize: what $N_i$ is.
 
-            ``"mean"`` **(default)** — the global $\bar d$, so every vertex is judged against
-            one scale. **[THESIS EDIT]**: eq. (69) specifies ``"max"``, and this deliberately
-            differs (spec §0.5). With a single distant vertex, *every* per-vertex maximum is
-            approximately the diameter, so the ``"max"`` form stops being per-vertex at all and
-            collapses back toward the global NR it was introduced to fix — measured below.
+            ``"median"`` **(default)** — $\operatorname{median}_{j\neq i}\lVert x_i-x_j\rVert$.
+            **[THESIS EDIT]**, the only one on this metric: eq. (69) specifies ``"max"``.
+            Per-vertex, so it varies between core and periphery; and robust, because one
+            distant vertex moves a median essentially not at all. Measured: pushing an outlier
+            from 10 to 1000 units moves this by 2.1 % where ``"max"`` falls by a factor of 2.5.
 
-            ``"max"`` — the thesis's $\max_{j\neq i}\lVert x_i-x_j\rVert$, each vertex against
-            its own visual range. Kept selectable so the two can be compared on real layouts, as
-            §0.5 requires. Chunked: it is the only $O(n^2)$-memory computation in this module.
+            ``"max"`` — the thesis's $\max_{j\neq i}\lVert x_i-x_j\rVert$. Kept selectable, and
+            it is what eq. (69) says, but it fails in **both** regimes: with a distant vertex
+            every denominator is approximately the diameter, and *without* one the maxima are
+            near-homogeneous and it reduces to $\mathrm{NND}_1\cdot\bar d/M$ — a rescaled
+            NND$_1$, within 5.8 % of that closed form on all five real layouts measured. Either
+            outlier-driven or redundant, never a clean second measurement.
+
+            ``"mean"`` — the global $\bar d$. Spec §0.5's original edit, **superseded**: a
+            constant factors out of the sum, so this is *exactly*
+            ``normalized_nn_distance(X, 1)`` and is not vertex-wise at all. Kept selectable
+            only so the identity stays demonstrable.
+
+        eps: denominators at or below this are clamped before division, and counted. See
+            :class:`NodeResolutionReport`.
 
     Returns:
         The mean ratio, or ``nan`` for a layout collapsed to a single point.
 
     Note:
-        ⚠️ **With ``normalize="mean"`` this is exactly** ``normalized_nn_distance(X, 1)``.
-        Both are $\frac{1}{n}\sum_i \min_{j\neq i}\lVert x_i-x_j\rVert$ over $\bar d$; the sum
-        and the division commute, so the edit does not merely put NND and VNR in one family, it
-        makes VNR the $k=1$ member of it. That is not a defect — NND$_k$ is reported at $k$ =
-        mean degree, which is a different number — but it does mean the ``"mean"`` form carries
-        no information NND$_k$ does not, whereas the thesis's ``"max"`` form does. A test pins
-        the identity, and `DECISIONS.md` records it as something the author should know when
-        deciding what to report.
+        Under ``"median"`` and ``"max"`` the score is bounded in $[0, 1]$, since
+        $\min_{j\neq i}$ is no greater than any order statistic of the same set; 1 is attained
+        under ``"median"`` only when more than half the other points sit at exactly the minimum
+        distance. Under ``"mean"`` it is not bounded above. A naturally bounded score is easier
+        to read across layouts, which is a small further argument for the default.
     """
-    if normalize not in ("mean", "max"):
-        raise ValueError(f"normalize must be 'mean' or 'max', got {normalize!r}")
-
-    X = _as_layout(X)
-    if X.shape[0] < 2:
-        return float("nan")
-
-    nearest, _ = _loo_neighbors(X, 1)
-    nearest = nearest[:, 0]
-
-    if normalize == "mean":
-        denominator = mean_pairwise_distance(X)
-        if denominator == 0:
-            return float("nan")
-        return float(nearest.mean() / denominator)
-
-    widest = _rowwise_max_distance(X)
-    if widest.min() == 0:
-        # Only possible when every distance is 0: a row's maximum is 0 iff that vertex is
-        # coincident with every other, which for n > 1 means the whole layout has collapsed.
-        return float("nan")
-    return float((nearest / widest).mean())
+    return node_resolution_vertexwise_report(X, normalize, eps=eps).value
 
 
 # --------------------------------------------------------------------------- #

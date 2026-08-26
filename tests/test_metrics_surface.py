@@ -57,6 +57,8 @@ REQUIRED_EXPORTS = {
     "normalized_nn_distance",
     "node_resolution",
     "node_resolution_vertexwise",
+    "node_resolution_vertexwise_report",
+    "NodeResolutionReport",
     "pairwise_distance_distribution",
     "nn_distance_distribution",
     "edge_lengths",
