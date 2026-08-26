@@ -49,6 +49,11 @@ test = ["pytest>=8.0.0"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = ["error::DeprecationWarning:twin.*"]
+# `slow` is opt-in: `-m slow` runs it, a bare `pytest` does not. Only the tabula figure carries
+# it (~3 min against a ~2 min suite), and a suite that doubles in length is one people stop
+# running. Registered here so an unknown-marker warning cannot mask a typo'd marker.
+markers = ["slow: opt-in, minutes rather than seconds (run with -m slow)"]
+addopts = "-m 'not slow'"
 
 [tool.black]
 line-length = 99

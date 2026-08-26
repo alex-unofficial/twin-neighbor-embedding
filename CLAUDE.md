@@ -125,7 +125,8 @@ Planned, not yet present:
 ## Commands
 
 ```bash
-venv/bin/python -m pytest    # test suite
+venv/bin/python -m pytest    # test suite (excludes `-m slow`)
+venv/bin/python -m pytest -m slow   # the opt-in extras: the ~3 min tabula figure
 python batches/<name>.py     # run an experiment batch
 python -m twin.report        # dataset connectivity / weight / label report
 ```
@@ -154,8 +155,10 @@ becomes unenforceable.
 - If separate feature branches are useful (e.g. one per phase of the spec), they branch **from**
   `experiment-setup` and merge back **into** `experiment-setup` — never into `master`.
 - Merge a feature branch into `experiment-setup` only when the test suite passes and the
-  existing paper figures still reproduce. `experiment-setup` should be usable at all times,
-  because it is what gets reviewed before the manual promotion to `master`.
+  existing paper figures still reproduce — the second half is now `tests/test_paper_figures.py`
+  rather than a manual step, though the three-minute tabula figure stays opt-in (`-m slow`).
+  `experiment-setup` should be usable at all times, because it is what gets reviewed before the
+  manual promotion to `master`.
 - ~~Land the bug fixes (spec §1) first~~ — done, merged at `b220cb8`.
 - When work is ready for promotion, say so and stop. Do not open, merge or land it into
   `master`; leave that to the owner.
@@ -196,8 +199,14 @@ becomes unenforceable.
   predate the rule, via Git LFS per `.gitattributes`), but **any new dataset file added under
   `data/` will be silently ignored.** When adding a dataset, either `git add -f` it or narrow
   the ignore rule — and verify with `git status --ignored` that it was actually staged.
-- Commit the visual-regression baseline PNGs; they are test fixtures. Do not commit ad-hoc
-  figures.
+- ⚠️ **There are no visual-regression baseline PNGs, and there is no pixel comparison.** An
+  earlier version of this line said to commit them as test fixtures; none exist, and every
+  tracked PNG is coil-20 *input data*. What exists is `tests/test_paper_figures.py`, a **smoke**
+  test: each figure function must return a figure without raising, which catches the failure
+  mode that actually occurs here (a signature change, a renamed dataset, a deleted parameter)
+  but would pass an empty or wrong picture. Real baselines belong at **step 10**, with the §3.6
+  plotting refactor — committing them now would pin output that is about to be rewritten. Do not
+  commit ad-hoc figures in the meantime.
 - Notebook outputs are stripped by the `jupyter` filter in `.gitattributes`, so a committed
   notebook is not a record of results. Results live in `runs/`.
 - `.env` is already ignored; keep it that way.
