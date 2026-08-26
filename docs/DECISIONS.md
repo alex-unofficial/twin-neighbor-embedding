@@ -515,6 +515,13 @@ different sequence, which is the shape §1.6 had one layer down. `edge_lengths` 
 
 ## The visual metrics on real layouts — the noise floor, and VNR's two normalisers
 
+> ⚠️ **Partly superseded.** The noise-floor table below stands. The mean-versus-max comparison
+> was the input to a decision since taken — see "VNR's normaliser — closed" — and two of its
+> readings did not survive later work: the `spectral` ordering flip was measured on the old
+> $L_{	ext{sym}}$ spectral layout and does not reproduce against the corrected one, and the
+> `random` > Kamada-Kawai ordering turned out to be a real property rather than an artefact of
+> the global normaliser. Both are corrected there.
+
 Step 4 is greenfield, so unlike step 3 there is no arm to compare against. What had to be
 established is what a difference has to beat before it means anything at step 8, and the
 mean-versus-max comparison §0.5 promises will happen "once on real layouts".
@@ -577,6 +584,90 @@ to feature. Taken with the identity above, the decision the author faces is shar
 framed it: `"mean"` is NND$_1$, so featuring it means the point-crowding column is NND at two
 values of $k$; `"max"` is a genuinely second measurement, at the cost of being distorted by
 outlier vertices on layouts like spectral's.
+
+## VNR's normaliser — closed: the per-vertex median
+
+Settled by the author after the identity below was found. **`normalize="median"` is the default**;
+`"max"` (eq. 69) and `"mean"` stay selectable. This supersedes §0.5's original edit, and it is
+still **one** `[THESIS EDIT]`, not two — eq. (69) has never changed, and the `"mean"` decision
+only ever lived in §0.5.
+
+**Why `"mean"` failed.** It divides a per-vertex numerator by a global constant, and a constant
+factors out of a sum:
+$\frac{1}{n}\sum_i \min_{j\neq i}\lVert x_i-x_j\rVert/\bar d = \mathrm{NND}_1(X)$, exactly. A
+"vertex-wise node resolution" divided by one global number is definitionally not vertex-wise. The
+outlier diagnosis that motivated the edit was right; the fix chosen made the two metrics identical.
+
+**Why `"max"` is not the fallback.** It fails in *both* regimes, which is a stronger objection
+than the outlier failure alone. Where the maxima are near-homogeneous — the ordinary case — it
+reduces to $\mathrm{NND}_1\cdot\bar d/M$, a rescaled NND$_1$. Measured against that closed form on
+five real layouts of `digits`: within **0.5–5.8 %** everywhere. So it is redundant when the layout
+is compact and outlier-driven when it is not.
+
+**Why the median.** Per-vertex, so it does not factor out; robust, because one distant vertex
+moves an order statistic essentially not at all; bounded in $[0, 1]$, since the minimum is no
+greater than any order statistic of the same set. On the motivating pair — a clean grid plus one
+distant vertex against a grid plus a genuine near-overlap — it is the only per-vertex form that
+gets the ordering right:
+
+| outlier distance | mean | max | row-mean | **median** |
+|---|---|---|---|---|
+| 10 | 0.4643 | 0.1494 | 0.4213 | 0.5082 |
+| 50 | 0.4876 | 0.0746 | 0.2443 | 0.5175 |
+| 200 | 0.4963 | 0.0627 | 0.1237 | 0.5185 |
+| 1000 | 0.4992 | 0.0596 | 0.0733 | **0.5188** |
+| *near-overlap reference* | 0.4165 | 0.2577 | **0.4283** | 0.4575 |
+
+A row-**mean** was considered and rejected on this table: it attenuates the outlier by $1/n$ and
+nothing more, so it drops below the crowded reference already at an outlier distance of 10. (The
+median column here includes the self-distance; excluding it, as the implementation does, gives
+0.4860 against the reference's 0.4280 — same ordering, and the difference is why the diagonal
+handling is tested.)
+
+Seed-noise band, seven seeds of SG-*t*-SNE on `digits`: median **0.0126**, IQR [0.0125, 0.0126],
+relative IQR **1.2 %** — in line with the other crowding metrics.
+
+**Two claims from the earlier round that did not survive re-measurement.**
+
+- **The "third strike on `spectral`" is withdrawn.** It was measured on the *old*
+  $L_{\text{sym}}$ spectral layout, whose $\bar d$ was 3.06× its median pairwise distance. Against
+  the corrected Hall layout the effect is gone: `median` and `mean` now order all five layouts
+  identically, and both put spectral last. The case for the median rests on the identity, the
+  both-regimes argument against `max`, robustness and boundedness — **not** on a changed ordering
+  on real data, which no longer occurs.
+- **The `random` > Kamada-Kawai ordering is not an artefact of globality.** $\bar d$ is not
+  inflated for either (1.016 and 1.063 times the median pairwise distance) and the median
+  normaliser preserves the ordering. It is real, and it means something — see the next section.
+
+## VNR and NND penalise exactly what a good layout of clustered data does
+
+The `random` > Kamada-Kawai result above is not an anomaly to be explained away. A uniform random
+point set has a *lower* mean nearest-neighbour distance than a maximally spread one — hexagonal
+packing beats Poisson by roughly 2× at equal density — so a random control beating KK on typical
+spacing means **KK's layout is non-uniform in density**. Which is exactly what a structure-preserving
+layout of clustered data produces: tight clusters, empty gaps, and therefore small typical
+nearest-neighbour distances *inside* the clusters.
+
+Five layouts of `digits`, one shared evaluation context, $k = 16$:
+
+| layout | NND$_{16}$ | VNR (median) | ADR ↓ | recall ↑ |
+|---|---|---|---|---|
+| spectral | 0.0114 | 0.0092 | **0.0277** | 0.3398 |
+| sgtsne | 0.0445 | 0.0122 | 0.0844 | **0.6398** |
+| spring | 0.0486 | 0.0189 | 0.0952 | 0.3585 |
+| kamada-kawai | 0.0740 | 0.0279 | 0.1627 | 0.2486 |
+| **random** | **0.0952** | **0.0306** | **0.9968** | **0.0090** |
+
+**The random control is first on both crowding metrics and last on both structural ones.** Its ADR
+of 0.9968 is the value a layout unrelated to the graph is supposed to have, and its recall of
+0.0090 is chance. Nothing is wrong with the implementations: uniformity is what NND and VNR
+measure, and a structureless layout is uniform.
+
+**Consequence, and it is a reporting rule rather than a caveat.** Neither NND nor VNR can be read
+as "higher is better" standing alone — they reward the opposite of what ADR and recall reward, and
+a layout can be driven to the top of both by discarding all structure. They must be reported
+jointly with the structural metrics. This is the concrete demonstration of the degeneracy, on real
+data rather than in the abstract, and it arrived as a by-product of the normaliser question.
 
 ## `SpectralLayout`'s Laplacian — closed, and §2.2's claim measured
 

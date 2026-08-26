@@ -527,24 +527,29 @@ The five divergences, each with what should happen to it:
 Written after §7 step 4 shipped. Where a claim below contradicts the body — including §0.5's own
 VNR entry above — this wins.
 
-**§2.2's VNR `[THESIS EDIT]` has a consequence the entry does not state: with
-`normalize="mean"`, VNR is *exactly* `normalized_nn_distance(X, 1)`.** Both are
+**§2.2's VNR `[THESIS EDIT]` is now the per-vertex median. The `"mean"` form it replaces was
+*exactly* `normalized_nn_distance(X, 1)`.** Both are
 $\frac{1}{n}\sum_i \min_{j\neq i}\lVert x_i-x_j\rVert$ over $\bar d$, and the sum and the
 division commute. So the edit does not merely make NND and VNR "one family with one normaliser";
-it makes VNR the $k = 1$ member of that family. Under it, reporting NND$_k$ and VNR is reporting
-one metric at two values of $k$, while the thesis's `"max"` form is a genuinely second
-measurement. The edit stands — the argument for it is unaffected — but **which to feature is the
-author's call**, and it is a sharper choice than the entry above implies. Both are implemented,
-both are pinned in the golden file, and the comparison the entry promises is done (below).
+it made VNR the $k = 1$ member of that family: reporting NND$_k$ and VNR would have been reporting
+one metric at two values of $k$. The outlier diagnosis that motivated the edit was right; the
+replacement it chose was not vertex-wise at all.
 
-**The promised comparison, done: the two normalisers disagree on real layouts.** Five layouts of
-`digits` ranked by each: they agree on the first three and swap the last two, with `"mean"`
-ranking a random Gaussian control least crowded and `"max"` ranking Kamada-Kawai above it —
-**disjoint over all five seeds in both directions**, Spearman 0.90 over the five layouts. The
-outlier mechanism the entry predicts does occur on a real layout: `spectral`'s per-vertex maxima
-have a spread of 0.062 against 0.13-0.17 for every other layout, so its denominators are all
-approximately the diameter, and it scores 3.6× below SG-*t*-SNE under `"max"` against 1.5× under
-`"mean"`. Tables in `DECISIONS.md`.
+**Resolved (author's decision): $N_i = \operatorname{median}_{j\neq i}\lVert x_i-x_j\rVert$.**
+Per-vertex, so it does not factor out of the sum; robust, since one distant vertex barely moves an
+order statistic; and bounded in $[0, 1]$, which `"mean"` is not. The thesis's `"max"` is not the
+fallback because it fails in *both* regimes — outlier-driven when there is a distant vertex, and
+within 0.5–5.8 % of a rescaled NND$_1$ on five real layouts when there is not. Still **one**
+`[THESIS EDIT]`: eq. (69) never changed, and `"mean"` only ever lived here. All three normalisers
+are implemented and pinned. `DECISIONS.md` has the tables.
+
+**⚠️ §2.2 needs a sentence it does not have: NND and VNR cannot be read as "higher is better"
+on their own.** They reward *uniform* spread, and density variation — tight clusters, empty gaps —
+is the signature of a good layout of clustered data, so they penalise it by construction. On
+`digits` a random Gaussian control is **first** on both (NND 0.0952, VNR 0.0306) and **last** on
+both structural metrics (ADR 0.9968, the value a layout unrelated to the graph should have;
+recall 0.0090, chance). Nothing is misimplemented: a structureless layout is uniform. They must be
+reported jointly with ADR and recall, and §5 must not rank on them alone. Table in `DECISIONS.md`.
 
 **"Collapses back toward the global NR it was introduced to fix" is a claim about the
 normaliser, not the value.** Measured, VNR$_{\max}$/NR *rises* under an added outlier — 1.21 to

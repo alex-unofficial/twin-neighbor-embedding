@@ -78,13 +78,16 @@ were separately mergeable.
   thesis's reason for that: $1\times10^{-5}$ on 1797 vertices with a **54 %** relative IQR across
   seeds — it reports which seed put two points nearest each other. Implemented and pinned because
   VNR is defined by contrast with it; **VNR is the point-crowding score**, with NND$_k$.
-- **VNR(mean) is exactly NND$_1$** — an identity, not an approximation, and one §0.5 does not
-  state. The `[THESIS EDIT]` makes VNR the $k = 1$ member of NND's family rather than a second
-  measurement. **This needs the author's call.**
-- **The two VNR normalisers disagree on real layouts**, and the disagreement is disjoint over
-  five seeds: `"mean"` ranks a random control as least crowded, `"max"` ranks Kamada-Kawai above
-  it. The outlier mechanism §0.5 predicts does occur — on `spectral`, whose per-vertex maxima
-  have a spread of 0.062 against 0.13-0.17 elsewhere. `DECISIONS.md` has both tables.
+- **VNR(mean) was exactly NND$_1$** — an identity, not an approximation. That closed the
+  normaliser question: **the default is now the per-vertex `"median"`** (author's decision), which
+  is per-vertex, outlier-robust and bounded in $[0,1]$. `"max"` was not the fallback because it
+  fails in *both* regimes — outlier-driven with a distant vertex, and within 0.5-5.8 % of a
+  rescaled NND$_1$ on five real layouts without one.
+- **⚠️ NND and VNR are not "higher is better" on their own.** They reward uniform spread, and
+  density variation is the signature of a good layout of clustered data. On `digits` a random
+  Gaussian control is **first** on both crowding metrics and **last** on ADR (0.9968) and recall
+  (0.0090). They must be reported jointly with the structural metrics; §5 must not rank on them
+  alone. Written into thesis §3 and spec §0.5.
 - **The edge-order trap is real.** `G.edges()` and the CSR upper triangle disagree in **12377 of
   14732** positions on `digits`, and agree exactly on `karate` and `football_2023` — so a test on
   either of those would have passed against a wrong implementation.
@@ -295,13 +298,16 @@ one of the eight.)
 | `openTSNE` and `fa2_modified` not installed | step 9 |
 | One legacy `(d, n)` surface: `graph_embedding_all` → `paper_figures` → `plots`, and with it `twin/graphmatrix.py`'s pre-restructure classes and their `.affinity` / `.distance` shim | converges at steps 5 and 10; tracked in `DECISIONS.md` (2) |
 | Tabula's Leiden partition is still computed inside `tabula_sapiens_teaser` rather than registered as a `detected:leiden` label set | step 10, where the consumer and the cost land together |
+| ~~**Open:** VNR's normaliser~~ — **closed session 4**: the per-vertex median. Still one `[THESIS EDIT]`; eq. (69) never changed | discharged |
 | ~~**Open:** `SpectralLayout`'s Laplacian~~ — **closed session 4**: Hall's $D-W$ is the default, Koren's is selectable and reported once, §1.5's solver fix landed with it. §2.2's "hubs collapse inward" is now measured — true on hub graphs, false on the $k$-NN graphs, so **the thesis prose wants a qualifier** | thesis prose, before submission |
 | ⚠️ **`SpectralLayout` still does not handle a disconnected graph** — the zero eigenvalue's multiplicity is the component count, so column 0 is not the only trivial vector and the layout would keep component indicators as coordinates. §1.5's other half; §4.4's policy covers metrics, not the layout side | whenever a disconnected dataset joins the roster |
 | Two scheduled code divergences from the thesis: `count_intersections` versus eq. (78), and `fa2` → `fa2_modified` — spec §0.5's table | **steps 5 and 9** |
 | Step 9 is lighter than the table says: **§1.5 is done** (session 4), so what remains there is §1.4, §1.7 and the graph *t*-SNE baseline | step 9 |
 | Cache loop order: evaluate every metric of one layout before moving to the next, or a two-entry cache evicts on every switch. Nothing enforces it yet | **step 7**, the batch runner |
 | **Open, needs the author's call:** VNR's `"mean"` normaliser is **exactly** NND$_1$, so under the `[THESIS EDIT]` the point-crowding column is NND at two values of $k$; the thesis's `"max"` is a genuinely second measurement but is distorted by outlier vertices. Both are implemented, both are in the golden file, and the comparison §0.5 asked for is done — `DECISIONS.md` | before the results tables are designed: **step 11**, but the decision can be taken now |
-| The three visual metrics have a measured seed-noise band on `digits` (NND 0.4 %, VNR 1.3-1.8 %, `edge_length_cv` 2.4 %). Nothing reads it yet; a λ sweep that reports differences smaller than it would be reporting noise | step 8 |
+| The three visual metrics have a measured seed-noise band on `digits` (NND 0.4 %, VNR 1.2 %, `edge_length_cv` 2.4 %). Nothing reads it yet; a λ sweep that reports differences smaller than it would be reporting noise | step 8 |
+| ⚠️ **NND and VNR reward uniformity, which a good layout of clustered data does not have** — a random control tops both and comes last on ADR and recall. The reporting layer must not rank on them alone, and the joint reading is not enforced anywhere yet | step 11 |
+| `NodeResolutionReport.n_zero_denominator` joins `n_ties` / `n_zero_distance` in the diagnostics table of `DECISIONS.md` (18); nothing collects that table yet | step 7 |
 | The notebooks import modules that have moved | whenever someone opens one |
 
 ## Traps
