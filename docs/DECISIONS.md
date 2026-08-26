@@ -578,6 +578,112 @@ framed it: `"mean"` is NND$_1$, so featuring it means the point-crowding column 
 values of $k$; `"max"` is a genuinely second measurement, at the cost of being distorted by
 outlier vertices on layouts like spectral's.
 
+## `SpectralLayout`'s Laplacian — closed, and §2.2's claim measured
+
+The one genuinely open divergence in the §0.5 reconciliation table. Settled by the author:
+**`variant="hall"` is the default, `variant="degree_normalized"` is implemented and reported
+once, and the old behaviour is removed.**
+
+**The argument is internal consistency, not baseline strength.** The previous code returned the
+eigenvectors of $L_{\text{sym}}$ directly — which is neither eqs. (12)-(14) nor Koren's
+degree-normalised drawing, but the $L_{\text{sym}}$ eigenvector embedding used in spectral
+clustering, i.e. Koren's premultiplied by $D^{1/2}$. (Not Ng-Jordan-Weiss proper: NJW
+additionally row-normalises the eigenvector matrix to unit rows before clustering.) That
+$D^{1/2}$ factor scales each vertex by the square root of its own degree and pushes hubs
+outward. Thesis §2.2 says the opposite — "high-degree vertices tend to collapse toward the
+center" — so the figures would have contradicted the prose describing them. A weak baseline is a
+fairness problem and is arguable; a baseline that behaves opposite to its own description is an
+inconsistency a reviewer can see in one glance at a figure.
+
+### §2.2's claim, measured on the roster
+
+The claim had never been checked here — it was repeated from the literature. Spearman(weighted
+degree, radius from the centroid), $d = 2$, all ten registered datasets:
+
+| dataset | *n* | degree ratio | (a) Hall | (b) Koren | (c) old code |
+|---|---|---|---|---|---|
+| ring_of_cliques | 40 | 1.3 | −0.867 | −0.867 | +0.867 |
+| tree_of_cliques | 157 | 1.3 | −0.844 | −0.844 | +0.592 |
+| small_world | 150 | 1.3 | −0.078 | −0.069 | +0.094 |
+| **barabasi_albert** | 1000 | **20.1** | **−0.518** | −0.207 | +0.156 |
+| karate | 34 | 17.0 | −0.535 | −0.194 | +0.496 |
+| **karate_weighted** | 34 | **16.0** | **−0.543** | −0.080 | +0.658 |
+| football_2023 | 132 | 1.3 | +0.178 | +0.228 | +0.272 |
+| sbm_er_3modes | 210 | 1.8 | −0.612 | −0.064 | +0.342 |
+| **digits** | 1797 | **8.4** | **+0.145** | +0.171 | +0.558 |
+| tabula | 5007 | 4.0 | +0.009 | +0.014 | +0.305 |
+
+**§2.2 is confirmed where there are hubs, and is not a general statement.** On the three graphs
+with real degree heterogeneity and hub structure — `barabasi_albert` (the scale-free case, 20×),
+`karate` and `karate_weighted` (17×, 16×) — Hall's formulation draws hubs inward at ρ ≈ −0.52 to
+−0.54. On the two $k$-NN graphs it does not: `digits` is +0.145 and `tabula` +0.009, and there
+weighted degree reports local density rather than hubness. So **§2.2 wants a qualifier rather
+than a rewrite** — say it of graphs with hub structure, and note the $k$-NN graphs as the case
+where it does not apply. Better found here than in the viva.
+
+⚠️ **Do not read the near-regular rows as evidence either way.** At a degree ratio of 1.3 the
+radii are nearly constant, so a 14 % modulation by $\sqrt{\deg}$ reorders every rank and
+Spearman saturates on noise — which is exactly how `ring_of_cliques` manages ∓0.867 in adjacent
+columns. Only the heterogeneous rows carry information.
+
+The old column is the finding that closed the question: **positive on all ten**, without
+exception.
+
+### What it costs in quality, and why (b) is kept
+
+Same graph, different layouts — within the ADR comparison rule (§2.1, §5.3); these are not
+cross-graph aggregates.
+
+| dataset (degree ratio) | variant | ADR ↓ | SNS ↓ | recall ↑ | Procrustes vs (a) |
+|---|---|---|---|---|---|
+| karate_weighted (16×) | (a) Hall | 0.310 | 0.397 | 0.452 | — |
+| | (b) Koren | 0.334 | 0.434 | **0.566** | 0.107 |
+| | (c) old | 0.553 | 0.517 | 0.354 | 0.301 |
+| football_2023 (1.3×) | (a) | 0.311 | 0.542 | 0.530 | — |
+| | (b) | 0.310 | 0.523 | 0.532 | 0.004 |
+| | (c) | 0.311 | 0.523 | 0.534 | 0.005 |
+| digits (8.4×) | (a) Hall | 0.028 | 0.656 | 0.340 | — |
+| | (b) Koren | 0.028 | 0.666 | 0.341 | 0.005 |
+| | (c) old | 0.174 | 0.679 | **0.124** | 0.037 |
+
+On `football_2023` all three agree to three decimals — degrees run 10 to 13, so
+$D^{1/2}\approx$ constant and the distinction vanishes. That is the control confirming the
+mechanism is the degree scaling and nothing else.
+
+(b) is at least as good as (a) everywhere and clearly better on `karate_weighted` (recall 0.566
+against 0.452), which is why it is implemented and will be reported once: a single line in §5
+pre-empts "the baseline was under-powered" without restructuring the derivation. (a) is the
+default because it is what eqs. (12)-(14) derive, which keeps §2.1.2, §2.2 and §5 mutually
+consistent at zero prose cost. Spectral is deterministic, so reporting the second variant costs
+no seed axis.
+
+### The eigensolver is not independent of the choice
+
+$L_{\text{sym}}$'s spectrum is bounded in $[0, 2]$ for any graph; $L^w = D - W$ runs to
+$2d_{\max}$ — 142 on `barabasi_albert`, 52 on `karate_weighted`. ARPACK converges on
+well-separated extremal eigenvalues, and `which="SM"` on a spread spectrum is the case it is
+worst at, so **switching to Hall makes §1.5's fragility worse rather than neutral**;
+normalisation had been masking the conditioning. Shift-invert ($\sigma = 0$, `which="LM"`) is
+insensitive to the spread, so §1.5's solver fix landed in the same commit rather than at step 9.
+
+Measured on all ten datasets: subspace overlap **1.0000** against `which="SM"` everywhere, and
+**3.1× faster on tabula** (1.90 s → 0.61 s), 1.8× on digits, *slower* on barabasi_albert
+(0.12 s → 0.44 s). In fairness to §1.5's wording: no convergence *failure* was observed at this
+roster's sizes, so the case for shift-invert here is conditioning and throughput, not an
+observed break. $\sigma = 0$ factorises a singular matrix and could in principle fail; it did
+not, on any of the ten.
+
+### A determinism gap found while testing
+
+ARPACK draws its starting vector at random. Successive spectral runs therefore differed by
+eigenvector **sign**, while `EMBEDDING_REGISTRY` declares the method `stochastic=False`. No
+metric in the suite could see it — every one is reflection-invariant — but a persisted layout
+(step 7) or a committed figure would not have reproduced, and the declaration drives whether a
+case gets the seed axis at all (§4.1). A seeded `v0` makes repeated runs bit-identical.
+
+Not `v0 = ` $\mathbf{1}$: that is exactly $L^w$'s null eigenvector, and starting ARPACK on an
+exact eigenvector is a degeneracy not worth relying on even where it happens to work.
+
 ## Reconciling the code with `thesis.pdf` — the decision, not the list
 
 The divergences themselves are a table in **spec §0.5's session-3 corrections**, which is their one

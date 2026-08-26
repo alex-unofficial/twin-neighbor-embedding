@@ -89,6 +89,30 @@ were separately mergeable.
   14732** positions on `digits`, and agree exactly on `karate` and `football_2023` — so a test on
   either of those would have passed against a wrong implementation.
 
+### After step 4, in the same session: `SpectralLayout`
+
+The last genuinely open item in §0.5's reconciliation table, settled by the author and closed.
+
+- **`variant="hall"` ($L^w = D - W$, eqs. 12-14) is the default.** The old code returned the
+  eigenvectors of $L_{\text{sym}}$ directly — the spectral-*clustering* embedding, Koren's
+  premultiplied by $D^{1/2}$. ⚠️ **Declared numerical change**: every spectral layout moves.
+- **The argument was internal consistency, not baseline strength.** The old reading put
+  high-degree vertices *outward* — Spearman(degree, radius) positive on **all ten** datasets —
+  where thesis §2.2 says they collapse inward. The figures would have contradicted the prose.
+- **§2.2's claim is now measured, and wants a qualifier**: true where there is hub structure
+  ($\rho = -0.52$ on `barabasi_albert`, $-0.54$ on `karate_weighted`), false on the $k$-NN
+  graphs ($+0.145$ on `digits`, $+0.009$ on `tabula`). **Thesis prose to change, not code.**
+- **Koren's variant is selectable** (`variant="degree_normalized"`) and gets one reported line —
+  it beats Hall's on `karate_weighted` (recall 0.566 vs 0.452), so this pre-empts
+  "under-powered baseline" without touching the derivation.
+- **§1.5's solver fix landed here, not at step 9**, because it is not independent: $D - W$'s
+  spectrum runs to $2d_{\max}$ where $L_{\text{sym}}$'s is bounded, so `which="SM"` got worse
+  exactly when the Laplacian changed. Shift-invert, overlap 1.0000 on all ten, 3.1× faster on
+  tabula.
+- **A determinism gap was found and closed**: ARPACK's random start made "deterministic"
+  spectral runs differ by eigenvector sign. Invisible to every metric, fatal to a persisted
+  layout.
+
 ### Where step 5 starts
 
 No plan file exists yet; write one first. Three things it has to take account of:
@@ -271,8 +295,10 @@ one of the eight.)
 | `openTSNE` and `fa2_modified` not installed | step 9 |
 | One legacy `(d, n)` surface: `graph_embedding_all` → `paper_figures` → `plots`, and with it `twin/graphmatrix.py`'s pre-restructure classes and their `.affinity` / `.distance` shim | converges at steps 5 and 10; tracked in `DECISIONS.md` (2) |
 | Tabula's Leiden partition is still computed inside `tabula_sapiens_teaser` rather than registered as a `detected:leiden` label set | step 10, where the consumer and the cost land together |
-| **Open, needs the author's call:** `SpectralLayout` reads the symmetric-normalised Laplacian; thesis eqs. (12)–(14) define Hall's formulation on $L_w = D - W$. Not obviously a bug on either side — spec §0.5 | before **step 9** touches that method |
+| ~~**Open:** `SpectralLayout`'s Laplacian~~ — **closed session 4**: Hall's $D-W$ is the default, Koren's is selectable and reported once, §1.5's solver fix landed with it. §2.2's "hubs collapse inward" is now measured — true on hub graphs, false on the $k$-NN graphs, so **the thesis prose wants a qualifier** | thesis prose, before submission |
+| ⚠️ **`SpectralLayout` still does not handle a disconnected graph** — the zero eigenvalue's multiplicity is the component count, so column 0 is not the only trivial vector and the layout would keep component indicators as coordinates. §1.5's other half; §4.4's policy covers metrics, not the layout side | whenever a disconnected dataset joins the roster |
 | Two scheduled code divergences from the thesis: `count_intersections` versus eq. (78), and `fa2` → `fa2_modified` — spec §0.5's table | **steps 5 and 9** |
+| Step 9 is lighter than the table says: **§1.5 is done** (session 4), so what remains there is §1.4, §1.7 and the graph *t*-SNE baseline | step 9 |
 | Cache loop order: evaluate every metric of one layout before moving to the next, or a two-entry cache evicts on every switch. Nothing enforces it yet | **step 7**, the batch runner |
 | **Open, needs the author's call:** VNR's `"mean"` normaliser is **exactly** NND$_1$, so under the `[THESIS EDIT]` the point-crowding column is NND at two values of $k$; the thesis's `"max"` is a genuinely second measurement but is distorted by outlier vertices. Both are implemented, both are in the golden file, and the comparison §0.5 asked for is done — `DECISIONS.md` | before the results tables are designed: **step 11**, but the decision can be taken now |
 | The three visual metrics have a measured seed-noise band on `digits` (NND 0.4 %, VNR 1.3-1.8 %, `edge_length_cv` 2.4 %). Nothing reads it yet; a λ sweep that reports differences smaller than it would be reporting noise | step 8 |

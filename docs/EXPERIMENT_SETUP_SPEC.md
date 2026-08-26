@@ -514,7 +514,7 @@ The five divergences, each with what should happen to it:
 
 | divergence | disposition |
 |---|---|
-| `SpectralLayout` reads the symmetric-normalised Laplacian (`normed=True`, `twin/embedding.py`); thesis eqs. (12)–(14) define Hall's formulation on $L_w = D - W$ under $X^\top X = I$. Different objective, and a different trivial eigenvector — so "drop column 0, take the next $d$" rests on a premise the thesis does not state | **open**; needs the author's call before step 9 touches that method |
+| ~~`SpectralLayout` reads the symmetric-normalised Laplacian~~ | **closed, session 4** — the code moved to Hall's $L_w = D - W$, eqs. (12)–(14). See the session-4 block below; the "different trivial eigenvector" reasoning was itself wrong, and the real argument is that the old layout contradicted §2.2's description of it |
 | `knn_accuracy`'s default `tie_rule="fractional"` makes eq. (60) an expectation over tie-breakings rather than an Iverson-bracket fraction of vertices. §2.3 asks for it deliberately; the thesis states no tie convention at all | new **[THESIS EDIT]** — prose |
 | `plots.py::count_intersections` skips edge pairs sharing a vertex and counts only `Point` intersections; eq. (78) says explicitly that such pairs are **not** excluded, and §2.4's degeneracy convention counts collinear overlap as 1. Latent today: its only caller is `tree_of_cliques`, on straight segments, where a shared endpoint cannot produce a crossing | code, **step 5**, which reimplements it on layer 2 anyway |
 | §2.3 of the thesis names the `fa2` package; §1.7 here plans the move to `fa2_modified` for reproducibility | code, **step 9**; the prose follows the code |
@@ -577,6 +577,24 @@ its lengths must align with the weights read from the same matrix. The two agree
 `karate` and `football_2023`, which were built in sorted order, and disagree in **12377 of 14732
 positions** on `digits`. A test on either small graph would pass against a wrong implementation;
 §2.4 and §4.3 should be read with this in mind.
+
+**`SpectralLayout` is closed, and §2.2's description of it needs a qualifier.** The code now
+implements eqs. (12)–(14) on $L^w = D - W$. What settled it was not that the old reading was a
+weaker baseline but that it **contradicted §2.2's own prose**: measured Spearman(weighted degree,
+radius) under the old code is positive on **all ten** registered datasets, where §2.2 says
+high-degree vertices collapse toward the centre.
+
+Measured under the corrected code, §2.2's claim holds **where there is hub structure** —
+$\rho = -0.52$ on `barabasi_albert` (scale-free, 20× degree spread), $-0.54$ on
+`karate_weighted`, $-0.61$ on `sbm_er_3modes` — and **not on the $k$-NN graphs**, where it is
+$+0.145$ on `digits` and $+0.009$ on `tabula` and weighted degree reports local density rather
+than hubness. §2.2 should say it of hub graphs and name the $k$-NN case as the exception. Rows
+for near-regular graphs carry no information either way: at a degree ratio of 1.3 the radii are
+nearly constant and Spearman saturates on noise.
+
+Koren's degree-normalised variant is implemented as `variant="degree_normalized"` and will be
+reported once (§5, one line), since it beats Hall's on `karate_weighted`; Hall's stays the
+default so that §2.1.2, §2.2 and §5 describe one method. `DECISIONS.md` has both tables.
 
 **§2.0's "query at max(k) once and slice" is safe for NND and not for the kNN family**, which
 sharpens the session-3 correction above. NND reads the neighbour *distances*, whose sorted
@@ -643,6 +661,13 @@ Both build a `pos` dict and then never pass it to `graphviz_layout`. Both ignore
 reported as a zero-variance win against stochastic methods' means.
 
 ### 1.5 `SpectralLayout` eigensolver — `twin/embedding.py`
+
+> **Done in session 4, not step 9** (`DECISIONS.md`). The solver is not independent of which
+> Laplacian is used: $L_{\text{sym}}$'s spectrum is bounded in $[0,2]$ while $D-W$ runs to
+> $2d_{\max}$, so moving to Hall's formulation made `which="SM"` *worse*, and the two changes
+> had to land together. Now $\sigma=0$, `which="LM"`; verified at subspace overlap 1.0000
+> against the old solver on all ten datasets. The disconnected half is **still open** — see
+> below. No convergence failure was ever observed at this roster's sizes.
 
 `sp.linalg.eigsh(L, k=d+1, which="SM")` needs an explicit `import scipy.sparse.linalg`, and
 `which="SM"` is slow and unreliable on large Laplacians. Use shift-invert
