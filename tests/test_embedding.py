@@ -188,3 +188,113 @@ def test_neato_responds_to_the_distances_it_is_given(small_vertex_graph):
         inverted[:, node] = position
 
     assert not np.allclose(correct, inverted)
+
+
+# --------------------------------------------------------------------------- #
+#             SpectralLayout — Hall's formulation (thesis eqs. 12-14)          #
+# --------------------------------------------------------------------------- #
+
+
+def test_spectral_solves_halls_problem_not_the_normalised_one(small_vertex_graph):
+    r"""The default is $L^w = D - W$, so the layout satisfies $X^\top\mathbf{1} = 0$.
+
+    That constraint is eq. (14) and it is the cheap witness for *which* Laplacian was used:
+    $L_{\text{sym}}$'s trivial eigenvector is $D^{1/2}\mathbf{1}$, so its remaining
+    eigenvectors are orthogonal to that instead and the layout is not centred.
+    """
+    from twin.embedding import SpectralLayout
+
+    X = SpectralLayout().embed(small_vertex_graph)
+    assert np.abs(X.mean(axis=1)).max() < 1e-10
+
+    normalised = SpectralLayout(variant="degree_normalized").embed(small_vertex_graph)
+    assert np.abs(normalised.mean(axis=1)).max() > 1e-6
+
+
+def test_spectral_matches_a_dense_eigendecomposition_of_D_minus_W(small_vertex_graph):
+    """Against `numpy.linalg.eigh` on the dense Laplacian — the definition, not another solver.
+
+    Compared as a *subspace*: eigenvector signs are arbitrary and a repeated eigenvalue makes
+    the individual vectors arbitrary within their eigenspace, so comparing them elementwise
+    would pin an ARPACK convention rather than the mathematics.
+    """
+    import scipy.sparse as sp
+
+    from twin.embedding import SpectralLayout
+
+    A = small_vertex_graph.affinity
+    L = sp.csgraph.laplacian(A, normed=False).toarray()
+    _, dense = np.linalg.eigh(L)
+
+    X = SpectralLayout().embed(small_vertex_graph).T
+    q_dense = np.linalg.qr(dense[:, 1:3])[0]
+    q_arpack = np.linalg.qr(X)[0]
+    overlap = np.linalg.svd(q_dense.T @ q_arpack, compute_uv=False).min()
+    assert overlap == pytest.approx(1.0, abs=1e-8)
+
+
+def test_spectral_is_deterministic_as_the_registry_declares(small_vertex_graph):
+    """`stochastic=False` has to be true bit-wise, not just up to a reflection.
+
+    ARPACK draws its starting vector at random unless given one, and successive runs then
+    differ by eigenvector sign. No metric here can see that — they are all
+    reflection-invariant — but a persisted layout or a committed figure would not reproduce.
+    """
+    from twin.embedding import SpectralLayout
+
+    assert not EMBEDDING_REGISTRY["spectral"].stochastic
+    first = SpectralLayout().embed(small_vertex_graph)
+    for _ in range(3):
+        assert np.array_equal(SpectralLayout().embed(small_vertex_graph), first)
+
+
+def test_the_degree_normalized_variant_is_koren_not_the_L_sym_embedding(small_vertex_graph):
+    r"""$D^{-1/2}u$, not $u$. The difference is the whole of what was wrong before.
+
+    Returning $u$ directly is the $L_{\text{sym}}$ embedding used in spectral clustering; its
+    extra $D^{1/2}$ factor scales each vertex by the square root of its own degree, which
+    pushes hubs outward instead of drawing them in.
+    """
+    import scipy.sparse as sp
+
+    from twin.embedding import SpectralLayout
+
+    A = small_vertex_graph.affinity
+    degrees = np.asarray(A.sum(axis=1)).ravel()
+    X = SpectralLayout(variant="degree_normalized").embed(small_vertex_graph).T
+
+    L_sym = sp.csgraph.laplacian(A, normed=True)
+    _, u = sp.linalg.eigsh(L_sym, k=3, sigma=0.0, which="LM", v0=np.ones(A.shape[0]))
+
+    q_expected = np.linalg.qr(u[:, 1:] / np.sqrt(degrees)[:, None])[0]
+    q_actual = np.linalg.qr(X)[0]
+    assert np.linalg.svd(q_expected.T @ q_actual, compute_uv=False).min() == pytest.approx(
+        1.0, abs=1e-8
+    )
+
+
+def test_spectral_does_not_place_hubs_further_out_than_leaves():
+    """The behaviour thesis §2.2 describes, on the roster's most degree-heterogeneous graph.
+
+    `barabasi_albert` is the scale-free case — a 20x spread of weighted degree — and Hall's
+    formulation draws its hubs inward: Spearman(degree, radius) is -0.52. The previous
+    implementation returned +0.16 on the same graph, and was positive on all ten registered
+    datasets, i.e. it did the opposite of what the text describing it says.
+    """
+    from scipy.stats import spearmanr
+
+    from twin.embedding import SpectralLayout
+
+    graph = vertex_graph(load_dataset("barabasi_albert"))
+    degrees = np.asarray(graph.affinity.sum(axis=1)).ravel()
+    X = SpectralLayout().embed(graph).T
+
+    radius = np.linalg.norm(X - X.mean(axis=0), axis=1)
+    assert spearmanr(degrees, radius).statistic < -0.3
+
+
+def test_spectral_refuses_an_unknown_variant(small_vertex_graph):
+    from twin.embedding import SpectralLayout
+
+    with pytest.raises(ValueError, match="variant must be"):
+        SpectralLayout(variant="normalized").embed(small_vertex_graph)

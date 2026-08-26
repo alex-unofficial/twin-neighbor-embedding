@@ -243,17 +243,91 @@ class SGtSNELayout(GraphEmbeddingMethod):
 
 @dataclass
 class SpectralLayout(GraphEmbeddingMethod):
-    """Eigenvectors of the graph Laplacian of the affinity matrix."""
+    r"""Hall's spectral layout: eigenvectors of the graph Laplacian (thesis eqs. 12-14).
+
+    Minimises $\mathcal{E}(X) = \sum_{i\sim j} w_{ij}\lVert x_i-x_j\rVert^2$ subject to
+    $X^\top X = I$ and $X^\top \mathbf{1} = 0$, which is $\operatorname{tr}(X^\top L^w X)$ on
+    $L^w = D - W$; the optimum is the $d$ smallest non-zero eigenvectors.
+
+    Attributes:
+        variant: which Laplacian, and therefore which objective.
+
+            ``"hall"`` **(default)** — $L^w = D - W$, eqs. (12)-(14) exactly.
+
+            ``"degree_normalized"`` — Koren's variant (`@koren2002`): the generalised problem
+            $Lx = \lambda Dx$, whose solutions are $D^{-1/2}u$ for $u$ an eigenvector of
+            $L_{\text{sym}}$. A different objective, so it is **not** the default — keeping
+            `"hall"` there is what keeps the derivation, the baseline description and the
+            results tables talking about one method. Reported once as evidence that the
+            baseline was not under-powered: it is at least as good as `"hall"` on every dataset
+            in the roster and materially better only on `karate_weighted`.
+
+        seed: fixes the ARPACK starting vector. Without one, ARPACK draws it at random and
+            successive runs differ by eigenvector **sign** — every metric here is
+            reflection-invariant, so no score moved, but `EMBEDDING_REGISTRY` declares this
+            method ``stochastic=False`` and a persisted layout or a figure would not have
+            reproduced. With it, repeated runs are bit-identical.
+
+    Note:
+        ⚠️ **This previously returned the eigenvectors of $L_{\text{sym}}$ directly**, which is
+        $D^{1/2}$ times Koren's — the $L_{\text{sym}}$ embedding used in spectral *clustering*,
+        not a drawing formulation. That $D^{1/2}$ factor pushes high-degree vertices *outward*:
+        measured Spearman(weighted degree, radius) was **positive on all ten registered
+        datasets**, where thesis §2.2 describes the baseline as collapsing high-degree vertices
+        toward the centre. The layout contradicted the prose that describes it. `DECISIONS.md`
+        has the table.
+    """
 
     method_name: str = "Spectral Layout"
     d: int = 2
-    normed: bool = True
+    variant: Literal["hall", "degree_normalized"] = "hall"
     seed: int = 0
 
     def embed(self, layout_graph, y0=None):
-        L = sp.csgraph.laplacian(layout_graph.affinity, normed=self.normed)
-        _, eigvecs = sp.linalg.eigsh(L, k=self.d + 1, which="SM")
-        return eigvecs[:, 1:].T
+        if self.variant not in ("hall", "degree_normalized"):
+            raise ValueError(
+                f"variant must be 'hall' or 'degree_normalized', got {self.variant!r}"
+            )
+
+        affinity = layout_graph.affinity
+        degree_normalized = self.variant == "degree_normalized"
+        L = sp.csgraph.laplacian(affinity, normed=degree_normalized)
+        n = L.shape[0]
+
+        # Shift-invert rather than `which="SM"`. ARPACK converges on well-separated extremal
+        # eigenvalues, and "smallest magnitude" of a spread spectrum is not that: `hall`'s
+        # spectrum runs to 2*d_max (142 on barabasi_albert) where L_sym's is bounded in [0, 2],
+        # so the solver question got harder exactly when the Laplacian changed. Shift-invert is
+        # insensitive to the spread. Measured on the roster: the two agree to a subspace overlap
+        # of 1.0000 everywhere, and shift-invert is 3.1x faster on tabula (1.90 s -> 0.61 s) and
+        # 1.8x on digits, at the cost of being slower on barabasi_albert. Spec §1.5.
+        _, eigvecs = sp.linalg.eigsh(
+            L,
+            k=self.d + 1,
+            sigma=0.0,
+            which="LM",
+            v0=np.random.default_rng(self.seed).normal(size=n),
+        )
+
+        # Column 0 is the trivial eigenvector — constant for `hall`, D^{1/2}·1 for the
+        # normalised form — one-dimensional for a connected graph, which every registered
+        # dataset is. ⚠️ A disconnected graph has multiplicity equal to the component count and
+        # this would keep component indicators as coordinates (spec §1.5); §4.4's policy does
+        # not cover the layout side, so that case is still unhandled here rather than silently
+        # correct.
+        X = eigvecs[:, 1:]
+
+        if degree_normalized:
+            degrees = np.asarray(affinity.sum(axis=1)).ravel()
+            if degrees.min() <= 0:
+                raise ValueError(
+                    "variant='degree_normalized' divides by the square root of the weighted "
+                    f"degree, and {int((degrees <= 0).sum())} vertices have degree 0. Use "
+                    "variant='hall', which has no such division."
+                )
+            X = X / np.sqrt(degrees)[:, None]
+
+        return X.T
 
 
 @dataclass(frozen=True)
