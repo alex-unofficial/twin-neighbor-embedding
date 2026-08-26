@@ -50,6 +50,7 @@ def graph_side(G: nx.Graph) -> Side | None:
     return G.graph.get(SIDE_KEY)
 
 
-def graph_source(G: nx.Graph) -> str | None:
-    """The stamped provenance of a graph, for an error message that can name it."""
-    return G.graph.get(SOURCE_KEY)
+# `graph_source(G)` lived here and was deleted: it had no callers, because every guard that
+# names a graph's provenance in an error message reads `G.graph.get(SOURCE_KEY)` inline
+# (`metrics/common.py`, `metrics/structural.py`). `graph_side` is the accessor that carries
+# meaning — it is what the guards branch on — and `SOURCE_KEY` is exported for the message.

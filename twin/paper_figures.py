@@ -232,7 +232,7 @@ def tabula_sapiens_teaser(
             # --- select one of the following embedding methods ---
             embedding=emb.SGtSNELayout,
             embedding_kw={"lambda_par": lambda_par, "run_exact": run_exact},
-            # embedding=emb.SpectralLayout, embedding_kw={"normed": True},
+            # embedding=emb.SpectralLayout, embedding_kw={"variant": "hall"},
             # embedding=emb.SpringLayout, embedding_kw={},
             #
             # --- the rest are common parameters ---
@@ -781,7 +781,7 @@ def barabasi_albert(
         #
         # --- select one of the following embedding methods ---
         embedding=emb.SGtSNELayout, embedding_kw={"lambda_par": lambda_par, "run_exact": run_exact},
-        # embedding=emb.SpectralLayout, embedding_kw={"normed": True},
+        # embedding=emb.SpectralLayout, embedding_kw={"variant": "hall"},
         # embedding=emb.SpringLayout, embedding_kw={},
         # 
         # --- the rest are common parameters ---
