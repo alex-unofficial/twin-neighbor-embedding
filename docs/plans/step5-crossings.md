@@ -68,9 +68,10 @@ Three consequences the plan acts on:
 
 ### Three corrections to the guide — one of them changes the code
 
-The Bernstein numbers and the $Q_4$ reframing are being applied to `CROSSING_GEOMETRY.md`
-**now**, so that the reference is not edited mid-implementation. The rest of the corrections land
-at commit 9 as planned.
+The Bernstein numbers, the endpoint false negative and the $Q_4$ reframing **have been applied
+to `CROSSING_GEOMETRY.md`** (marked there as Revision 3), so the reference is correct before
+implementation rather than edited mid-flight. The measured K table went in with them. Everything
+else lands at commit 9 as planned.
 
 - **§4's "108 ns/pair, rejects 21 %, no false negatives" understates it and overstates the cost**
   — 35 % and 65 ns on real data. Worth updating so nobody "optimises" a filter that is already
@@ -223,7 +224,8 @@ at commit 9 as planned.
 
 9. **`docs:` close step 5** — golden-file keys for the new scalars (additive diff), the measured
    K table and the commit-4 timings into `DECISIONS.md`, the remaining guide corrections (the
-   Bernstein numbers and the $Q_4$ reframing are already applied), **§0.5's divergence row for
+   Bernstein numbers, the endpoint false negative, the $Q_4$ reframing and K are already in the
+   guide as Revision 3), **§0.5's divergence row for
    `count_intersections` moved from "scheduled fix" to "intentional divergence"**, then
    `STATUS.md`.
 

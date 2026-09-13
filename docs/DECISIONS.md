@@ -1267,3 +1267,47 @@ Escalate in this order first:
 
 ⚠️ **Print $K$ as soon as the broad phase runs, on the largest layout.** Nothing downstream should
 be built on a guess about it.
+
+### (31a) $K$ measured, and the two calls taken at plan review
+
+Added when step 5 was planned, before any of it was written. `plans/step5-crossings.md` has the
+detail; this is the record of what was settled.
+
+**$K$ is no longer the unmeasured quantity.** SG-*t*-SNE twin layouts, seed 0, γ=0.5, layout
+normalised to a unit box, exact boxes, `shapely.STRtree` bulk query:
+
+| dataset | m | K | K/C(m,2) | query |
+|---|---|---|---|---|
+| football_2023 | 735 | 27 058 | 0.100 | 0.02 s |
+| digits | 14 732 | 1 380 736 | 0.0127 | 1.1 s |
+| tabula | 49 368 | **11 375 494** | 0.00934 | 9.5 s |
+
+(31) guessed 1e6 and 1e7 for the last two; the cost model is sound. Straight and curved differ by
+0.2 % in $K$ — but not necessarily in cost, since at γ=0 no quartic is built at all, so §4.3 may
+cost ≈1.2× rather than 2×. Time them separately.
+
+⚠️ **(31)'s cost model omits the broad-phase query** — 9.5 s and a 365 MB return array on tabula,
+27 % of the runtime. And **blocking the solve does not cap that memory**: the bulk query
+materialises every pair before any block loop begins, so capping it needs *edge-chunked queries*.
+
+**Decision 1 — the NumPy/compiled call is deferred to an end-to-end measurement.** The estimate
+assembled from per-stage costs puts tabula at ~35–45 s against (31)'s ~30 s line, but it assumes
+3.1 µs/pair and the measured 35 % Bernstein rejection, neither of which has run through the real
+code path. Take the reading at step-5 commit 4, then apply (31). Recorded so that the estimate is
+not mistaken for the measurement.
+
+⚠️ **Escalation rung 2 — parallelism across layouts — belongs to step 7's runner design**, not to
+step 5 and not improvised at step 8 around a slow tabula run. Where the grid's parallelism lives
+is a property of the runner.
+
+**Decision 2 — `plots.py::count_intersections` keeps `include_adjacent=False`, permanently.**
+Reimplementing it on layer 2 (§2.4) forces a choice, because `crossing_pairs` defaults to the
+thesis convention `include_adjacent=True`. It keeps the old convention so the reimplementation is
+**behaviour-preserving and the paper's Figure 3 does not move** — a refactor must not become a
+silent result change.
+
+This makes the `count_intersections`-versus-eq.-(78) row in §0.5's divergence table a **standing
+intentional divergence for that figure**, not a scheduled fix. The table currently reads as the
+latter ("step 5 reimplements it on layer 2 anyway"), which will be wrong the moment step 5 lands:
+the reimplementation happens and the divergence deliberately survives it. Step 5's last commit
+moves that row.

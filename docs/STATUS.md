@@ -2,9 +2,16 @@
 
 Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
-**Last updated:** end of session 4 (2026-08-26). It closed spec §7 step 4, then closed both
-remaining open questions (`SpectralLayout`'s Laplacian, VNR's normaliser) and ran a pre-step-5
-audit of the test suite. Branch `experiment-setup`; 22 commits.
+**Last updated:** end of session 4 (2026-08-26). It closed spec §7 step 4, closed both remaining
+open questions (`SpectralLayout`'s Laplacian, VNR's normaliser), ran a pre-step-5 audit of the
+test suite, and then verified the settled crossing algorithm and planned step 5 **without
+implementing any of it**. Branch `experiment-setup`; tree clean. **654 tests pass and 2 fail on
+an `sfdp` crash that is an environment regression, not a code one — see the section below before
+reading the failure as yours.**
+
+> **Step 5 is planned, reviewed and approved, and not started.** No code exists for it:
+> `twin/geometry.py` and `twin/metrics/crossings.py` are both absent. Begin at commit 1 of
+> [`plans/step5-crossings.md`](plans/step5-crossings.md).
 
 **Docs-only update, 2026-09-13.** No code changed. The crossing algorithm for step 5 was settled
 in discussion before implementation: spec §2.4 Layers 1–2 rewritten, a §0.5 block added,
@@ -48,11 +55,12 @@ Section 5 numbers before step 8.
 6. `docs/CROSSING_GEOMETRY.md` — **for step 5 specifically**: the crossing algorithm in full,
    with the derivation, the measurements and the degeneracy analysis. Spec §2.4 is the summary;
    this is the reference.
-7. There is **no plan file for step 5 yet** — write one first, as steps 2-4 each did.
+7. [`docs/plans/step5-crossings.md`](plans/step5-crossings.md) — **the plan for the step in
+   progress: approved, current, and not yet started.** It records the pre-implementation
+   verification of the guide, the measured $K$, and two decisions already taken.
    [`step2-datasets.md`](plans/step2-datasets.md), [`step3-metrics.md`](plans/step3-metrics.md)
-   and [`step4-visual.md`](plans/step4-visual.md) are all **history** now, kept for their record
-   of where the implementation departed from them — the departures themselves are in
-   `DECISIONS.md`.
+   and [`step4-visual.md`](plans/step4-visual.md) are **history**, kept for their record of where
+   the implementation departed from them — the departures themselves are in `DECISIONS.md`.
 
 ---
 
@@ -160,6 +168,12 @@ Two facts about the transform that fell out of writing the pins, both easy to ge
 
 ### Where step 5 starts
 
+> **Read [`plans/step5-crossings.md`](plans/step5-crossings.md) — it is approved and current,
+> and it supersedes the summary in this section wherever they differ.** The guide's mathematics
+> was independently re-verified before planning (it holds), three of its passages were corrected
+> in place as **Revision 3**, and $K$ has been measured, so the section below understates what
+> is already known.
+
 **The algorithm is settled.** Read [`docs/CROSSING_GEOMETRY.md`](CROSSING_GEOMETRY.md) first — it
 is the specification for this step. Spec §2.4 Layers 1–2 were rewritten to match it, §0.5 carries
 the change log, and `DECISIONS.md` (27)–(31) record the choices. Crossings are computed
@@ -167,12 +181,19 @@ the change log, and `DECISIONS.md` (27)–(31) record the choices. Crossings are
 no geometric tolerance. `edge_curves` returns control points, not polylines, and `n_samples` no
 longer exists.
 
-No plan file exists yet; write one first. Things it has to take account of:
+The plan is [`plans/step5-crossings.md`](plans/step5-crossings.md), nine commits. What it takes
+account of, in short:
 
-- ⚠️ **The one unmeasured quantity is $K$**, the number of candidate pairs surviving the broad
-  phase. The whole cost model rests on it, and so does the question of whether NumPy suffices —
-  `DECISIONS.md` (31). Print it on the largest layout as soon as the broad phase runs, before
-  building anything downstream of it.
+- ~~**The one unmeasured quantity is $K$**~~ — **measured, before implementation.** SG-*t*-SNE
+  twin layouts, seed 0, γ=0.5, unit-box normalised: `football_2023` **27 058**, `digits`
+  **1 380 736**, `tabula` **11 375 494** (guide predicted 1e7 — the cost model is sound). Straight
+  and curved differ by 0.2 %. The table is in the guide §6 and the plan. Commit 3 still prints it
+  as a check: **if tabula is not within ~2× of 11.4 M, stop and find out why.** The *decision*
+  (31) feeds — NumPy versus compiled — is deferred to commit 4 and an end-to-end timing, not
+  these per-stage estimates.
+- ⚠️ **The broad-phase query is not free and the cost model omitted it**: 9.5 s and a **365 MB**
+  return array on tabula, 27 % of the runtime. Blocking the solve does **not** cap that memory —
+  the bulk query materialises every pair first, so capping it needs *edge-chunked queries*.
 - **§2.5's cost class is wrong in the direction that matters for step 5.** The expensive metrics
   scale with $m$ — 49368 edges on tabula — not with $n$. Nothing in step 4 hurt on tabula;
   crossings will.
@@ -194,9 +215,20 @@ No plan file exists yet; write one first. Things it has to take account of:
   do not share code, and §0.5 records that they should disagree on shared-endpoint pairs anyway.
   The independent oracle to check against is a **dense polyline reference** (~1200 segments per
   curve), kept in the test module only. It agreed 200/200 with the exact method in validation.
-- **One degeneracy needs a constructed test, not a random one.** The $Q_4 \approx 0$ path — two
-  curves bowing in parallel — is common in real layouts but rare under random sampling, and it is
-  a division by zero if unguarded. `DECISIONS.md` (30).
+- **Two things about the filter and the guards were wrong in the pre-work and are now fixed in
+  the guide (Revision 3); the plan carries the detail.**
+  - ⚠️ The Bernstein filter has **one real false negative** — a root exactly at $s=0$ or $s=1$,
+    which is 23 % of rejections on real data because adjacent edges share a vertex. Harmless
+    there, a lost crossing for a *non-adjacent* pair. The fix is three lines in the filter and
+    the non-adjacency gate on it is load-bearing.
+  - ⚠️ The $Q_4$ guard's trigger is **near-straight curves**, not parallel bulges: $Q_4$ goes as
+    $\det(D_A,D_B)^2$, which is small when *either* bulge is small. So its threshold is
+    **coupled** to the straight-edge one, and finding the bad band needs a *joint* measurement of
+    $\lVert D\rVert$ against the companion matrix's condition number — not a count below a fixed
+    cutoff. `DECISIONS.md` (30), corrected in the guide.
+- **Constructed tests, not random ones**, for every degeneracy. No-false-negatives for
+  transversal crossings is a **theorem** (the hull property), so a random-quartic sweep confirms
+  something that cannot fail and has no power. Do not write one.
 
 
 ## What landed in session 3
@@ -313,6 +345,35 @@ from 94**; all eight `paper_figures` functions still render.
 
 ---
 
+## ⚠️ Broken in the environment, not in the tree: `sfdp` / `YifanHuLayout`
+
+**`venv/bin/python -m pytest` currently reports 654 passed, 2 failed. Neither failure is ours.**
+
+```
+FAILED tests/test_embedding.py::test_every_method_touches_exactly_the_form_it_declares[yifanhu]
+FAILED tests/test_embedding.py::test_every_method_lays_out_every_representation[yifanhu]
+```
+
+`sfdp` aborts — `Fatal glibc error: malloc.c:2199 (sysmalloc): assertion failed`, returncode −6,
+sometimes −11. **graphviz 16.0.0-1 was installed on 2026-09-06**, after this session's earlier
+green runs, and `/usr/bin/sfdp` is a symlink to `dot`.
+
+Characterised so the next session does not repeat it:
+
+- **Only `sfdp`.** `neato`, `dot`, `fdp`, `twopi` and `circo` all handle the same input file
+  fine, and the five `neato` tests still pass. So only `YifanHuLayout` is affected.
+- **Input-dependent, and not about size.** Path graphs up to 34 nodes are fine and
+  `complete_graph(10)` (45 edges) is fine; `karate_club_graph` (34 nodes, 78 edges) aborts, with
+  or without edge attributes. It is not the attribute plumbing — the same crash occurs on a
+  structure-only copy, which is exactly what `YifanHuLayout` sends.
+- **Not caused by any change here.** The last code commit is `a2a62cd` (26 Aug); these two tests
+  passed on every run through `9a5da2d`.
+
+Options, none taken — this is the author's call: downgrade graphviz to the previous release, pin
+it, report the regression upstream, or mark the two tests `skipif` on a probe of `sfdp`. **Do not
+"fix" it by changing `YifanHuLayout`** — the layout code is correct and the conformance test is
+doing its job.
+
 ## Environment facts not visible in the tree
 
 - **`venv/` is the interpreter.** `venv/bin/python -m pytest -q`.
@@ -337,7 +398,7 @@ from 94**; all eight `paper_figures` functions still render.
 ## Health check
 
 ```bash
-venv/bin/python -m pytest -q          # 656 passing, 1 deselected (`-m slow`)
+venv/bin/python -m pytest -q          # 654 passing, 2 failing (sfdp — see above), 1 deselected
 venv/bin/python -m pytest -q -m slow  # the opt-in tabula figure, ~2 min
 python -m twin.report            # the roster table; regenerates docs/DATASET_REPORT.md with -o
 git status --short               # clean; if notebooks appear modified, the filter is unset

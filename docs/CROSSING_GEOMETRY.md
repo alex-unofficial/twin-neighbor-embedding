@@ -12,6 +12,16 @@ subdivision fallback. Measurement showed the triangle filter costs 3x what it sa
 vectorised implementation, and subdivision is unnecessary for quadratics. Both removed,
 along with the flatness / recursion-depth analysis that supported them.
 
+**Revision 3 (pre-implementation verification).** Everything load-bearing in R2 was
+independently re-derived and re-measured before step 5 began, and it holds: the gamma kernel
+is the quadratic Bezier to 5.1e-15, the exact AABB is tight (0 failures / 3000, and it equals
+the sampled extent rather than merely containing it), and the quartic agrees with a
+1200-segment polyline oracle **600/600** with every reported point on both curves to 9.2e-10.
+Three passages were corrected, all marked inline: the Bernstein filter's cost and rejection
+rate (§4 — better than documented), its **one real false negative** (§4 — a root exactly at an
+endpoint; the fix is given there), and the `Q4` guard's trigger (§4 — near-straight curves,
+not parallel bulges, with a coupled-threshold consequence). K is no longer unmeasured: see §6.
+
 ## 1. The curve is a quadratic Bézier
 
 `draw_curved_edges` builds `P0 = y_V[u]`, `P1 = y_E[e]`, `P2 = y_V[v]` and evaluates
@@ -112,7 +122,7 @@ All reported points matched to <1e-7 except 2 near-tangential cases. Against a
 | Stage | Cost | What |
 |---|---|---|
 | Broad | `O(m log m)` build | `shapely.STRtree` over the exact boxes of §2; query returns the K box-overlapping pairs without enumerating the rest |
-| Filter | 197 + 108 ns/pair | Build the quartic, convert coefficients to the Bernstein basis on [0,1], discard if no sign change |
+| Filter | 197 + **65** ns/pair | Build the quartic, convert coefficients to the Bernstein basis on [0,1], discard if no sign change (**plus the endpoint exception below**) |
 | Solve | 3582 ns/pair | Companion-matrix eigenvalues, batched; filter `s`, recover `t`, filter `t` |
 
 Every stage is conservative: may pass a non-crossing pair, never discards a crossing one.
@@ -121,13 +131,42 @@ Every stage is conservative: may pass a non-crossing pair, never discards a cros
 
 Bernstein weights are non-negative and sum to 1, so the polynomial's values on [0,1] lie
 within the range of its coefficients — the same hull property as the Bézier curve, applied
-in 1-D. **No sign change among the 5 coefficients proves no root in [0,1].**
+in 1-D. **No sign change among the 5 coefficients proves no root in the OPEN interval (0,1).**
 
 ```
 beta_j = sum_{k<=j} [ C(j,k) / C(4,k) ] * Q_k        # fixed 5x5 triangular map
 ```
 
-108 ns/pair, rejects 21%, no false negatives.
+**65 ns/pair, rejects 35 %** — measured on a real `football_2023` twin layout (K = 27058).
+The 108 ns / 21 % in R1 came from random curves and understates the filter on real data.
+
+**No false negatives for transversal crossings, and that is a theorem rather than a
+measurement:** the hull property gives `min(beta) <= min Q < 0 < max Q <= max(beta)`, so a
+sign-changing Q always straddles zero in its coefficients. Random-quartic sweeps confirm it
+and have no power to find anything; do not invest in one.
+
+⚠️ **There is one real false negative: a root exactly at s = 0 or s = 1.** Example
+`Q = [0,1,1,1,1]`, i.e. `s(s+1)(s^2+1)`, gives `beta = [0, .25, .667, 1.5, 4]` — no sign
+change, yet a root at 0. On real data this is **23 % of all rejected pairs**, because
+adjacent edges share a vertex and their curves meet exactly at an endpoint.
+
+For an adjacent pair that is harmless (the root is excluded by vertex identity anyway). For a
+**non-adjacent** pair it is a lost crossing — a vertex lying exactly on another edge's curve,
+which is precisely the coincident-vertex crowding case. Since `beta_0 = Q(0)` and
+`beta_4 = Q(1)` exactly, the fix costs nothing and lives in the filter:
+
+```
+keep if sign_changes > 0
+     or (pair is non-adjacent and (|beta_0| < tol or |beta_4| < tol))
+```
+
+The non-adjacency gate is load-bearing: without it the 23 % of adjacent rejections all
+re-enter the solve and the filter stops paying for itself.
+
+Interior tangencies are **kept** — `(s-0.5)^2 (s^2+1)` passes, because the Bernstein
+coefficients may straddle zero where the polynomial does not. The remaining theoretical gap is
+an interior tangency whose coefficients happen not to straddle; that is what the constructed
+tests in §8 are for, not a random sweep.
 
 **Why the triangle filter was dropped:** separating-axis on the two control triangles costs
 2339 ns/pair and rejects 22% — it costs 3x the 790 ns it saves. SAT is cheap in scalar code
@@ -169,9 +208,25 @@ multiplicity anyway. The Bernstein test already gives the cheap [0,1] informatio
 Q4 = -P02[2]**2 = -16 * det(D_A, D_B)**2
 ```
 
-so **the leading coefficient vanishes exactly when the two curves bulge in parallel
-directions** — with shared gamma, whenever two edges bow the same way. Common in any layout
-with orientational coherence. **Deflate to the true degree before building the matrix.**
+so the leading coefficient vanishes when `det(D_A, D_B) = 0`. **Deflate to the true degree
+before building the matrix.**
+
+⚠️ **R2 framed this as "parallel bulges, common in any layout with orientational coherence".
+That framing is wrong, and the correct one changes the design.** Measured on a real
+`football_2023` twin layout: **0 %** of 27058 candidate pairs have `|Q4|/max|Q| < 1e-9`,
+0.05 % below 1e-6, 2.96 % below 1e-3. SG-*t*-SNE places edge points independently, so bulges
+are not parallel and exact zeros essentially do not occur.
+
+**The real trigger is a near-straight curve.** `det(D_A, D_B)` is small whenever *either*
+bulge is small, and `Q4` goes as its square, so one near-straight edge degrades `Q4`
+quadratically. That is what the 2.96 % actually is: a conditioning problem, not a zero.
+
+**Consequence — the `||D|| ~ 0` and `|Q4| ~ 0` thresholds are coupled.** There is a band in
+which `||D_A||` sits just *above* the straight-edge cutoff, so no segment dispatch happens,
+while `Q4` is already small enough to wreck the companion matrix. Counting pairs below fixed
+thresholds cannot find that band: measure the **joint** distribution of `||D||` against the
+companion matrix's condition number on a real layout, and choose `eps_lin` so the band is
+empty.
 
 ### If this moves to C
 
@@ -193,7 +248,7 @@ and the length-thresholded variant (shrinks m directly).
 |---|---|---|
 | Straight edge | `norm(D) < eps * scale` | segment–segment test (also covers gamma=0 and A_V layouts) |
 | Collinear controls | `abs(beta) < eps` | segment path over swept interval |
-| Parallel bulges | `abs(Q4) < eps` | deflate to cubic or lower before the companion matrix |
+| **Near-straight curve** (R2 called this "parallel bulges") | `abs(Q4) < eps` — `Q4 = -16 det(D_A,D_B)^2`, small when **either** bulge is small | deflate to cubic or lower before the companion matrix. ⚠️ this `eps` is **coupled** to the straight-edge one above — see §4 |
 | Identical / overlapping | all `Q_k ~ 0` | count as exactly 1 (spec convention); detect before root-finding |
 | Adjacent edges | shared vertex | exclude roots at the shared vertex **by vertex identity**, not coordinate; keep genuine second crossings |
 | Tangency | double real root | count as 1; report near-tangential pair count alongside Cr |
@@ -209,6 +264,24 @@ Naive sampled polyline = `C(m,2) * (s-1)^2` at s=64:
 | barabasi_albert | 6951 | 9.6e10 | K=1e5 -> 0.3 s |
 | digits | 14732 | 4.3e11 | K=1e6 -> 3.1 s |
 | tabula | 49368 | 4.8e12 | K=1e7 -> 31 s |
+
+**K is now measured, and the estimates above were close.** SG-*t*-SNE twin layouts, seed 0,
+gamma=0.5, layout normalised to a unit box, exact boxes, `shapely.STRtree` bulk query:
+
+| dataset | m | **measured K** | K/C(m,2) | query time |
+|---|---|---|---|---|
+| football_2023 | 735 | 27058 | 0.100 | 0.02 s |
+| digits | 14732 | 1380736 | 0.0127 | 1.1 s |
+| **tabula** | 49368 | **11375494** | 0.00934 | **9.5 s** |
+
+Straight and curved variants differ in K by 0.2 %, so §4.3 doubles the candidate count and
+nothing else — but not necessarily the *cost*, since at gamma=0 every pair takes the segment
+path and builds no quartic. Time the two separately.
+
+⚠️ **The table above omits the broad-phase query**, which is 9.5 s and a **365 MB** return
+array on tabula — 27 % of the runtime and the second-largest line item. Blocking the solve does
+not cap that memory: the bulk query materialises all K pairs before any block loop starts.
+Capping it needs **edge-chunked queries**.
 
 **Output sensitivity is the real limit.** If a layout has X crossings then K >= X, and no
 method beats `Omega(m log m + X)`; a bad tabula layout can have `X = Theta(m^2)`. Report Cr
