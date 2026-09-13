@@ -63,6 +63,10 @@ REQUIRED_EXPORTS = {
     "nn_distance_distribution",
     "edge_lengths",
     "edge_length_cv",
+    # spec §2.4, added at step 5. The per-edge order of record, shared by `edge_lengths` and
+    # the crossing layer, is `edge_index_array` — ADR's CSR ordering is a different one.
+    "edge_index_array",
+    "edge_curves",
 }
 
 #: Names the current ``import *`` leaks because the module has no ``__all__``. Permitted, never

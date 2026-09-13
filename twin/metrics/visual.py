@@ -34,6 +34,7 @@ from scipy.spatial.distance import cdist
 
 from twin.metrics.common import (
     _loo_neighbors,
+    edge_index_array,
     mean_pairwise_distance,
     pairwise_distances,
     require_n_by_d,
@@ -405,19 +406,10 @@ def edge_lengths(X: np.ndarray, G: nx.Graph) -> np.ndarray:
     n = G.number_of_nodes()
     X = require_n_by_d(X, n, "X")
 
-    m = G.number_of_edges()
-    if m == 0:
+    if G.number_of_edges() == 0:
         return np.empty(0)
 
-    edges = np.fromiter(
-        (v for edge in G.edges() for v in edge), dtype=np.int64, count=2 * m
-    ).reshape(m, 2)
-    if edges.min() < 0 or edges.max() >= n:
-        raise ValueError(
-            "edge_lengths indexes X by node label, so nodes must be 0..n-1 — the convention "
-            f"`nodelist=range(n)` enforces everywhere else in the package. Got labels outside "
-            f"[0, {n})."
-        )
+    edges = edge_index_array(G, n)
     return np.linalg.norm(X[edges[:, 0]] - X[edges[:, 1]], axis=1)
 
 

@@ -79,6 +79,41 @@ def require_n_by_d(X: np.ndarray, n_expected: int, name: str = "X") -> np.ndarra
     return X
 
 
+def edge_index_array(G: nx.Graph, n: int | None = None) -> np.ndarray:
+    """``(m, 2)`` endpoint indices **in ``G.edges()`` order** — the per-edge order of record.
+
+    ⚠️ ADR uses the CSR upper triangle instead, because its lengths must align with the weights
+    it reads out of the same matrix. The two orders agree on `karate` and `football_2023` and
+    disagree in 12377 of 14732 positions on `digits`, so they are not interchangeable and a test
+    on a small graph proves nothing (CLAUDE.md). Everything indexed *by edge* — edge points,
+    incidence columns, :func:`~twin.metrics.visual.edge_lengths`, the crossing weights — uses
+    this one.
+
+    Args:
+        G: the graph. Nodes must be ``0..n-1``, the indexing convention the package uses.
+        n: the node count to validate the labels against; taken from ``G`` when omitted.
+
+    Returns:
+        ``(m, 2)`` of ``int64``. Empty with shape ``(0, 2)`` for an edgeless graph.
+    """
+    if n is None:
+        n = G.number_of_nodes()
+    m = G.number_of_edges()
+    if m == 0:
+        return np.empty((0, 2), dtype=np.int64)
+
+    edges = np.fromiter(
+        (v for edge in G.edges() for v in edge), dtype=np.int64, count=2 * m
+    ).reshape(m, 2)
+    if edges.min() < 0 or edges.max() >= n:
+        raise ValueError(
+            "edges index the layout by node label, so nodes must be 0..n-1 — the convention "
+            f"`nodelist=range(n)` enforces everywhere else in the package. Got labels outside "
+            f"[0, {n})."
+        )
+    return edges
+
+
 # --------------------------------------------------------------------------- #
 #                            Content-keyed caching                             #
 # --------------------------------------------------------------------------- #
