@@ -26,13 +26,35 @@ in ``G.edges()`` order, which is the per-edge order of record for the whole pack
 ADR's CSR ordering is a different one and the two must not be mixed.
 """
 
+from typing import Iterator
+
 import networkx as nx
 import numpy as np
+import shapely
 
 from twin import geometry
 from twin.metrics.common import edge_index_array, require_n_by_d
 
-__all__ = ["edge_curves"]
+__all__ = ["candidate_pairs", "count_candidate_pairs", "edge_curves", "normalize_to_unit_box"]
+
+#: How many edges are queried against the R-tree at once. **Not a tuning knob for speed** — it
+#: is what bounds the broad phase's memory. `shapely.STRtree.query` materialises every pair it
+#: finds before returning, so the bulk query over all of tabula's 49368 edges returns an 11.4 M
+#: pair array (365 MB) in one allocation, and blocking the *solve* does not help: the array
+#: already exists by then (DECISIONS (31a)). Chunking the query is what caps it.
+QUERY_CHUNK_EDGES = 4096
+
+#: How far the exact boxes are grown before the overlap query, in unit-box units (~4500 ulp).
+#: **This is not a geometric tolerance** — nothing downstream of the broad phase uses it, and it
+#: cannot create a crossing. It exists because two edges that share a vertex touch *exactly*
+#: there, and when that shared point is extremal in the same coordinate for both curves, the two
+#: box coordinates are computed by different expressions — one an endpoint, the other the
+#: closed-form stationary value — and can differ by a couple of ulp. Unpadded, the query then
+#: reports the boxes as disjoint. On a karate layout that loses 9 of 2154 candidate pairs;
+#: harmless for the shared vertex itself (excluded by identity anyway), not harmless for a
+#: tangential contact at a box boundary. Padding restores "never discards a crossing pair" at a
+#: cost of 0.4 % more candidates on karate and 0.03 % on `digits`.
+BOX_PAD = 1e-12
 
 
 def edge_curves(
@@ -76,3 +98,91 @@ def edge_curves(
 
     controls = np.stack([V[edges[:, 0]], P1, V[edges[:, 1]]], axis=1)
     return geometry.bezier_control_points(controls, gamma)
+
+
+# --------------------------------------------------------------------------- #
+#                        Layer 2a — the broad phase                            #
+# --------------------------------------------------------------------------- #
+
+
+def normalize_to_unit_box(controls: np.ndarray) -> tuple[np.ndarray, float, np.ndarray]:
+    r"""Rescale a set of curves into the unit box, isotropically.
+
+    **Why this is not cosmetic.** The pipeline has no tolerance on the *geometry*, but it does
+    have tolerances on root reality, on $[0,1]$ membership and on the two degeneracy guards
+    ($\lVert D\rVert \approx 0$, $|Q_4| \approx 0$). Those are absolute numbers, and a layout
+    whose coordinates run to $10^{3}$ would meet them at a different physical scale than one
+    running to $10^{-2}$ — which would make the method tolerance-free on geometry but
+    dataset-dependent in practice, the worse of the two failures because it is invisible.
+
+    The map is a translation and a **single** scale factor for both axes, so it is a similarity:
+    it moves no crossing, changes no parameter value, and is exactly invertible.
+
+    Args:
+        controls: ``(m, 3, 2)`` Bézier control points.
+
+    Returns:
+        ``(scaled, scale, origin)`` with ``scaled = (controls - origin) * scale``. A degenerate
+        input — every point coincident — gets ``scale = 1``.
+    """
+    controls = np.asarray(controls, dtype=float)
+    if controls.size == 0:
+        return controls, 1.0, np.zeros(controls.shape[-1])
+
+    boxes = geometry.exact_bounding_boxes(controls)
+    origin = boxes[:, 0, :].min(axis=0)
+    extent = (boxes[:, 1, :].max(axis=0) - origin).max()
+    scale = 1.0 / extent if extent > 0 else 1.0
+    return (controls - origin) * scale, float(scale), origin
+
+
+def candidate_pairs(
+    controls: np.ndarray, *, chunk_edges: int = QUERY_CHUNK_EDGES
+) -> Iterator[np.ndarray]:
+    r"""Yield blocks of ``(2, k)`` edge-index pairs whose **exact** boxes overlap.
+
+    The broad phase: an `shapely.STRtree` over the exact bounding boxes of `twin.geometry`,
+    $O(m\log m)$ to build, queried without enumerating the $\binom{m}{2}$ pairs it rejects. Every
+    crossing pair is a box-overlapping pair, so this discards nothing real.
+
+    The exact box rather than the box on the control points is worth the 123 ns per edge: it is
+    a median 1.9× smaller in area and candidate counts scale with area.
+
+    Pairs come out with ``a < b`` and each pair once. Blocks are yielded rather than
+    concatenated, and the *query itself* is chunked over edges — see :data:`QUERY_CHUNK_EDGES`
+    for why that is the memory bound and blocking the downstream passes is not.
+
+    Args:
+        controls: ``(m, 3, 2)`` Bézier control points, normally already normalised.
+        chunk_edges: how many edges to query at a time.
+
+    Yields:
+        ``(2, k)`` arrays of edge indices. Possibly zero blocks, for an edgeless graph.
+    """
+    controls = np.asarray(controls, dtype=float)
+    m = controls.shape[0]
+    if m < 2:
+        return
+
+    boxes = geometry.exact_bounding_boxes(controls)
+    lo, hi = boxes[:, 0] - BOX_PAD, boxes[:, 1] + BOX_PAD
+    rectangles = shapely.box(lo[:, 0], lo[:, 1], hi[:, 0], hi[:, 1])
+    tree = shapely.STRtree(rectangles)
+
+    for start in range(0, m, chunk_edges):
+        stop = min(start + chunk_edges, m)
+        hits = tree.query(rectangles[start:stop], predicate="intersects")
+        a = hits[0] + start
+        b = hits[1]
+        keep = a < b
+        if keep.any():
+            yield np.stack([a[keep], b[keep]])
+
+
+def count_candidate_pairs(controls: np.ndarray, **kwargs) -> int:
+    """$K$ — how many pairs survive the broad phase. The cost model's one free parameter.
+
+    Measured before the solver was written (DECISIONS (31a)): 27058 on `football_2023`, 1380736
+    on `digits`, 11375494 on `tabula`, for SG-*t*-SNE twin layouts at γ=0.5.
+    """
+    return int(sum(block.shape[1] for block in candidate_pairs(controls, **kwargs)))
