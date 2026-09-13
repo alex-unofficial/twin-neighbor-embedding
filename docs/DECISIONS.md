@@ -51,7 +51,9 @@ function. When step 10 lands, this section and the CLAUDE.md warning both come o
 
 **Every function in `crossings.py` takes `(G, V, E=None, *, ...)`** — graph, vertex points, edge
 points, and all parameters keyword-only. That includes `detour_ratio`, whose spec signature
-(`detour_ratio(X, E, G, gamma, n_samples)`) is reordered to match `edge_curves`.
+(`detour_ratio(X, E, G, gamma, n_samples)`) is reordered to match `edge_curves`. ⚠️ Amended at
+step 5: `n_samples` is gone from both signatures — `edge_curves` returns control points and
+`detour_ratio` uses the closed-form arc length. See (27) and spec §2.2.
 
 The spec writes two orders for the same three arguments, which is how argument-order bugs happen.
 `edge_curves` sets the pattern; keyword-only parameters remove the remaining hazard. Metrics
@@ -1018,7 +1020,16 @@ This is what §2.4 asks for. Trimming the polyline endpoints would be cheaper bu
 discard genuine crossings that happen to occur near a coincident vertex — and two distinct
 vertices landing on the same coordinate is the crowding case the convention exists for.
 
+**Mechanism updated at step 5, rule unchanged** (see (29)): exclusion is still by vertex identity
+and never by comparing coordinates, but it now filters roots of the quartic rather than shapely
+intersection geometry. There is no polyline left to trim, so the cheaper-but-wrong option this
+decision rejected no longer exists as a temptation.
+
 ## (14) Mapping intersection geometry to `cr`
+
+> **Superseded by (29).** Crossings are no longer computed by intersecting polylines, so there
+> is no shapely geometry to classify. Kept for the record; the conventions it encodes — overlap
+> counts as 1, endpoints excluded by identity — survive unchanged in (29).
 
 `cr(e_a, e_b)` = **number of connected components of the filtered intersection geometry**, after
 de-duplicating points that lie within `tol` of one another:
@@ -1034,6 +1045,10 @@ points can yield two intersection points a floating-point distance apart, which 
 not two. Degenerate incidents (overlap components) are counted and reported separately.
 
 ## (15) `gamma=0` short-circuits to two samples
+
+> **Superseded by (27) and (30).** There are no samples to short-circuit. γ=0 places $B_1$ at the
+> chord midpoint, and the $\lVert D\rVert \approx 0$ guard dispatches to a segment–segment test.
+> The requirement it protected — both variants through one code path — is unchanged.
 
 **Yes.** `edge_curves(..., gamma=0)` emits 2 samples per edge regardless of `n_samples`.
 
@@ -1051,7 +1066,8 @@ than assumed. Both variants still go through one code path, as §2.4 requires.
   vertices for graph-side accuracy.
 
 Everything else goes to a **separate diagnostics table** keyed by the same row key: `n_ties`,
-`n_zero_distance`, `n_infinite_pairs`, `n_degenerate_crossings`.
+`n_zero_distance`, `n_infinite_pairs`, `n_degenerate_crossings`, `n_near_tangential` (double roots in
+the crossing solve — see (29)).
 
 They have different denominators — vertices, vertex pairs, edge pairs — so a single column would
 be summing incommensurable things. `KnnAccuracyReport` already follows this shape.
@@ -1150,3 +1166,104 @@ matplotlib and freetype versions, so bit-for-bit comparison that early would pro
 failures. Pin the derived **label vectors and colour arrays** exactly, plus a renders-without-error
 smoke test; those are precise about what the label move can actually break. Pixel baselines land
 at step 10, where the renderer refactor is exactly the kind of change they are good at guarding.
+
+
+## Step 5 pre-work: the crossing algorithm, settled before implementation
+
+Settled in discussion *before* `crossings.py` was written, so the design is on record rather than
+discovered during implementation. The derivation, the measurements and the degeneracy analysis are
+in [`CROSSING_GEOMETRY.md`](CROSSING_GEOMETRY.md); spec §2.4 Layers 1–2 were rewritten to match and
+§0.5 carries the change log. This section records the *choices* and what each one rules out.
+
+### (27) Curves are represented by control points, not samples
+
+`edge_curves` returns an `(m, 3, 2)` array of Bernstein control points. The drawn curve is exactly
+a quadratic Bézier — the `plots.py` kernel with parameter γ is the Bézier with
+$B_1 = 2\gamma P_1 + (1-2\gamma)(P_0+P_2)/2$ — so three points describe it completely and every
+step downstream is algebraic.
+
+`n_samples` is **removed, not defaulted.** Sampling was never a modelling choice; it was inherited
+from the rendering code, where 64 points buy smoothness at display resolution. As a geometric
+tolerance the same accuracy needs $N \ge \sqrt{\lVert D \rVert / 2\delta}$, typically 4 to 16.
+Keeping the parameter would invite tuning a number that no longer means anything.
+
+⚠️ The control points in `plots.py` are **not** Bézier control points except at γ=0.5. The
+conversion is the one piece of geometry `plots.py` and `crossings.py` must share, which is why it
+lives in `twin/geometry.py` and in neither of them. If it is duplicated, the drawn curve and the
+measured curve drift apart silently and no test will notice.
+
+### (28) Crossings are computed exactly, by root-finding, not by intersecting polylines
+
+Two quadratic Béziers meet in at most four points, and all four are roots of one quartic obtained
+by eliminating one curve's parameter. Per candidate pair: build the quartic (~30 multiply–adds),
+reject on a Bernstein sign test, solve by companion-matrix eigenvalues, filter the roots.
+
+Why this rather than the sampled-polyline approach the spec originally described:
+
+- It is **exact.** There is no geometric tolerance, so the reported crossing number does not depend
+  on a sampling parameter. "Your crossing count is an artifact of how finely you sampled" is the
+  obvious objection to this metric, and it is worth being able to answer it flatly.
+- It is **cheaper by orders of magnitude.** $4.8 \times 10^{12}$ segment tests on tabula at 64
+  samples becomes $O(m \log m + K)$ at ~3.1 µs per candidate pair.
+- The count is **independent of `n_samples`**, which is what (14)'s `tol`-dedup and (15)'s γ=0
+  short-circuit existed to achieve. Both are therefore retired rather than reimplemented.
+
+Validated before adoption: over 4000 random pairs the intersection counts were distributed
+{0: 2211, 1: 1165, 2: 548, 3: 49, 4: 27}, confirming the bound of four, with every reported point
+matching to $<10^{-7}$ except two near-tangential cases; against a 1200-segment polyline reference
+on 200 further pairs the counts agreed 200/200.
+
+### (29) `cr(e_a, e_b)` is the number of accepted roots
+
+Replaces (14). A root is accepted when it is real, $s \in [0,1]$, **and** the recovered
+$t = -P_{02}(s)/\beta$ is also in $[0,1]$ — filtering on $s$ alone is wrong, because the implicit
+equation describes the whole parabola rather than the arc. Three cases are settled before
+root-finding:
+
+| case | detection | `cr` |
+|---|---|---|
+| identical or collinear-overlapping curves | every quartic coefficient ≈ 0 | 1, per spec §2.4 |
+| tangency | double real root | 1, and counted in `n_near_tangential` |
+| shared endpoint | root coincides with a vertex the two edges share **by index** | excluded |
+
+The last is (13) unchanged in substance: exclusion is still by vertex identity, never by comparing
+coordinates. Only the mechanism moved, from filtering shapely geometry to filtering roots.
+
+### (30) Three degeneracy guards, each a determinant with a geometric reading
+
+| guard | quantity | meaning | handling |
+|---|---|---|---|
+| straight edge | $\lVert D \rVert \approx 0$, where $D = 2\gamma\bigl(P_1 - \tfrac{P_0+P_2}{2}\bigr)$ | the curve is its chord | segment–segment test |
+| collinear controls | $\beta = 2\det(B_1-B_0,\, B_2-B_0) \approx 0$ | the parabola collapses to a line | segment path over the swept interval |
+| parallel bulges | $Q_4 = -16\det(D_A, D_B)^2 \approx 0$ | the two curves bow the same way | deflate to the true degree before the companion matrix |
+
+**The third is the one that will actually bite.** Forming the companion matrix divides by $Q_4$,
+and with a shared γ the guard trips whenever two edges bow in parallel — common in any layout with
+orientational coherence, not an exotic case. It needs its own test, with constructed curves rather
+than random ones, because random sampling will rarely hit it.
+
+Note what these quantities are *not* doing. $D$ and the control-triangle area bound nothing in this
+design; they appear only as conditioning quantities. An earlier draft used them for bounding-hull
+rejection and for a subdivision stopping criterion, and both were removed (§0.5). Do not
+reintroduce a hull test on their account.
+
+### (31) Stay in NumPy until $K$ says otherwise
+
+A compiled implementation would be a **different design**, not a translation: with early exit and
+cheap branching the rejected bounding-triangle filter becomes worthwhile again and per-pair
+processing becomes correct. That is two algorithms to test, not one algorithm in two languages.
+
+The decision rests on $K$, the number of pairs surviving the broad phase — the one quantity in the
+cost model that has not been measured. NumPy runtime is $\approx K \times 3.1$ µs, so $K=10^6$ is
+3 s per layout and $K=10^8$ is 5 minutes. Below roughly 30 s per layout there is no case for
+compiling: the metric runs once per layout, not in an inner loop.
+
+Escalate in this order first:
+
+1. the exact bounding box (already specified — cuts $K$ by about a third for 123 ns per edge);
+2. parallelism across layouts, since the experiment grid is embarrassingly parallel;
+3. the length-thresholded crossing curve, which shrinks $m$ directly and is what the thesis's
+   claim (c) is actually about.
+
+⚠️ **Print $K$ as soon as the broad phase runs, on the largest layout.** Nothing downstream should
+be built on a guess about it.

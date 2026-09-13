@@ -6,6 +6,11 @@ Read `CLAUDE.md` first, then this. Updated at the end of each session.
 remaining open questions (`SpectralLayout`'s Laplacian, VNR's normaliser) and ran a pre-step-5
 audit of the test suite. Branch `experiment-setup`; 22 commits.
 
+**Docs-only update, 2026-09-13.** No code changed. The crossing algorithm for step 5 was settled
+in discussion before implementation: spec §2.4 Layers 1–2 rewritten, a §0.5 block added,
+`DECISIONS.md` (27)–(31) added and (14)/(15) superseded, and a new reference
+[`docs/CROSSING_GEOMETRY.md`](CROSSING_GEOMETRY.md).
+
 ---
 
 ## Position in the spec's §7 ordering
@@ -40,7 +45,10 @@ Section 5 numbers before step 8.
 4. `docs/DATASET_PROVENANCE.md` — where each dataset's weights actually come from. Assertions
    here are executable: `tests/test_dataset_provenance.py`.
 5. `docs/DATASET_REPORT.md` — the generated roster table (`python -m twin.report`).
-6. There is **no plan file for step 5 yet** — write one first, as steps 2-4 each did.
+6. `docs/CROSSING_GEOMETRY.md` — **for step 5 specifically**: the crossing algorithm in full,
+   with the derivation, the measurements and the degeneracy analysis. Spec §2.4 is the summary;
+   this is the reference.
+7. There is **no plan file for step 5 yet** — write one first, as steps 2-4 each did.
    [`step2-datasets.md`](plans/step2-datasets.md), [`step3-metrics.md`](plans/step3-metrics.md)
    and [`step4-visual.md`](plans/step4-visual.md) are all **history** now, kept for their record
    of where the implementation departed from them — the departures themselves are in
@@ -152,11 +160,26 @@ Two facts about the transform that fell out of writing the pins, both easy to ge
 
 ### Where step 5 starts
 
-No plan file exists yet; write one first. Three things it has to take account of:
+**The algorithm is settled.** Read [`docs/CROSSING_GEOMETRY.md`](CROSSING_GEOMETRY.md) first — it
+is the specification for this step. Spec §2.4 Layers 1–2 were rewritten to match it, §0.5 carries
+the change log, and `DECISIONS.md` (27)–(31) record the choices. Crossings are computed
+**exactly**, by finding the roots of one quartic per candidate pair: no sampling, no subdivision,
+no geometric tolerance. `edge_curves` returns control points, not polylines, and `n_samples` no
+longer exists.
 
+No plan file exists yet; write one first. Things it has to take account of:
+
+- ⚠️ **The one unmeasured quantity is $K$**, the number of candidate pairs surviving the broad
+  phase. The whole cost model rests on it, and so does the question of whether NumPy suffices —
+  `DECISIONS.md` (31). Print it on the largest layout as soon as the broad phase runs, before
+  building anything downstream of it.
 - **§2.5's cost class is wrong in the direction that matters for step 5.** The expensive metrics
   scale with $m$ — 49368 edges on tabula — not with $n$. Nothing in step 4 hurt on tabula;
   crossings will.
+- **`twin/geometry.py` is a new module and it is shared with `plots.py`.** The γ→Bézier conversion
+  must live in exactly one place or the drawn curve and the measured curve drift apart with
+  nothing to catch it. Moving it out of `draw_curved_edges` is a *refactor*; `crossings.py` is a
+  *behaviour change*. Per CLAUDE.md those are separate commits, in that order.
 - **`edge_lengths` is the per-edge order of record**, `G.edges()`, and LWCr's denominator
   $\bar L$ (eq. 80) is already pinned in the golden file. ADR's CSR order is a different one and
   the two must not be unified.
@@ -169,6 +192,12 @@ No plan file exists yet; write one first. Three things it has to take account of
   the two things compared shared an implementation. Step 5 will be tempted to check
   `crossings.py` against `plots.count_intersections` — that is legitimate *only* where the two
   do not share code, and §0.5 records that they should disagree on shared-endpoint pairs anyway.
+  The independent oracle to check against is a **dense polyline reference** (~1200 segments per
+  curve), kept in the test module only. It agreed 200/200 with the exact method in validation.
+- **One degeneracy needs a constructed test, not a random one.** The $Q_4 \approx 0$ path — two
+  curves bowing in parallel — is common in real layouts but rare under random sampling, and it is
+  a division by zero if unguarded. `DECISIONS.md` (30).
+
 
 ## What landed in session 3
 

@@ -609,6 +609,48 @@ leave-one-out cache is keyed on `k_max` exactly for the second reason.
 
 ---
 
+### Session 5 pre-work — the crossing algorithm, settled before implementation
+
+§2.4's Layers 1 and 2 have been **rewritten in place**, so the text there is current; this block
+records what changed and why. The derivation, the measurements behind it and the degeneracy
+analysis are in [`docs/CROSSING_GEOMETRY.md`](CROSSING_GEOMETRY.md) — **read that before writing
+`crossings.py`.** Layer 3 is unchanged, as are §4.3 and the LWCr reasoning.
+
+**The method is now exact and algebraic.** The drawn curve is a quadratic Bézier; two quadratic
+Béziers meet in at most four points; those points are the roots of a single quartic obtained by
+eliminating one curve's parameter. There is no sampling, no subdivision and no tolerance on the
+geometry — only numerical tolerances on root reality and interval membership, and the layout is
+normalised to a unit box first so those are dataset-independent.
+
+What it supersedes:
+
+| Was | Now |
+|---|---|
+| `edge_curves(...) -> (m, n_samples, d)` sampled polylines | `edge_curves(...) -> (m, 3, 2)` Bernstein control points; `n_samples` is removed, not defaulted |
+| `n_samples=64`, inherited from the rendering code | no samples at all. 64 was a *rendering* choice; as a geometric tolerance the same accuracy needs $N \ge \sqrt{\lVert D\rVert/2\delta}$, typically 4–16 |
+| shapely pairwise intersection of polylines | one quartic root-find per candidate pair |
+| `crossing_pairs(...) -> list[(a, b, count)]` | `-> (k, 6)` array of `(a, b, t, s, x, y)`; counts are derived from it |
+| `tol=1e-12` on intersection geometry | tolerances on root reality and $[0,1]$ membership |
+| DECISIONS (14) — `cr` from shapely geometry types | DECISIONS (29) — `cr` is the number of accepted roots |
+| DECISIONS (15) — γ=0 short-circuits to 2 samples | DECISIONS (27), (30) — γ=0 puts $B_1$ at the chord midpoint; the $\lVert D\rVert\approx0$ guard dispatches to a segment test |
+| — | new module `twin/geometry.py`, shared by `plots.py` and `crossings.py` |
+
+What did **not** change: the `include_adjacent=True` default; endpoint exclusion by vertex
+identity (DECISIONS (13) — the *mechanism* changed, the rule did not); collinear overlap counting
+as 1; $L(e)$ being the chord; and the separate diagnostics table of DECISIONS (18), which gains
+`n_near_tangential`.
+
+Two proposals that were made and then **withdrawn on measurement**, recorded so they are not
+re-proposed. A bounding-triangle (separating-axis) filter between the broad phase and the solve:
+it costs 2339 ns/pair to save 790 ns, because vectorised execution has no early exit and every
+pair therefore pays all six axes; the Bernstein sign test achieves the same rejection rate for
+108 ns. And a recursive-subdivision fallback: subdivision is only worth having for curves of
+degree 3 and above, where implicitisation gives degree 9 or 25 instead of 4.
+
+⚠️ **The cost estimate has exactly one free parameter: $K$, the number of candidate pairs
+surviving the broad phase.** Everything else in it is measured. Print $K$ on the largest layout as
+soon as the broad phase runs, before building anything downstream of it — see DECISIONS (31).
+
 ## 1. Bugs to fix first
 
 These are independent of the new work. **Read §0.5 first** — three of the six claims below did
@@ -884,12 +926,20 @@ Persist them separately from the scalar metrics (§4.6) — they are large.
 ```python
 def edge_lengths(X, G) -> np.ndarray                       # chord lengths L(e), eq. (79)
 def edge_length_cv(X, G) -> float                          # coefficient of variation
-def detour_ratio(X, E, G, gamma=0.5, n_samples=64) -> np.ndarray
+def detour_ratio(X, E, G, gamma=0.5) -> np.ndarray          # arc / chord, per edge
 ```
 
 `detour_ratio` is arc length of the drawn curve over chord length, per edge — bounded below by
 1, exactly 1 for straight edges. It measures what the curved formulation costs in ink; it is
 deliberately **not** folded into LWCr (see §2.4).
+
+⚠️ **No `n_samples`** — the arc length has a closed form and must not be approximated by summing
+a polyline, which would make the one metric in the suite that is *about* arc length depend on a
+sampling parameter. With $u = B_1-B_0$ and $w = B_0-2B_1+B_2$ from `twin/geometry.py` (§2.4
+Layer 1), $\lVert B'(t)\rVert = 2\lVert u + tw \rVert$, so with $a=\lVert w\rVert^2$,
+$b=2\,u\!\cdot\!w$, $c=\lVert u\rVert^2$ the arc length is $2\int_0^1 \sqrt{at^2+bt+c}\,dt$,
+a standard antiderivative. Guard $a \approx 0$ (straight edge, arc $=$ chord $\Rightarrow$ ratio
+exactly 1) and the perfectly-degenerate $4ac = b^2$ case separately.
 
 ### 2.3 `label.py`
 
@@ -941,46 +991,100 @@ layers.
 
 #### Layer 1 — curve construction
 
-Factor the curve geometry out of `plots.py::draw_curved_edges` into a reusable function; the
-plotting code should then call it too, so the drawn picture and the measured crossings cannot
+Factor the curve geometry out of `plots.py::draw_curved_edges` into a new `twin/geometry.py`; the
+plotting code must then call it too, so the drawn picture and the measured crossings cannot
 diverge.
 
 ```python
-def edge_curves(G, V, E=None, gamma=0.5, n_samples=64) -> np.ndarray   # (m, n_samples, d)
+def edge_curves(G, V, E=None, gamma=0.5) -> np.ndarray   # (m, 3, 2) Bernstein control points
 ```
 
-Reuse the existing quadratic kernel exactly:
+**The function returns control points, not samples.** The drawn curve is exactly a quadratic
+Bézier, so three control points describe it completely and every step downstream is algebraic.
+The existing kernel
 
 ```
 [[1, 0, 0], [-1-2γ, 4γ, 1-2γ], [2γ, -4γ, 2γ]]
 ```
 
-with control points $(x_u,\; y_{(u,v)},\; x_v)$. `gamma=0` must produce exact straight
-segments — that is how the straight variant is obtained, so both variants go through one code
-path. `E=None` also yields straight segments (for baselines that have no edge points).
+with control points $(x_u,\; y_{(u,v)},\; x_v)$ is exactly the Bézier with
+
+$$B_0 = P_0,\qquad B_1 = 2\gamma P_1 + (1-2\gamma)\tfrac{P_0+P_2}{2},\qquad B_2 = P_2$$
+
+⚠️ **The control points held by `plots.py` are not Bézier control points.** Except at γ=0.5 they
+differ, and using them as if they were produces the wrong curve. This conversion is the one piece
+of geometry `plots.py` and `crossings.py` must share, which is why it lives in its own module.
+`gamma=0` and `E=None` both put $B_1$ at the chord midpoint, i.e. an exact straight segment —
+that is how the straight variant is obtained, so both variants go through one code path.
+
+`twin/geometry.py` also owns the **exact** axis-aligned bounding box, which layer 2 needs. Each
+coordinate is treated independently: with $u=B_1-B_0$ and $w=B_2-B_1$ as scalars in that
+coordinate, the single stationary point is $t^{*}=u/(u-w)$ with value $B_0+u^{2}/(u-w)$, and the
+range is the extremes of $\{B_0,B_2\}$ plus that value when $t^{*}\in(0,1)$. $t^{*}_x$ and
+$t^{*}_y$ differ in general. This box is 37 % smaller in area than the box on the control points
+and costs 123 ns per edge — per *edge*, not per pair.
 
 #### Layer 2 — crossing detection
 
 ```python
-def crossing_pairs(curves, edges, include_adjacent=True, tol=1e-12) -> list[tuple[int,int,int]]
+def crossing_pairs(controls, edges, include_adjacent=True) -> np.ndarray
 ```
-Returning `(edge_a, edge_b, n_crossings)`.
+
+Returning one row per crossing: `(edge_a, edge_b, t, s, x, y)`. Counts are derived from it, so
+layer 3 and the figures read the same object.
+
+**The method is exact and algebraic — no sampling, no subdivision, no geometric tolerance.** The
+derivation, the measurements behind it and the degeneracy analysis are in
+[`docs/CROSSING_GEOMETRY.md`](CROSSING_GEOMETRY.md); **read that before implementing this layer.**
+In outline:
+
+1. **Broad phase.** `shapely.STRtree` over the exact boxes from layer 1, queried for overlapping
+   pairs. $O(m\log m)$ to build; returns the $K$ candidates without enumerating the rest.
+2. **Filter.** Build the quartic, convert its coefficients to the Bernstein basis on $[0,1]$, and
+   discard the pair if they do not change sign — no sign change proves no root in range. 108 ns
+   per pair, and it works on coefficients already computed.
+3. **Solve.** Roots of the quartic by eigenvalues of the companion matrix, batched over the
+   survivors; keep roots with $s\in[0,1]$, recover $t$, keep those with $t\in[0,1]$ too.
+
+The quartic comes from eliminating one curve's parameter. With $[i,j]=p_iq_j-p_jq_i$ on
+$p(t)=x_A(t)-x$ and $q(t)=y_A(t)-y$, the implicit equation of curve $A$ is $[0,1][1,2]-[0,2]^2=0$;
+substituting $B(s)$ gives degree 4. Two quadratic Béziers meet in at most four points and **all of
+them come out of one solve**, so there is no "stop after the first hit" problem to reason about.
+Implicitise whichever curve has the larger control-triangle area — $[1,2]=2\det(B_1-B_0,B_2-B_0)$
+is four times that area and is also the denominator in the $t$ recovery.
+
+Three things that are easy to get wrong, all pinned in the guide:
+
+- **Filtering $s\in[0,1]$ is not sufficient.** The implicit equation describes the whole parabola,
+  not the arc, so $t$ must be recovered and tested as well. In validation roughly a third of
+  in-range $s$ roots lay on the other curve's extension.
+- **The leading coefficient vanishes when the two curves bulge in parallel directions**, which is
+  common in a real layout rather than exotic. Deflate to the true degree before forming the
+  companion matrix.
+- **Run the stages as passes over arrays**, in blocks of ~10⁶ pairs, never one pair at a time.
+  The measured throughput exists only because the solve is issued as one batched call.
+
+Conventions, unchanged from the original text:
 
 - **`include_adjacent=True` is the thesis convention** (§3.1.3 argues explicitly that curved
   edges incident to a shared vertex may still cross away from it). The existing
   `count_intersections` does the opposite — it `continue`s on shared vertices. Keep the flag so
   both conventions can be reported, but default to the thesis one.
-- **Degeneracy convention.** Eq. (74) defines `cr` as the *cardinality* of
-  an intersection set, which is infinite for collinear overlap — routine under crowding, and
-  certain when two vertices land on the same coordinate. Required behaviour: collinear/segment
-  overlap counts as **exactly 1** crossing; coincident endpoints are excluded by **vertex
-  identity**, not by coordinate value (eq. 73 excludes the four coordinate values, which
-  silently suppresses genuine crossings when two distinct vertices coincide). Count and report
-  degenerate incidents separately. **[THESIS EDIT]** — thesis §3.1.3 does not yet state a
-  degeneracy convention; implement the one above.
-- Performance: the thesis notes $O(s^2m^2)$. Use an STR-tree bounding-box prefilter
-  (`shapely.STRtree`) before pairwise intersection; Shapely is already a dependency. For the
-  large graphs this is the difference between minutes and hours.
+- **Degeneracy convention.** Eq. (74) defines `cr` as the *cardinality* of an intersection set,
+  which is infinite for collinear overlap — routine under crowding, and certain when two vertices
+  land on the same coordinate. Required behaviour: collinear/segment overlap counts as **exactly
+  1** crossing; coincident endpoints are excluded by **vertex identity**, not by coordinate value
+  (eq. 73 excludes the four coordinate values, which silently suppresses genuine crossings when
+  two distinct vertices coincide). Count and report degenerate incidents separately, and
+  near-tangential pairs — double roots — alongside them. **[THESIS EDIT]** — thesis §3.1.3 does
+  not yet state a degeneracy convention; implement the one above.
+- **Cost.** The naive sampled form is $\binom{m}{2}(s-1)^2$, i.e. $4.8\times10^{12}$ segment tests
+  on tabula at 64 samples. The pipeline above is $O(m\log m + K)$ at ~3.1 µs per candidate pair.
+  ⚠️ **Print $K$ as soon as the broad phase runs.** It is the only unmeasured quantity in the cost
+  model and it decides whether anything further is needed — see DECISIONS (31). Output sensitivity
+  is the real floor: if a layout has $X$ crossings then $K \ge X$, and no method beats
+  $\Omega(m\log m + X)$.
+
 
 #### Layer 3 — the metrics
 
@@ -1997,6 +2101,7 @@ them in code comments or propose alternatives in the implementation.
 | λ selection criterion | One declared metric, fixed before the runs; default `knn_recall@k=mean_degree`. Per-metric selection must be structurally impossible. KL rejected with an error. | §4.2 |
 | Crossing conventions | Adjacent pairs **included** (thesis convention); collinear overlap counts as 1; endpoint exclusion by vertex identity, not coordinate. **Thesis §3.1.3 needs the degeneracy convention added.** | §2.4 |
 | LWCr edge length | Chord, never arc. Load-bearing — see the reasoning in §2.4. | §2.4 |
+| Crossing computation | Exact and algebraic: one quartic root-find per candidate pair, no sampling and no subdivision. `edge_curves` returns control points, not samples. Guide: `docs/CROSSING_GEOMETRY.md`. | §2.4, §0.5 |
 | Dispersion statistic | Median and IQR. Deterministic methods flagged, run once. | §4.1 |
 
 | Label roles | Scoring role and display role are **separate fields**. football scores `conference` and takes hue from it; tabula scores the fine `cell_ontology_class` and takes hue from the coarse `compartment`. One field cannot express both. Also score the composite, guarded per §0.5 decision 9. | §3.4 |
