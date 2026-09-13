@@ -15,6 +15,8 @@ from sklearn.metrics import pairwise_distances
 
 from shapely.geometry import LineString
 
+from twin import geometry
+
 
 def block_adj(A, b=7):
 
@@ -154,9 +156,12 @@ def draw_curved_edges(
     # The parameter gamma controls the curvature of the line.
     # gamma = 0 is a straight line. gamma = 0.5 is a classic bezier (lerp).
     # gamma = 1 is a 3-point interpolating line such that P(1/2) = P1.
-    curve_kernel = np.array(
-        [[1, 0, 0], [-1 - 2 * gamma, 4 * gamma, 1 - 2 * gamma], [2 * gamma, -4 * gamma, 2 * gamma]]
-    )
+    #
+    # It now lives in twin/geometry.py, which the crossing metrics read too: the drawn curve and
+    # the measured curve must come from one definition or they drift apart silently (spec §2.4,
+    # DECISIONS (27)). This call is the whole of that dependency — the sampling below stays here,
+    # because 64 points is a rendering choice and not a geometric one.
+    curve_kernel = geometry.curve_kernel(gamma)
 
     # Parameter t ranges from 0 to 1 and is the parametric input to the curve
     t = np.linspace(0, 1, n_samples)
