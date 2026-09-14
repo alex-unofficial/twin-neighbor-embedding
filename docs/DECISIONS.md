@@ -1426,3 +1426,89 @@ Two smaller things the plan did not cover:
   Two distinct straight edges sharing a vertex meet only there, and that is excluded by identity
   either way. So `count_intersections`' divergence from eq. (78), while real and standing, is
   vacuous for the figure it serves unless four vertices are collinear.
+
+### (37) Where the 40 s actually goes, and two optimisations that were tested and rejected
+
+(36) recorded totals. The stage split was taken afterwards, on the same tabula twin layout, by
+mirroring `_solve_quartic_block` call for call with a timer on each stage — so this is the real
+code path, not the guide's per-stage estimates. It is recorded because both of the obvious
+follow-up optimisations were then measured and **neither pays**; without the numbers they will be
+proposed again.
+
+**Curved, γ=0.5, 41.6 s instrumented (40.2 s uninstrumented):**
+
+| stage | time | share |
+|---|---|---|
+| **solve (`np.linalg.eigvals`)** | **19.63 s** | **47.1 %** |
+| broad phase (query) | 9.01 s | 21.6 % |
+| build quartic | 4.43 s | 10.6 % |
+| Bernstein filter | 2.52 s | 6.1 % |
+| root filter + assemble | 2.13 s | 5.1 % |
+| pair bookkeeping | 1.40 s | 3.4 % |
+| sort + rescale | 1.01 s | 2.4 % |
+| deflate shared root | 0.90 s | 2.2 % |
+| degree detection | 0.52 s | 1.2 % |
+| setup (curves) | 0.09 s | 0.2 % |
+
+#### Rejected: closed forms for the low-degree pairs
+
+**There are none.** Of 4 705 511 live pairs, **86.8 % deflate to degree 4 and 13.2 % to degree 3;
+nothing is below that.** Replacing `eigvals` with the quadratic formula where the quartic has
+collapsed is worth exactly zero on real data.
+
+The histogram does say something else, though: degree 4 costs 4.18 µs per matrix and degree 3
+costs 4.03 µs. Near-identical cost for a 33 % smaller problem is the signature of per-call LAPACK
+overhead — `eigvals` calls `dgeev` once per matrix and spends most of its time on setup, not on
+the $O(n^3)$ work. Which points at the next idea.
+
+#### Rejected: a vectorised closed-form quartic in place of the companion matrix
+
+2 000 000 real degree-4 quartics taken from the tabula layout:
+
+| solver | µs/pair | speedup | in-range **root count** matches `eigvals` | max \|Δs\| | p99.999 \|Δs\| |
+|---|---|---|---|---|---|
+| `eigvals` (companion) | 4.12 | — | — | — | — |
+| Ferrari, vectorised | 0.76 | **5.4×** | 99.9800 % | 5.9e-1 | 8.2e-3 |
+| Ferrari + 2 Newton steps | 3.19 | 1.3× | 99.9960 % | 2.2e-1 | 1.2e-8 |
+
+The speedup is real and so is its cost. Ferrari alone changes the **crossing count** on 0.02 % of
+quartics — roughly 940 pairs on tabula — and its tail errors are gross rather than small. Those
+failures sit where the resolvent cubic cancels, which is near-tangency, which is the crowded
+regime the thesis is about; this is exactly the objection the guide raises against Ferrari, now
+quantified. Trading it for 15 s in a metric whose headline claim is "no sampling parameter, no
+geometric tolerance" is the wrong trade.
+
+Polishing to fix it costs the speedup back — Newton is memory-bound over a `(P, 4)` complex array
+and leaves 1.3× overall, 0.9 s per layout. A hybrid (Ferrari, residual check, `eigvals` fallback)
+would recover the 5.4×, but its correctness would then rest on a residual threshold, in the most
+delicate code in the module — the same kind of tolerance (32) had just removed.
+
+#### Not rejected, not done: the segment path's redundant swept-segment computation
+
+The straight variant builds no quartic and runs no `eigvals`, and still costs 28.9 s. Its split
+(`_segment_intersections` calls `_swept_segments` internally, so those two rows overlap):
+
+| stage | time |
+|---|---|
+| segment intersect | 12.87 s (includes the row below) |
+| **swept segments** | **9.40 s** |
+| broad phase (query) | 8.65 s |
+| shared vertices | 1.25 s |
+| parameter recovery | 1.15 s |
+
+`_swept_segments` computes a turning point, three candidate points, three pairwise distances and
+an argmax — in order to rediscover that a straight curve's swept segment is $(B_0, B_2)$. For
+$C_2 = 0$, which is exactly the per-edge flag the dispatch already computes, it is provably
+redundant. A fast path there is worth **~9 s with no accuracy risk**, taking both variants from
+69 s to about 60 s.
+
+**Left undone deliberately** (author's call, after the measurement): it is out of step 5's scope,
+and rung 2 of (31)'s escalation still buys 8× for free. Worth doing if anyone is in this file for
+another reason, or as part of step 7's cost model.
+
+#### What this does not change
+
+The floor in NumPy is ~10 s of unavoidable array passes over 11.4 M pairs plus ~9 s of query, for
+*either* variant. Optimising the curved solve cannot get it below what the straight variant
+already costs, so "get under (31)'s 30 s line" is not a goal the solve can deliver on its own.
+**(36)'s decision stands, now on measured rather than inferred grounds.**

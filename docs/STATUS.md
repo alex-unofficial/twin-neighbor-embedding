@@ -103,7 +103,12 @@ still render and Figure 3 is bit-identical to its pre-rewrite output. The plan
 - **Cost, and (31)'s call: stay in NumPy.** Tabula is **40.2 s curved / 28.9 s straight** end to
   end, peak +428 MB, which is 1.3× over (31)'s line rather than the 1.5–2× the plan estimated.
   Rung 2 of the escalation — parallelism across layouts — is untouched and **belongs to step 7's
-  runner**.
+  runner**. The stage split and **two rejected optimisations** are `DECISIONS.md` (37): the solve
+  is 47 % of the runtime, no pair deflates below degree 3 so there are no cheap ones, and a
+  vectorised Ferrari is 5.4× faster while changing the crossing count on 0.02 % of quartics —
+  concentrated at near-tangency, which is the regime under study. **Do not re-propose either.**
+  One real ~9 s win is identified and deliberately not taken: `_swept_segments` is redundant for
+  an exactly straight curve.
 - **γ=0 is a numerically special case that does not announce itself.** `arc_length`'s first
   implementation was out by a factor of 2 on the entire straight variant, because at γ=0 the
   quadratic coefficient is not bitwise zero but rounding noise *with an arbitrary direction* —
@@ -488,6 +493,7 @@ one of the eight.)
 | `openTSNE` and `fa2_modified` not installed | step 9 |
 | ⚠️ **Crossing output is big.** A tabula layout produces 2.9 M crossing rows (139 MB as `(k, 6)`). The three layer-3 metrics take `crossings=` so one solve serves all three, but nothing yet *enforces* that, and persisting the array rather than the scalars would be a mistake | **step 7** |
 | `QUERY_CHUNK_EDGES = 1024` is the crossing pipeline's memory bound, measured on tabula. A runner that parallelises across layouts multiplies it by the worker count | step 7 |
+| A **~9 s, accuracy-free** saving on both crossing variants is measured and left undone: `_swept_segments` rediscovers $(B_0, B_2)$ for curves already flagged as exactly straight — `DECISIONS.md` (37) | whenever someone is in `crossings.py` anyway; otherwise step 7 |
 | One legacy `(d, n)` surface: `graph_embedding_all` → `paper_figures` → `plots`, and with it `twin/graphmatrix.py`'s pre-restructure classes and their `.affinity` / `.distance` shim. **Half discharged**: `count_intersections` is now layer 2 and transposes at its own boundary; `drawedges` / `draw_curved_edges` and `graph_embedding_all` are what remain | the rest converges at **step 10**; tracked in `DECISIONS.md` (2) |
 | Tabula's Leiden partition is still computed inside `tabula_sapiens_teaser` rather than registered as a `detected:leiden` label set | step 10, where the consumer and the cost land together |
 | ~~**Open:** VNR's normaliser~~ — **closed session 4**: the per-vertex median. Still one `[THESIS EDIT]`; eq. (69) never changed | discharged |
