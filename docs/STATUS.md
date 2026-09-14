@@ -4,9 +4,8 @@ Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
 **Last updated:** end of session 5 (2026-09-14). It closed spec §7 step 5 — `twin/geometry.py`
 and `twin/metrics/crossings.py` now exist, crossings are computed exactly, and
-`plots.count_intersections` is built on them. Branch `experiment-setup`; tree clean. **750 tests
-pass and 2 fail on an `sfdp` crash that is an environment regression, not a code one — see the
-section below before reading the failure as yours.**
+`plots.count_intersections` is built on them. Branch `experiment-setup`; tree clean. **750 pass
+and 2 skip** — the two `sfdp` cases, behind a runtime probe of the broken backend (see below).
 
 > **Step 6 is next** — `label.py`'s silhouette and the graph-side checks. Step 2 unblocked it and
 > nothing from step 5 constrains it. There is no plan file for it yet.
@@ -411,32 +410,64 @@ from 94**; all eight `paper_figures` functions still render.
 
 ## ⚠️ Broken in the environment, not in the tree: `sfdp` / `YifanHuLayout`
 
-**`venv/bin/python -m pytest` currently reports 750 passed, 2 failed. Neither failure is ours.**
+**`venv/bin/python -m pytest` reports 750 passed, 2 skipped. The two skips are an upstream
+graphviz crash, and they un-skip by themselves once the installed graphviz is new enough.**
 
 ```
-FAILED tests/test_embedding.py::test_every_method_touches_exactly_the_form_it_declares[yifanhu]
-FAILED tests/test_embedding.py::test_every_method_lays_out_every_representation[yifanhu]
+SKIPPED tests/test_embedding.py::test_every_method_touches_exactly_the_form_it_declares[yifanhu]
+SKIPPED tests/test_embedding.py::test_every_method_lays_out_every_representation[yifanhu]
 ```
 
-`sfdp` aborts — `Fatal glibc error: malloc.c:2199 (sysmalloc): assertion failed`, returncode −6,
-sometimes −11. **graphviz 16.0.0-1 was installed on 2026-09-06**, after this session's earlier
-green runs, and `/usr/bin/sfdp` is a symlink to `dot`.
+`sfdp` corrupts the heap and aborts — `Fatal glibc error: malloc.c:2199 (sysmalloc): assertion
+failed`, returncode −6. **graphviz 16.0.0-1 was installed on 2026-09-06**, after this project's
+last green run.
 
-Characterised so the next session does not repeat it:
+Characterised in session 5, in enough detail that nobody need repeat it:
 
-- **Only `sfdp`.** `neato`, `dot`, `fdp`, `twopi` and `circo` all handle the same input file
-  fine, and the five `neato` tests still pass. So only `YifanHuLayout` is affected.
-- **Input-dependent, and not about size.** Path graphs up to 34 nodes are fine and
-  `complete_graph(10)` (45 edges) is fine; `karate_club_graph` (34 nodes, 78 edges) aborts, with
-  or without edge attributes. It is not the attribute plumbing — the same crash occurs on a
-  structure-only copy, which is exactly what `YifanHuLayout` sends.
-- **Not caused by any change here.** The last code commit is `a2a62cd` (26 Aug); these two tests
-  passed on every run through `9a5da2d`.
+- **Only `sfdp`.** `neato`, `dot`, `fdp`, `twopi` and `circo` handle every input that kills it, so
+  only `YifanHuLayout` is affected.
+- **It is in the multilevel coarsening.** `-Glevels=0` and `-Glevels=1` survive; `-Glevels≥2`
+  aborts. No other attribute changes anything — `quadtree`, `mode`, `overlap`, `smoothing`, `K`
+  and `maxiter` all still crash.
+- **Minimal reproducer: 5 nodes, 5 edges** — `0--1, 1--3, 1--4, 2--3, 2--4`. 157 of the connected
+  graphs on ≤ 7 nodes crash it.
+- **It depends on the order graphviz *creates* the nodes in, not on the graph.** That same graph
+  survives creation order 0,1,3,4,2 and aborts on 0,1,2,3,4. `nx_pydot` always writes node
+  statements in sorted order, so every call from `YifanHuLayout` lands on the failing order — and
+  that is why it first looked size-dependent (`complete_graph(10)` fine, `karate_club_graph` not).
+- **graphviz 14.1.4 handles all of it**, verified by extracting the cached package and running its
+  `sfdp` against every failing input. It is a regression, not a tightening.
+- **Upstream has it**: [forum thread](https://forum.graphviz.org/t/sfdp-crash-regression-in-15-1-1/3392),
+  GitLab issue #2852 — introduced in 15.1.1, **fixed in 16.1.0**. Arch `extra` still ships
+  16.0.0-1. Nothing to report; we are just early. (Our 5-node reproducer is smaller than the
+  upstream report's 24-node one, if anyone wants to add it.)
 
-Options, none taken — this is the author's call: downgrade graphviz to the previous release, pin
-it, report the regression upstream, or mark the two tests `skipif` on a probe of `sfdp`. **Do not
-"fix" it by changing `YifanHuLayout`** — the layout code is correct and the conformance test is
-doing its job.
+### What was done about it, and what it costs
+
+`tests/test_embedding.py` **probes the backend at collection time** and skips only the `yifanhu`
+parameters of the two tests that actually invoke it. Three behaviours, all verified:
+
+| state of `sfdp` | result |
+|---|---|
+| graphviz 16.0.0 (broken) | 2 skipped, with the reason and the upstream pointer in the message |
+| graphviz 14.1.4 on `PATH` | **35 passed, 0 skipped** |
+| `sfdp` absent entirely | probe declines to skip; the tests **fail loudly** |
+
+The middle row is the important one: run against a working binary, `YifanHuLayout` passes both
+tests unchanged. The layout code was never the problem, and that is now demonstrated rather than
+asserted.
+
+The probe is deliberately narrow. It runs the 5-node trigger through the exact `nx_pydot` path
+and treats **only a signal death** (`returned code: -N`) as grounds to skip, so a missing binary
+or a broken `pydot` fails the way it already does for the `neato` tests instead of quietly
+disabling a method forever. And if `sfdp` handles the trigger but a real layout still fails, the
+tests run and fail — that would be a *different* bug and should be loud.
+
+⚠️ **What it costs:** while the skip is active, `YifanHuLayout`'s backend has no coverage, so a
+regression in it would go unnoticed. Partial mitigation: `test_yifan_hu_is_handed_the_structure
+_and_nothing_else` inspects the dot source rather than running the binary, and still runs — the
+plumbing is still guarded, only the end-to-end layout is not. **Do not "fix" the skip by changing
+`YifanHuLayout`**; the conformance test is doing its job.
 
 ## Environment facts not visible in the tree
 
@@ -462,7 +493,7 @@ doing its job.
 ## Health check
 
 ```bash
-venv/bin/python -m pytest -q          # 750 passing, 2 failing (sfdp — see above), 1 deselected
+venv/bin/python -m pytest -q          # 750 passing, 2 skipped (sfdp — see above), 1 deselected
 venv/bin/python -m pytest -q -m slow  # the opt-in tabula figure, ~2 min
 python -m twin.report            # the roster table; regenerates docs/DATASET_REPORT.md with -o
 git status --short               # clean; if notebooks appear modified, the filter is unset

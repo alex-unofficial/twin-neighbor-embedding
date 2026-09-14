@@ -1512,3 +1512,41 @@ The floor in NumPy is ~10 s of unavoidable array passes over 11.4 M pairs plus ~
 *either* variant. Optimising the curved solve cannot get it below what the straight variant
 already costs, so "get under (31)'s 30 s line" is not a goal the solve can deliver on its own.
 **(36)'s decision stands, now on measured rather than inferred grounds.**
+
+## (38) The `sfdp` failures are skipped behind a probe, not fixed and not ignored
+
+`STATUS.md` left four options open and called it the author's. Taken: **probe the backend and
+skip the two `yifanhu` parameters when it is broken.** The other three were declined with reasons.
+
+The crash was characterised first, because three of the facts changed what the right answer was:
+
+- it is graphviz's **multilevel coarsening** (`-Glevels≤1` survives, `≥2` does not);
+- the minimal trigger is **5 nodes, 5 edges**, and it depends on **node creation order**, not on
+  the graph — `nx_pydot` writes nodes in sorted order, so every `YifanHuLayout` call hits it;
+- it is a known upstream regression, introduced in 15.1.1 and **fixed in 16.1.0** (GitLab #2852).
+
+That last one settles it: there is nothing to report, nothing to work around, and the fix arrives
+with the next graphviz. What the repository needs is for its test suite to tell the truth in the
+meantime, on any machine, without anyone having to read a paragraph in `STATUS.md` first.
+
+| option | why not |
+|---|---|
+| downgrade graphviz to 14.1.4 | fixes it here (verified), but it is a system-wide pin two majors back, needs `IgnorePkg` to survive an upgrade, and encodes one machine's state in nothing the repository can see |
+| report upstream | already reported and already fixed |
+| leave the two red | every session re-reads why the suite is not green, and a *new* failure hides among the known ones |
+| **probe and skip** | ✅ honest on any machine, un-skips by itself when graphviz updates, and touches no layout code |
+
+**The probe is narrow on purpose**, and all three of its behaviours are verified rather than
+assumed: with graphviz 16.0.0 two tests skip with the reason and the upstream pointer in the
+message; with 14.1.4 on `PATH` **35 pass and none skip**; with `sfdp` absent it declines to skip
+and the tests fail. Only a signal death (`returned code: -N`) counts as grounds to skip, so a
+missing binary or a broken `pydot` still fails the way it does for the `neato` tests.
+
+The middle case is the one worth keeping: run against a working binary, `YifanHuLayout` passes
+both tests **unchanged**. "The layout code is correct and the conformance test is doing its job"
+stops being an assertion and becomes a measurement.
+
+⚠️ **The cost is real and is written into `STATUS.md`:** while the skip is active the method's
+backend has no coverage. `test_yifan_hu_is_handed_the_structure_and_nothing_else` reads the dot
+source rather than running the binary and still runs, so the plumbing stays guarded — the
+end-to-end layout does not.

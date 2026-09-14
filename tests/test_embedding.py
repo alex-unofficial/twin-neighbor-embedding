@@ -11,6 +11,75 @@ from twin.layoutgraph import edge_graph, twin_graph, vertex_graph
 NAMES = sorted(EMBEDDING_REGISTRY)
 
 
+# --------------------------------------------------------------------------- #
+#          graphviz `sfdp` is broken in 16.0.0 — probe it, do not assume        #
+# --------------------------------------------------------------------------- #
+
+#: The smallest graph found that triggers it: 5 nodes, 5 edges.
+#:
+#: ⚠️ **This is an upstream crash, not a fault in `YifanHuLayout`.** graphviz 16.0.0's `sfdp`
+#: corrupts the heap and aborts (SIGABRT, `sysmalloc` assertion) inside its **multilevel
+#: coarsening**: `-Glevels=0` and `-Glevels=1` survive, `-Glevels>=2` does not, and no other
+#: attribute (`quadtree`, `mode`, `overlap`, `smoothing`, `K`, `maxiter`) changes anything.
+#: `neato`, `dot`, `fdp`, `twopi` and `circo` handle every input that kills it, and graphviz
+#: 14.1.4 handles them too — it is a regression.
+#:
+#: It depends on the order graphviz *creates* the nodes in, not on the graph: this same graph
+#: survives when its nodes are created in the order 0,1,3,4,2 and aborts when they are created
+#: 0,1,2,3,4. `nx_pydot` always writes node statements in sorted order, so every call from
+#: `YifanHuLayout` lands on the failing order — which is why it looked size-dependent at first
+#: (`complete_graph(10)` is fine, `karate_club_graph` is not).
+#:
+#: Upstream: forum.graphviz.org/t/sfdp-crash-regression-in-15-1-1/3392 and GitLab issue #2852 —
+#: introduced in 15.1.1, **fixed in 16.1.0**. Arch currently ships 16.0.0-1.
+SFDP_TRIGGER_EDGES = [(0, 1), (1, 3), (1, 4), (2, 3), (2, 4)]
+
+
+def _probe_sfdp() -> str | None:
+    """Run the trigger through the exact path `YifanHuLayout` uses. None means sfdp is healthy.
+
+    Deliberately **narrow**. It exercises the backend and the `nx_pydot` plumbing and nothing of
+    ours, so if sfdp handles this graph but a real layout still fails, the tests below run and
+    fail loudly — which is the right outcome, because that would be a different bug.
+    """
+    trigger = nx.Graph()
+    trigger.add_nodes_from(range(5))
+    trigger.add_edges_from(SFDP_TRIGGER_EDGES)
+    try:
+        nx.nx_pydot.graphviz_layout(trigger, prog="sfdp")
+    except Exception as error:  # pydot raises AssertionError carrying the return code
+        message = str(error).strip().splitlines()[0][:160]
+        # Only a *crash* justifies skipping: pydot reports a signal death as a negative return
+        # code. A missing binary, a missing pydot or a permissions problem must fail loudly
+        # instead, the way they already do for the `neato` tests, rather than quietly disabling
+        # a method forever because the probe happened to raise.
+        return message if "returned code: -" in message else None
+    return None
+
+
+SFDP_FAILURE = _probe_sfdp()
+
+#: The same parametrisation, with `yifanhu` skipped when the backend under it is broken. Only
+#: these two tests actually invoke `sfdp`; `test_yifan_hu_is_handed_the_structure_and_nothing
+#: _else` inspects the dot source instead and keeps running either way, so the method does not
+#: lose all of its coverage — only the part that needs a working binary.
+BACKEND_NAMES = [
+    pytest.param(
+        name,
+        marks=pytest.mark.skipif(
+            name == "yifanhu" and SFDP_FAILURE is not None,
+            reason=(
+                f"graphviz sfdp is broken in this environment and aborts on a 5-node graph "
+                f"({SFDP_FAILURE}). Upstream regression, fixed in graphviz 16.1.0; this "
+                f"un-skips by itself once the installed graphviz is new enough. "
+                f"Do not 'fix' it by changing YifanHuLayout."
+            ),
+        ),
+    )
+    for name in NAMES
+]
+
+
 class RecordingGraph:
     """A `LayoutGraph` that remembers which of its three forms was read.
 
@@ -48,7 +117,7 @@ def small_vertex_graph():
     return vertex_graph(load_dataset("karate_weighted"))
 
 
-@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("name", BACKEND_NAMES)
 def test_every_method_touches_exactly_the_form_it_declares(small_vertex_graph, name):
     spec = EMBEDDING_REGISTRY[name]
     recorder = RecordingGraph(small_vertex_graph)
@@ -61,7 +130,7 @@ def test_every_method_touches_exactly_the_form_it_declares(small_vertex_graph, n
     assert Y.shape == (2, small_vertex_graph.n_points)
 
 
-@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("name", BACKEND_NAMES)
 def test_every_method_lays_out_every_representation(small_vertex_graph, name):
     """A_E and A_tne have different node counts; the output must follow n_points, not n."""
     spec = EMBEDDING_REGISTRY[name]
