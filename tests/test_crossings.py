@@ -26,6 +26,7 @@ from twin.metrics.crossings import (
     crossing_pairs,
     crossing_pairs_report,
     crossings_per_edge_pair,
+    detour_ratio,
     edge_curves,
     length_weighted_crossings,
     normalize_to_unit_box,
@@ -646,3 +647,76 @@ def test_collinear_edges_touching_at_a_point_are_not_an_overlap():
     report = crossing_pairs_report(disjoint, touching, None)
     assert len(report.crossings) == 1
     assert report.n_degenerate == 0  # a point, not a stretch
+
+
+# --------------------------------------------------------------------------- #
+#                      detour_ratio — arc over chord                           #
+# --------------------------------------------------------------------------- #
+
+
+def test_detour_ratio_is_one_for_straight_edges(karate, karate_random_layout):
+    """γ=0 draws the chord itself, so there is no detour — the spec's stated test."""
+    G, V = karate, karate_random_layout
+    E = np.random.default_rng(30).normal(size=(G.number_of_edges(), 2))
+
+    np.testing.assert_allclose(detour_ratio(G, V, E, gamma=0.0), 1.0, atol=1e-12)
+    np.testing.assert_allclose(detour_ratio(G, V, None, gamma=0.9), 1.0, atol=1e-12)
+
+
+def test_detour_ratio_is_at_least_one_and_grows_with_gamma(karate, karate_random_layout):
+    """A chord is the shortest path between its endpoints, so the ratio is bounded below by 1."""
+    G, V = karate, karate_random_layout
+    E = np.random.default_rng(31).normal(size=(G.number_of_edges(), 2))
+
+    previous = detour_ratio(G, V, E, gamma=0.0)
+    for gamma in (0.25, 0.5, 1.0, 1.5):
+        current = detour_ratio(G, V, E, gamma=gamma)
+        assert (current >= 1.0 - 1e-12).all()
+        assert (current >= previous - 1e-12).all()
+        previous = current
+
+
+def test_detour_ratio_against_a_dense_polyline():
+    """The closed-form arc length, checked against summing 200001 samples. Independent code."""
+    rng = np.random.default_rng(32)
+    G = nx.Graph([(0, 1)])
+    for gamma in (0.1, 0.5, 1.0, 1.7):
+        for _ in range(25):
+            V = rng.normal(size=(2, 2))
+            E = rng.normal(size=(1, 2))
+            B = edge_curves(G, V, E, gamma=gamma)
+            polyline = _sample(B, 200001)[:, 0, :]
+            arc = np.linalg.norm(np.diff(polyline, axis=0), axis=1).sum()
+
+            expected = arc / np.linalg.norm(V[1] - V[0])
+            assert detour_ratio(G, V, E, gamma=gamma)[0] == pytest.approx(expected, rel=1e-8)
+
+
+def test_detour_ratio_is_scale_invariant_and_ordered_by_G_edges(karate, karate_random_layout):
+    G, V = karate, karate_random_layout
+    E = np.random.default_rng(33).normal(size=(G.number_of_edges(), 2))
+
+    base = detour_ratio(G, V, E)
+    np.testing.assert_allclose(detour_ratio(G, V * 1e4, E * 1e4), base, rtol=1e-12)
+    assert base.shape == (G.number_of_edges(),)
+
+    # one edge at a time, in G.edges() order, through a two-vertex graph
+    for e, (u, v) in enumerate(list(G.edges())[:5]):
+        single = nx.Graph([(0, 1)])
+        one = detour_ratio(single, np.array([V[u], V[v]]), E[e][None], gamma=0.5)[0]
+        assert one == pytest.approx(base[e])
+
+
+def test_detour_ratio_of_a_zero_length_edge_is_nan():
+    """A coincident vertex pair is the crowding case, not an error — there is just no ratio."""
+    G = nx.Graph([(0, 1)])
+    V = np.zeros((2, 2))
+    assert np.isnan(detour_ratio(G, V, np.array([[0.0, 1.0]]))[0])
+    assert detour_ratio(nx.empty_graph(3), np.zeros((3, 2))).shape == (0,)
+
+
+def test_the_arc_length_of_a_curve_that_doubles_back_counts_the_fold_twice():
+    """Collinear controls with B1 outside the chord: the curve runs to x=1.8 and comes back, so
+    the arc is 1.8 + 0.8, not the chord's 1.0."""
+    folding = np.array([[[0.0, 0.0], [3.0, 0.0], [1.0, 0.0]]])
+    assert geometry.arc_length(folding)[0] == pytest.approx(2.6, abs=1e-12)

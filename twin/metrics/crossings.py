@@ -42,6 +42,7 @@ __all__ = [
     "candidate_pairs",
     "crossing_number",
     "crossings_per_edge_pair",
+    "detour_ratio",
     "length_weighted_crossings",
     "count_candidate_pairs",
     "crossing_pairs",
@@ -917,3 +918,39 @@ def length_weighted_crossings(
     a = rows[:, 0].astype(np.int64)
     b = rows[:, 1].astype(np.int64)
     return float(0.5 * (lengths[a] + lengths[b]).sum() / mean_length)
+
+
+def detour_ratio(
+    G: nx.Graph, V: np.ndarray, E: np.ndarray | None = None, *, gamma: float = 0.5
+) -> np.ndarray:
+    r"""Arc length over chord length, per edge, in ``G.edges()`` order (spec §2.2).
+
+    What the curved formulation costs in ink. Bounded below by 1, and **1 at γ=0** — the curve is
+    then its chord rather than a nearly-flat approximation of it, to within rounding
+    (~$10^{-16}$; the two sides are computed by different expressions, not compared bitwise).
+
+    ⚠️ **No `n_samples`.** The arc length is closed-form (:func:`twin.geometry.arc_length`), and
+    approximating it by summing a polyline would make the one metric in the suite that is *about*
+    arc length depend on a sampling parameter — the objection this whole module exists to answer
+    (DECISIONS (27)).
+
+    It is **deliberately not folded into LWCr**, which weights by the chord: see
+    :func:`length_weighted_crossings` for why holding the weights fixed across the straight/curved
+    comparison is what makes that comparison mean anything.
+
+    Args:
+        G, V, E, gamma: as in :func:`edge_curves`. The signature is `(G, V, E)` like everything
+            else here; spec §2.2 writes `(X, E, G)`, reordered by DECISIONS (5).
+
+    Returns:
+        ``(m,)`` ratios in ``G.edges()`` order, ``nan`` for an edge whose endpoints coincide —
+        a zero chord has no ratio to report, and a layout with coincident vertices is the
+        crowding case, not an error.
+    """
+    controls = edge_curves(G, V, E, gamma=gamma)
+    if controls.shape[0] == 0:
+        return np.empty(0)
+
+    chord = np.linalg.norm(controls[:, 2] - controls[:, 0], axis=-1)
+    arc = geometry.arc_length(controls)
+    return np.where(chord > 0, arc / np.where(chord > 0, chord, 1.0), np.nan)

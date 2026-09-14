@@ -73,6 +73,8 @@ REQUIRED_EXPORTS = {
     "crossing_number",
     "crossings_per_edge_pair",
     "length_weighted_crossings",
+    # spec §2.2, deferred from step 4 to step 5 because it needs `edge_curves`.
+    "detour_ratio",
 }
 
 #: Names the current ``import *`` leaks because the module has no ``__all__``. Permitted, never

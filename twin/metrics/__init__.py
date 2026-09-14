@@ -35,6 +35,7 @@ from twin.metrics.crossings import (
     crossing_pairs,
     crossing_pairs_report,
     crossings_per_edge_pair,
+    detour_ratio,
     edge_curves,
     length_weighted_crossings,
 )
@@ -83,6 +84,7 @@ __all__ = [
     "crossing_pairs",
     "crossing_pairs_report",
     "crossings_per_edge_pair",
+    "detour_ratio",
     "edge_curves",
     "length_weighted_crossings",
     "edge_index_array",

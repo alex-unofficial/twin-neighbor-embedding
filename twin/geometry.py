@@ -41,6 +41,7 @@ Three representations of the same curve are used downstream, all convertible her
 import numpy as np
 
 __all__ = [
+    "arc_length",
     "bezier_control_points",
     "bulge",
     "curve_kernel",
@@ -188,3 +189,87 @@ def exact_bounding_boxes(B: np.ndarray) -> np.ndarray:
     lower = np.where(counts, np.minimum(lower, extreme), lower)
     upper = np.where(counts, np.maximum(upper, extreme), upper)
     return np.stack([lower, upper], axis=-2)
+
+
+def arc_length(B: np.ndarray) -> np.ndarray:
+    r"""Exact arc length of each quadratic Bézier, in closed form — **no sampling**.
+
+    With $u = B_1 - B_0$ and $w = B_0 - 2B_1 + B_2$ the speed is $\lVert B'(t)\rVert =
+    2\lVert u + tw\rVert$, so with $a = \lVert w\rVert^2$, $b = 2\,u\!\cdot\!w$ and
+    $c = \lVert u\rVert^2$ the length is $2\int_0^1\sqrt{at^2+bt+c}\,\mathrm dt$, which has an
+    elementary antiderivative. This is what keeps ``detour_ratio`` — the one metric in the suite
+    that is *about* arc length — free of a sampling parameter (spec §2.2).
+
+    Three branches, and **the branch points are measured rather than assumed**, against 40-digit
+    quadrature:
+
+    * **Nearly no bend** ($\lVert w\rVert \le 10^{-3}\lVert u\rVert$): a three-term binomial
+      series in $x = (at^2+bt)/c$. The closed form is not usable here — it divides by $a$ and by
+      $a^{3/2}$, and its relative error grows as $10^{-16}/(\lVert w\rVert/\lVert u\rVert)$,
+      reaching $2.6\times10^{-2}$ at a ratio of $10^{-14}$ and 2.8 at $10^{-16}$.
+      ⚠️ **That band is not exotic — it is γ=0**, the straight variant of §4.3: $w$ is then not
+      bitwise zero but a rounding residue of arbitrary *direction*, so a test for exact zero
+      misses it and the collinear branch below reads the noise as a real direction. The series is
+      accurate to $10^{-12}$ across this whole band and exact when $w$ really is zero.
+    * **Collinear** ($4ac = b^2$, i.e. $u \parallel w$): the curve runs along a line, possibly
+      doubling back through a cusp. The speed is $2\lvert\sqrt a\,t + b/(2\sqrt a)\rvert$ and
+      the integral splits at the turning point — exact, and it correctly counts a doubled-back
+      stretch twice. The test is relative ($\sin^2\theta$), so it fires only for genuine
+      parallelism.
+    * **Otherwise** the antiderivative, whose two logarithm arguments are strictly positive
+      wherever $4ac > b^2$, so no branch cut is in play.
+
+    Args:
+        B: ``(..., 3, d)`` Bernstein control points.
+
+    Returns:
+        ``(...,)`` arc lengths. Accurate to ~1e-12 relative across every regime.
+    """
+    B = np.asarray(B, dtype=float)
+    if B.shape[-2] != 3:
+        raise ValueError(f"B must be (..., 3, d), got shape {B.shape}")
+    b0, b1, b2 = B[..., 0, :], B[..., 1, :], B[..., 2, :]
+    u = b1 - b0
+    w = b0 - 2.0 * b1 + b2
+
+    a = np.sum(w * w, axis=-1)
+    b = 2.0 * np.sum(u * w, axis=-1)
+    c = np.sum(u * u, axis=-1)
+
+    tiny = np.finfo(float).tiny
+    # 4ac - b^2 = 4(|u|^2|w|^2 - (u.w)^2) >= 0 by Cauchy-Schwarz, and 0 exactly when u || w.
+    disc = np.maximum(4.0 * a * c - b * b, 0.0)
+    nearly_straight = a <= 1e-6 * c
+    collinear = ~nearly_straight & (disc <= 1e-14 * np.maximum(a * c, tiny))
+    general = ~nearly_straight & ~collinear
+
+    safe_a = np.where(general | collinear, a, 1.0)
+    root_a = np.sqrt(safe_a)
+    speed_0 = np.sqrt(np.maximum(c, 0.0))
+    speed_1 = np.sqrt(np.maximum(a + b + c, 0.0))
+
+    log_ratio = np.log(
+        np.where(
+            general,
+            (2.0 * root_a * speed_1 + 2.0 * a + b) / np.where(general, 2.0 * root_a * speed_0 + b, 1.0),
+            1.0,
+        )
+    )
+    closed_form = ((2.0 * a + b) * speed_1 - b * speed_0) / (2.0 * safe_a)
+    closed_form = closed_form + disc / (4.0 * safe_a * root_a) * log_ratio
+
+    # Collinear: 2|sqrt(a) t + k| with k = b / (2 sqrt(a)); antiderivative sqrt(a) t^2 + 2 k t.
+    k = b / (2.0 * root_a)
+    turn = np.clip(-k / root_a, 0.0, 1.0)
+    at_turn = root_a * turn * turn + 2.0 * k * turn
+    at_one = root_a + 2.0 * k
+    folded = np.abs(at_turn) + np.abs(at_one - at_turn)
+
+    # sqrt(1+x) = 1 + x/2 - x^2/8 + x^3/16 integrated term by term over t in [0, 1].
+    safe_c = np.where(c > 0, c, 1.0)
+    first = (a / 3.0 + b / 2.0) / safe_c
+    second = (a * a / 5.0 + a * b / 2.0 + b * b / 3.0) / (safe_c * safe_c)
+    third = (a**3 / 7.0 + a * a * b / 2.0 + 3.0 * a * b * b / 5.0 + b**3 / 4.0) / safe_c**3
+    series = speed_0 * (2.0 + first - second / 4.0 + third / 8.0)
+
+    return np.where(nearly_straight, series, np.where(collinear, folded, closed_form))
