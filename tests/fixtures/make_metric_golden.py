@@ -31,6 +31,7 @@ import numpy as np
 from twin.datasets import load_dataset
 from twin.metrics import (
     adjacency_distance_ratio,
+    graph_neighborhood_accuracy,
     crossing_number,
     crossing_pairs,
     crossings_per_edge_pair,
@@ -39,6 +40,7 @@ from twin.metrics import (
     edge_lengths,
     length_weighted_crossings,
     knn_accuracy,
+    majority_class_rate,
     knn_jaccard,
     knn_precision,
     knn_recall,
@@ -50,6 +52,8 @@ from twin.metrics import (
     pairwise_distance_distribution,
     raw_stress,
     scale_normalized_stress,
+    silhouette,
+    silhouette_graph,
     weighted_recall,
 )
 from twin.metrics.context import EvaluationContext
@@ -111,6 +115,26 @@ def build() -> dict:
         # Eq. (80), the mean edge length LWCr normalises by — pinned at step 4 so that step 5
         # inherited a fixed value rather than establishing one.
         "edge_lengths@mean": float(edge_lengths(X, dataset.graph).mean()),
+        # Spec §2.3, added at step 6. `majority_class_rate` was missing until now and is the
+        # chance floor every accuracy number here is read against — a pinned accuracy without a
+        # pinned floor says nothing about whether it beat chance.
+        "majority_class_rate": majority_class_rate(labels),
+        "silhouette": silhouette(X, labels),
+        # ⚠️ Sil* and Acc* score the **graph**, not this layout, so they are constant across
+        # every representation and every seed of `karate_weighted`. They are pinned anyway: they
+        # are label-validity checks (§5.3 guard 2), and a change to `ideal_distances` or to the
+        # affinity derivation would move them silently otherwise. Both tie rules for Acc*,
+        # because a variable-size neighbourhood ties far more readily than a fixed k.
+        "silhouette_graph": silhouette_graph(labels, ideal=ctx.ideal),
+        "graph_neighborhood_accuracy@uniform": graph_neighborhood_accuracy(
+            labels, ctx.affinity
+        ),
+        "graph_neighborhood_accuracy@affinity": graph_neighborhood_accuracy(
+            labels, ctx.affinity, weighting="affinity"
+        ),
+        "graph_neighborhood_accuracy@first": graph_neighborhood_accuracy(
+            labels, ctx.affinity, tie_rule="first"
+        ),
     }
 
     # Spec §2.4, added at step 5. Both variants of §4.3 are pinned, because they exercise

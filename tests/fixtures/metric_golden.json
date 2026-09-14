@@ -18,6 +18,9 @@
     "detour_ratio@straight_mean": 1.0,
     "edge_length_cv": 0.6292950572410021,
     "edge_lengths@mean": 1.7171967541627198,
+    "graph_neighborhood_accuracy@affinity": 0.9705882352941176,
+    "graph_neighborhood_accuracy@first": 0.9117647058823529,
+    "graph_neighborhood_accuracy@uniform": 0.9411764705882353,
     "knn_accuracy@k=10": 0.8529411764705882,
     "knn_accuracy@k=5": 0.8823529411764706,
     "knn_jaccard@k=10": 0.11002579494202147,
@@ -28,6 +31,7 @@
     "knn_recall@k=5": 0.13142781622452904,
     "length_weighted_crossings@curved": 1652.734072646225,
     "length_weighted_crossings@straight": 365.7955935438681,
+    "majority_class_rate": 0.5,
     "nn_distance_distribution@max": 0.6858901220631624,
     "nn_distance_distribution@median": 0.13847041665409537,
     "nn_distance_distribution@min": 0.0068357578225978054,
@@ -43,6 +47,8 @@
     "pairwise_distance_distribution@min": 0.0068357578225978054,
     "raw_stress": 504.0144964822399,
     "scale_normalized_stress": 0.7261768692110877,
+    "silhouette": 0.23563194478461313,
+    "silhouette_graph": 0.3774466015654263,
     "weighted_recall@k=10": 0.2760149755585861,
     "weighted_recall@k=5": 0.14677585923382333
   }

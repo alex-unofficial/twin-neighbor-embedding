@@ -108,6 +108,31 @@ def test_the_golden_values_are_not_degenerate(golden):
     assert values["pairwise_distance_distribution@max"] > 1.0  # normalised by the mean
     assert values["edge_length_cv"] > 0.0
 
+    # The label family (spec §2.3, step 6). Sil is in (0, 1) on this fixture: it separates the
+    # two clubs partially and deliberately incompletely, so a degenerate 1.0 would mean the
+    # jitter had stopped working.
+    assert 0.0 < values["silhouette"] < 1.0
+    assert 0.0 < values["silhouette_graph"] < 1.0
+
+    # ⚠️ Sil and Sil* are **not** compared here, nor Acc and Acc*, and the omission is the
+    # point: §5.3 guard 2 says the layout score and the label-validity check are on
+    # incomparable scales. An ordering asserted between them would be the first step toward
+    # differencing them in a table.
+    floor = values["majority_class_rate"]
+    assert floor == 0.5  # two clubs of 17
+    for key in ("uniform", "affinity", "first"):
+        assert floor < values[f"graph_neighborhood_accuracy@{key}"] <= 1.0
+    for k in (5, 10):
+        assert floor < values[f"knn_accuracy@k={k}"] <= 1.0
+
+    # The two tie rules must disagree, or the fractional rule is untested by this file. On a
+    # variable-size neighbourhood they do: `first` is the lower of the two here, since a tie
+    # broken toward the lowest class code is wrong more often than it is worth 1/p.
+    assert (
+        values["graph_neighborhood_accuracy@first"]
+        < values["graph_neighborhood_accuracy@uniform"]
+    )
+
 
 def test_the_golden_file_is_keyed_by_metric_name(golden):
     """Steps 4-6 must be able to add keys without touching the existing ones."""
@@ -117,6 +142,10 @@ def test_the_golden_file_is_keyed_by_metric_name(golden):
     # deletions, which is the only available evidence that the first fourteen did not move.
     assert "node_resolution" in golden["values"]
     assert any(name.startswith("normalized_nn_distance@k=") for name in golden["values"])
+    # Step 5 added 10 the same way, step 6 six — insertions only, on a file now at 44 keys.
+    assert "crossing_number@curved" in golden["values"]
+    assert "silhouette" in golden["values"]
+    assert len(golden["values"]) == 44
 
 
 def test_the_context_is_the_one_the_golden_values_were_built_from():
