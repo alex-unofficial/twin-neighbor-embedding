@@ -13,16 +13,18 @@ degenerate end, and those are handled here (see :func:`silhouette_report`).
 It answers "are these labels reflected in the topology at all?", on a scale incomparable with
 the layout score (spec §2.3, §5.3): it says when a low :func:`silhouette` is uninformative
 because the labels were never recoverable. It is not a target a layout is trying to reach and
-not a number to subtract from one. The 1-hop counterpart of the accuracy family lands in the
-commit after this one.
+not a number to subtract from one. :func:`graph_neighborhood_accuracy` is the same thing for
+the accuracy family and carries the same warning.
 """
 
 from dataclasses import dataclass
 
 import networkx as nx
 import numpy as np
+import scipy.sparse as sp
 from sklearn.metrics import silhouette_samples
 
+from twin.forms import SOURCE_KEY, graph_side
 from twin.metrics.common import _loo_neighbors, ideal_distances, require_n_by_d
 from twin.metrics.context import EvaluationContext
 
@@ -386,6 +388,37 @@ def majority_class_rate(labels: np.ndarray) -> float:
     return float(counts.max() / labels.size)
 
 
+def _vote_outcome(scores: np.ndarray, codes: np.ndarray, tie_rule: str):
+    r"""Resolve a ``(n, |L|)`` vote mass into per-vertex correctness — eqs. (59)-(60), (63)-(64).
+
+    Shared by the layout-side and graph-side classifiers, because the *voting* is the same in
+    both and only the neighbourhood differs: $\mathcal{N}^k_X(i)$ for one, $\mathcal{N}_G(i)$
+    for the other. Restating it would be a second place for the fractional rule to drift.
+
+    Exact equality decides a tie: under uniform weighting the scores are integer counts, and
+    under either weighted scheme a near-tie is not a tie.
+
+    Args:
+        scores: vote mass per vertex per class. Rows the caller means to exclude must be
+            removed **before** this call — an all-zero row reads as every class tied.
+        codes: the true class code per row, in the same ordering as ``scores``' columns.
+        tie_rule: ``"fractional"`` or ``"first"``.
+
+    Returns:
+        ``(correct, n_ties)`` — per-row values in $[0, 1]$, and how many rows had more than one
+        class tied for the argmax.
+    """
+    tied = scores == scores.max(axis=1, keepdims=True)
+    p = tied.sum(axis=1)
+
+    if tie_rule == "fractional":
+        correct = np.where(tied[np.arange(codes.size), codes], 1.0 / p, 0.0)
+    else:
+        correct = (np.argmax(scores, axis=1) == codes).astype(float)
+
+    return correct, int((p > 1).sum())
+
+
 def knn_accuracy_report(
     X: np.ndarray,
     labels: np.ndarray,
@@ -457,17 +490,7 @@ def knn_accuracy_report(
         scores = np.zeros((n, classes.size))
         np.add.at(scores, (np.broadcast_to(rows, d_k.shape), neighbor_codes[:, :kk]), w)
 
-        # Exact equality: under uniform weighting the scores are integer counts, and under
-        # distance weighting a near-tie is not a tie.
-        tied = scores == scores.max(axis=1, keepdims=True)
-        p = tied.sum(axis=1)
-        n_ties[i] = int((p > 1).sum())
-
-        if tie_rule == "fractional":
-            correct = np.where(tied[rows.ravel(), codes], 1.0 / p, 0.0)
-        else:
-            correct = (np.argmax(scores, axis=1) == codes).astype(float)
-
+        correct, n_ties[i] = _vote_outcome(scores, codes, tie_rule)
         accuracy[i] = float(correct.mean())
 
     return KnnAccuracyReport(
@@ -494,3 +517,198 @@ def knn_accuracy(
     """
     report = knn_accuracy_report(X, labels, k, weighting, tie_rule, eps)
     return report.accuracy if np.ndim(k) else float(report.accuracy[0])
+
+
+# --------------------------------------------------------------------------- #
+#             The 1-hop graph-side accuracy (spec §2.3, eqs. 61-64)            #
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class GraphAccuracyReport:
+    r"""Acc\* plus the diagnostics needed to read it (spec §2.3, `DECISIONS.md` (18)).
+
+    Attributes:
+        accuracy: the score, over the vertices actually scored; ``nan`` if none were.
+        majority_class_rate: the chance floor, **over those same vertices** rather than over
+            all of them, so that the two numbers share a denominator. Accuracy on imbalanced
+            labels is misleading without it — `football_2023`'s 11 conferences range from 4
+            teams to 18.
+        n_ties: how many scored vertices had more than one class tied for the argmax. A
+            variable-size neighbourhood ties far more readily than a fixed $k$ does: a
+            degree-2 vertex with one neighbour of each of two classes is a tie, and under
+            uniform weighting every even split is one.
+        n_excluded: vertices with no vote mass, which the score does not average over
+            (§2.3). Under ``weighting="uniform"`` that is exactly the isolated ones.
+        n_scored: how many vertices the mean actually ran over.
+        n_isolated: the structural count — vertices of degree 0. Equal to ``n_excluded``
+            except under affinity weighting on a graph carrying a zero affinity, which no
+            registered dataset does.
+    """
+
+    accuracy: float
+    majority_class_rate: float
+    n_ties: int
+    n_excluded: int
+    n_scored: int
+    n_isolated: int
+
+    def __post_init__(self):
+        # Every isolated vertex is excluded, and possibly more under affinity weighting. The
+        # counts come from two different expressions -- a nonzero-count and a row-sum -- so the
+        # one relation that must hold between them is worth checking, in the spirit of
+        # `NeighborPreservationReport.__post_init__`.
+        if self.n_isolated > self.n_excluded:
+            raise ValueError(
+                f"n_isolated={self.n_isolated} exceeds n_excluded={self.n_excluded}: an "
+                "isolated vertex has no vote mass and must always be excluded"
+            )
+
+
+def graph_neighborhood_accuracy_report(
+    labels: np.ndarray,
+    G: nx.Graph,
+    *,
+    weighting: str = "uniform",
+    tie_rule: str = "fractional",
+) -> GraphAccuracyReport:
+    r"""Acc\* — label recovery from the 1-hop graph neighbourhood (eqs. 61-64).
+    **Not a baseline.**
+
+    .. math::
+
+        s^*_i(\ell) = |\mathcal{N}_G(i) \cap C(\ell)|
+        \quad\text{(eq. 61)},
+        \qquad
+        s^*_i(\ell) = \sum_{j \in \mathcal{N}_G(i) \cap C(\ell)} w_{ij}
+        \quad\text{(eq. 62)}
+
+    and $\mathrm{Acc}^*(G; \ell) = \frac{1}{n}\sum_i [\hat\ell^*_i = \ell_i]$ over the
+    non-isolated vertices.
+
+    The graph twin of :func:`knn_accuracy`, and the difference is the neighbourhood rather than
+    the voting: $\mathcal{N}_G(i)$ of variable size $\deg(i)$ in place of a fixed $k$. The
+    fractional-tie rule, the argmax and the chance floor are literally the same code
+    (:func:`_vote_outcome`).
+
+    ⚠️ **A label-validity check on an incomparable scale** (spec §2.3, §5.3), like
+    :func:`silhouette_graph`. It answers "are these labels recoverable from the topology at
+    all?" — it says when a low :func:`knn_accuracy` is uninformative. Its neighbourhood is not
+    the layout's: variable-size against fixed $k$, so even the units of "how much evidence per
+    vertex" differ. §5.3 guard 2 keeps it out of any table adjacent to the layout score.
+
+    Args:
+        labels: ``(n,)`` integer-coded labels, per original vertex. **First**, for the same
+            reason as :func:`silhouette_graph` and so that the two graph-side label metrics read
+            alike; spec §2.3 writes ``(G, labels)``. `DECISIONS.md` records the reorder.
+        G: the graph. ⚠️ **Pass the evaluation context's affinity graph —
+            ``ctx.affinity`` — never ``dataset.graph``.** On `digits` that attribute is a
+            stored Euclidean *distance*, so eq. (62) would vote with an inverted sign: the
+            least-coupled neighbours would count most. That is bug §1.6 one layer up, a bug
+            this project has already shipped once. `tabula`'s graph is unstamped, so the guard
+            below is a backstop and not a substitute for asking the context.
+        weighting: ``"uniform"`` is eq. (61) — one vote per neighbour, reading no valuation at
+            all. ``"affinity"`` is eq. (62), voting with $w_{ij}$. **Not** ``"distance"``,
+            which is :func:`knn_accuracy`'s second mode and the opposite quantity: there
+            $f(d) = 1/d$ turns a length into a weight, whereas here the edge value *is* the
+            coupling. Naming the graph mode ``"distance"`` would invite exactly the substitution
+            the guard refuses.
+        tie_rule: as :func:`knn_accuracy_report` — ``"fractional"`` (the expectation over
+            uniform random tie-breaking, in closed form) or ``"first"``.
+
+    Returns:
+        A :class:`GraphAccuracyReport`.
+
+    Raises:
+        ValueError: on an unknown ``weighting`` or ``tie_rule``, a label/graph size mismatch,
+            or — under ``weighting="affinity"`` — a graph stamped ``"distance"``.
+
+    Note:
+        A ``"combinatorial"``-stamped graph is voted on uniformly even when asked for
+        ``"affinity"``: the *declaration* wins over whatever is on the edges. `football_2023`
+        declares ``Unweighted()`` on both sides and still carries a stray ``weight`` attribute
+        from the ``.mat`` it was built from — 732 edges at 1 and three at 2 — and reading those
+        would make eq. (62) disagree with eq. (61) on a graph the dataset says is unweighted.
+        :func:`~twin.metrics.structural.weighted_recall` takes the same position.
+    """
+    if weighting not in {"uniform", "affinity"}:
+        raise ValueError(
+            f"weighting must be 'uniform' (eq. 61) or 'affinity' (eq. 62), got {weighting!r}. "
+            "'distance' is knn_accuracy's mode and is the opposite quantity here."
+        )
+    if tie_rule not in {"fractional", "first"}:
+        raise ValueError("tie_rule must be 'fractional' or 'first'")
+
+    labels = _as_labels(labels)
+    n = G.number_of_nodes()
+    if labels.size != n:
+        raise ValueError(
+            f"labels has {labels.size} entries and the graph has {n} vertices; labels are "
+            "per original vertex"
+        )
+
+    weight = None
+    if weighting == "affinity":
+        side = graph_side(G)
+        if side == "distance":
+            raise ValueError(
+                f"graph_neighborhood_accuracy with weighting='affinity' votes with w_ij, but "
+                f"this graph is stamped 'distance' ({G.graph.get(SOURCE_KEY)!r}) — on digits "
+                "that attribute is a stored Euclidean distance, so the vote would count the "
+                "*least* coupled neighbours most (bug §1.6 one layer up). Pass the evaluation "
+                "context's affinity graph (`ctx.affinity`)."
+            )
+        weight = None if side == "combinatorial" else "weight"
+
+    classes, codes = np.unique(labels, return_inverse=True)
+    A = sp.csr_array(nx.adjacency_matrix(G, nodelist=range(n), weight=weight), dtype=float)
+
+    # Vote mass per vertex per class: one sparse product, no per-vertex loop over neighbours.
+    onehot = sp.csr_array(
+        (np.ones(n), (np.arange(n), codes)), shape=(n, classes.size), dtype=float
+    )
+    scores = (A @ onehot).toarray()
+
+    degrees = np.asarray((A != 0).sum(axis=1)).ravel()
+    scored = np.asarray(A.sum(axis=1)).ravel() > 0
+    n_scored = int(scored.sum())
+
+    if n_scored == 0:
+        return GraphAccuracyReport(
+            accuracy=float("nan"),
+            majority_class_rate=float("nan"),
+            n_ties=0,
+            n_excluded=n,
+            n_scored=0,
+            n_isolated=int((degrees == 0).sum()),
+        )
+
+    correct, n_ties = _vote_outcome(scores[scored], codes[scored], tie_rule)
+
+    return GraphAccuracyReport(
+        accuracy=float(correct.mean()),
+        # Over the scored vertices, so the score and its floor share a denominator.
+        majority_class_rate=majority_class_rate(labels[scored]),
+        n_ties=n_ties,
+        n_excluded=n - n_scored,
+        n_scored=n_scored,
+        n_isolated=int((degrees == 0).sum()),
+    )
+
+
+def graph_neighborhood_accuracy(
+    labels: np.ndarray,
+    G: nx.Graph,
+    *,
+    weighting: str = "uniform",
+    tie_rule: str = "fractional",
+) -> float:
+    r"""Score only — see :func:`graph_neighborhood_accuracy_report` for the full docstring.
+
+    ⚠️ A **label-validity check, not a baseline**: its neighbourhood is the graph's 1-hop one
+    and its scale is incomparable with :func:`knn_accuracy`'s fixed $k$. §5.3 guard 2 keeps the
+    two out of one table.
+    """
+    return graph_neighborhood_accuracy_report(
+        labels, G, weighting=weighting, tie_rule=tie_rule
+    ).accuracy

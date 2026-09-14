@@ -40,8 +40,11 @@ from twin.metrics.crossings import (
     length_weighted_crossings,
 )
 from twin.metrics.label import (
+    GraphAccuracyReport,
     KnnAccuracyReport,
     SilhouetteReport,
+    graph_neighborhood_accuracy,
+    graph_neighborhood_accuracy_report,
     knn_accuracy,
     knn_accuracy_report,
     majority_class_rate,
@@ -80,6 +83,9 @@ from twin.metrics.structural import (
 
 __all__ = [
     "EvaluationContext",
+    "GraphAccuracyReport",
+    "graph_neighborhood_accuracy",
+    "graph_neighborhood_accuracy_report",
     "KnnAccuracyReport",
     "NeighborPreservationReport",
     "adjacency_distance_ratio",
