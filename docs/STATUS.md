@@ -8,7 +8,8 @@ and `twin/metrics/crossings.py` now exist, crossings are computed exactly, and
 and 2 skip** — the two `sfdp` cases, behind a runtime probe of the broken backend (see below).
 
 > **Step 6 is next** — `label.py`'s silhouette and the graph-side checks. Step 2 unblocked it and
-> nothing from step 5 constrains it. There is no plan file for it yet.
+> nothing from step 5 constrains it. The plan is
+> [`plans/step6-labels.md`](plans/step6-labels.md): **approved, current, and not yet started.**
 
 ---
 
@@ -47,11 +48,13 @@ Section 5 numbers before step 8.
 6. `docs/CROSSING_GEOMETRY.md` — **for step 5 specifically**: the crossing algorithm in full,
    with the derivation, the measurements and the degeneracy analysis. Spec §2.4 is the summary;
    this is the reference.
-7. All four plan files — [`step2-datasets.md`](plans/step2-datasets.md),
-   [`step3-metrics.md`](plans/step3-metrics.md), [`step4-visual.md`](plans/step4-visual.md) and
-   now [`step5-crossings.md`](plans/step5-crossings.md) — are **history**, kept for their record
-   of where the implementation departed from them. The departures themselves are in
-   `DECISIONS.md`. Step 6 has no plan yet.
+7. [`docs/plans/step6-labels.md`](plans/step6-labels.md) — **the plan for the step in progress:
+   approved, current, and not yet started.** It records two spec claims checked against the data
+   before planning, and four decisions taken at review.
+   [`step2-datasets.md`](plans/step2-datasets.md), [`step3-metrics.md`](plans/step3-metrics.md),
+   [`step4-visual.md`](plans/step4-visual.md) and [`step5-crossings.md`](plans/step5-crossings.md)
+   are **history**, kept for their record of where the implementation departed from them — the
+   departures themselves are in `DECISIONS.md`.
 
 ---
 
@@ -116,10 +119,20 @@ still render and Figure 3 is bit-identical to its pre-rewrite output. The plan
 
 ### Where step 6 starts
 
-No plan file exists yet. What step 5 leaves for it:
+> **Read [`plans/step6-labels.md`](plans/step6-labels.md) — it is approved and current, and it
+> supersedes this section wherever they differ.** Two of §0.5's claims were checked against the
+> data while planning and one did not survive; four decisions are taken there.
+
+What step 5 leaves for it:
 
 - **Scope is silhouette (eqs. 49–52) and the graph-side variants (53–55, 61–64).** The kNN
   accuracy family already landed at step 3, so `label.py` exists and is half-built.
+- ⚠️ **§0.5 decision 9's composite-label guard rests on a premise that does not hold.** It cites
+  "14 conferences × 3 divisions over 132 teams" producing many tiny classes; `football_2023`
+  actually has **11** conferences and its composite has 15 classes with a **minimum size of 4**,
+  no singletons. And `tabula`'s composite is **redundant** — `compartment` is a function of
+  `cell_ontology_class`, so it has the same 13 classes. The guard is reduced to a diagnostic;
+  the plan has the numbers.
 - **`MetricSpec` / `METRIC_REGISTRY` / `evaluate_layout` are still step 7** — the boundary steps
   3, 4 and 5 all held. Step 5's one concession to it is the `crossings=` argument on the three
   layer-3 metrics, which exists so the registry can solve once and summarise three times.
