@@ -40,6 +40,9 @@ from twin.metrics.common import edge_index_array, require_n_by_d
 __all__ = [
     "CrossingReport",
     "candidate_pairs",
+    "crossing_number",
+    "crossings_per_edge_pair",
+    "length_weighted_crossings",
     "count_candidate_pairs",
     "crossing_pairs",
     "crossing_pairs_report",
@@ -415,8 +418,14 @@ def _segment_intersections(Ca: np.ndarray, Cb: np.ndarray):
     r"""Intersection point of two degenerate (segment-shaped) curves, if any.
 
     Returns ``(hit, point, overlapping)``: a boolean mask, the ``(P, 2)`` point (meaningful where
-    ``hit``), and a mask of the pairs that are **collinear and overlapping**, which spec §2.4
-    counts as exactly one crossing rather than the infinite set eq. (74) would give.
+    ``hit``), and a mask of the pairs that are **collinear and overlapping along a positive
+    stretch**, which spec §2.4 counts as exactly one crossing rather than the infinite set eq.
+    (74) would give.
+
+    Collinear segments that meet at a single point are *not* an overlap — they are a point
+    intersection, and for an adjacent pair that point is the shared vertex. Keeping the two
+    apart is what stops a path drawn along a straight line from reporting a crossing at every
+    interior vertex.
 
     This branch carries the whole straight variant of §4.3 (γ=0 builds no quartic at all), so it
     is a vectorised pass and not a fallback.
@@ -446,11 +455,13 @@ def _segment_intersections(Ca: np.ndarray, Cb: np.ndarray):
         k1 = np.where(rr > 0, np.sum((q + u - p) * r, axis=1) / np.where(rr > 0, rr, 1.0), 0.0)
     lo = np.maximum(np.minimum(k0, k1), 0.0)
     hi = np.minimum(np.maximum(k0, k1), 1.0)
-    overlapping = collinear & (hi >= lo - PARAM_TOL)
+    overlapping = collinear & (hi > lo + PARAM_TOL)
+    touching = collinear & (hi >= lo - PARAM_TOL) & ~overlapping
 
     mid = np.clip(0.5 * (lo + hi), 0.0, 1.0)
-    point = np.where(overlapping[:, None], p + mid[:, None] * r, point)
-    return hit | overlapping, point, overlapping
+    shared_stretch = overlapping | touching
+    point = np.where(shared_stretch[:, None], p + mid[:, None] * r, point)
+    return hit | shared_stretch, point, overlapping
 
 
 def _rows(a: np.ndarray, b: np.ndarray, t: np.ndarray, s: np.ndarray, powers: np.ndarray):
@@ -774,3 +785,135 @@ def crossing_pairs(
     return crossing_pairs_report(
         G, V, E, gamma=gamma, include_adjacent=include_adjacent
     ).crossings
+
+
+# --------------------------------------------------------------------------- #
+#                          Layer 3 — the metrics                               #
+# --------------------------------------------------------------------------- #
+
+
+def _crossings_for(
+    G: nx.Graph,
+    V: np.ndarray,
+    E: np.ndarray | None,
+    gamma: float,
+    include_adjacent: bool,
+    crossings: np.ndarray | None,
+) -> np.ndarray:
+    """Use a caller's crossing array if it has one, otherwise compute it.
+
+    ⚠️ **The escape hatch exists for cost, not for convenience.** Layer 2 is ~40 s on a tabula
+    layout, and the three metrics below are the same measurement summarised three ways; running
+    layer 2 once per metric would treble the most expensive thing in the suite. It is the
+    caller's job to have produced ``crossings`` with the same ``gamma`` and ``include_adjacent``
+    — nothing here can check that, which is why step 7's registry, not a metric, should own it.
+    """
+    if crossings is not None:
+        return np.asarray(crossings, dtype=float).reshape(-1, 6)
+    return crossing_pairs(G, V, E, gamma=gamma, include_adjacent=include_adjacent)
+
+
+def crossing_number(
+    G: nx.Graph,
+    V: np.ndarray,
+    E: np.ndarray | None = None,
+    *,
+    gamma: float = 0.5,
+    include_adjacent: bool = True,
+    crossings: np.ndarray | None = None,
+) -> int:
+    r"""$\mathrm{Cr}(X)$ — the number of edge crossings in the drawing (eq. 78).
+
+    Every degeneracy is already resolved to a count by layer 2: an overlap is 1, a tangency is 1,
+    and a contact at a shared vertex is not a crossing at all (DECISIONS (29)). So this is
+    exactly the number of rows layer 2 returns.
+
+    Args:
+        G, V, E, gamma: as in :func:`edge_curves`.
+        include_adjacent: as in :func:`crossing_pairs_report`.
+        crossings: a precomputed layer-2 array, to avoid solving three times for three metrics.
+
+    Returns:
+        A non-negative integer. 0 for a graph with fewer than two edges.
+    """
+    return int(len(_crossings_for(G, V, E, gamma, include_adjacent, crossings)))
+
+
+def crossings_per_edge_pair(
+    G: nx.Graph,
+    V: np.ndarray,
+    E: np.ndarray | None = None,
+    *,
+    gamma: float = 0.5,
+    include_adjacent: bool = True,
+    crossings: np.ndarray | None = None,
+) -> float:
+    r"""$\mathrm{Cr}(X)/\binom{m}{2}$ — the cross-graph-comparable form.
+
+    ⚠️ **Deliberately not normalised by Purchase's** $c_{\max} = \binom{m}{2} -
+    \frac12\sum_v \deg(v)(\deg(v)-1)$. That upper bound assumes at most one crossing per pair and
+    that adjacent edges never cross, and this codebase discards both: two quadratic Béziers meet
+    in up to four points, and `include_adjacent=True` is the thesis convention. Dividing by a
+    bound the measurement can exceed would produce values above 1 and a metric nobody can read.
+
+    Returns:
+        A non-negative float, or ``nan`` for a graph with fewer than two edges.
+    """
+    m = G.number_of_edges()
+    if m < 2:
+        return float("nan")
+    total = crossing_number(
+        G, V, E, gamma=gamma, include_adjacent=include_adjacent, crossings=crossings
+    )
+    return 2.0 * total / (m * (m - 1))
+
+
+def length_weighted_crossings(
+    G: nx.Graph,
+    V: np.ndarray,
+    E: np.ndarray | None = None,
+    *,
+    gamma: float = 0.5,
+    include_adjacent: bool = True,
+    crossings: np.ndarray | None = None,
+) -> float:
+    r"""$\mathrm{LWCr}(X)$ — crossings weighted by the lengths of the edges involved (eq. 81).
+
+    $$\mathrm{LWCr}(X) = \frac{1}{\bar L(X)}\sum_{a<b}
+        \frac{L(e_a) + L(e_b)}{2}\,\mathrm{cr}(e_a, e_b)$$
+
+    A crossing between two long edges disrupts more of the drawing than one between two short
+    ones, so this is Cr with that weighting and eq. (80)'s mean edge length as the normaliser.
+
+    ⚠️ **$L(e)$ is the chord $\lVert x_i - x_j\rVert$ (eq. 79), never the arc length, and that is
+    load-bearing rather than stylistic.** The chord is identical for the straight and the curved
+    rendering of one layout, and so is $\bar L$ — so the entire weight vector is held fixed
+    across the §4.3 comparison and the difference between the two variants isolates the change in
+    *crossings*. Weighting by arc length would move the crossings and the weights together and
+    make the comparison uninterpretable: a curved drawing would score worse partly because its
+    edges are longer, which is not a fact about its readability. The arc-over-chord ratio is a
+    metric in its own right — :func:`detour_ratio` — and is deliberately not folded in here.
+
+    The lengths come from :func:`~twin.metrics.visual.edge_lengths`, in ``G.edges()`` order, which
+    is the order layer 2's edge indices are in. ADR's CSR ordering is a *different* one and the
+    two are not interchangeable (CLAUDE.md).
+
+    Returns:
+        A non-negative float, or ``nan`` when the graph has no edges or every edge has collapsed
+        to zero length.
+    """
+    from twin.metrics.visual import edge_lengths
+
+    lengths = edge_lengths(V, G)
+    if lengths.size == 0:
+        return float("nan")
+    mean_length = float(lengths.mean())
+    if mean_length <= 0:
+        return float("nan")
+
+    rows = _crossings_for(G, V, E, gamma, include_adjacent, crossings)
+    if len(rows) == 0:
+        return 0.0
+    a = rows[:, 0].astype(np.int64)
+    b = rows[:, 1].astype(np.int64)
+    return float(0.5 * (lengths[a] + lengths[b]).sum() / mean_length)

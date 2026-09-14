@@ -31,9 +31,12 @@ from twin.metrics.common import (
 from twin.metrics.context import EvaluationContext
 from twin.metrics.crossings import (
     CrossingReport,
+    crossing_number,
     crossing_pairs,
     crossing_pairs_report,
+    crossings_per_edge_pair,
     edge_curves,
+    length_weighted_crossings,
 )
 from twin.metrics.label import (
     KnnAccuracyReport,
@@ -76,9 +79,12 @@ __all__ = [
     "adjacency_distance_ratio",
     "condensed",
     "CrossingReport",
+    "crossing_number",
     "crossing_pairs",
     "crossing_pairs_report",
+    "crossings_per_edge_pair",
     "edge_curves",
+    "length_weighted_crossings",
     "edge_index_array",
     "edge_length_cv",
     "edge_lengths",

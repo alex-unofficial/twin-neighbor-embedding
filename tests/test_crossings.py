@@ -22,9 +22,12 @@ import pytest
 from twin import geometry
 from twin.metrics.crossings import (
     candidate_pairs,
+    crossing_number,
     crossing_pairs,
     crossing_pairs_report,
+    crossings_per_edge_pair,
     edge_curves,
+    length_weighted_crossings,
     normalize_to_unit_box,
 )
 
@@ -540,3 +543,106 @@ def test_an_edgeless_graph_has_no_crossings():
     report = crossing_pairs_report(nx.empty_graph(4), np.zeros((4, 2)))
     assert report.crossings.shape == (0, 6)
     assert report.n_candidates == 0
+
+
+# --------------------------------------------------------------------------- #
+#                          Layer 3 — the metrics                               #
+# --------------------------------------------------------------------------- #
+
+
+def test_crossing_number_is_the_row_count(karate, karate_random_layout):
+    G, V = karate, karate_random_layout
+    E = np.random.default_rng(20).normal(size=(G.number_of_edges(), 2))
+    rows = crossing_pairs(G, V, E)
+
+    assert crossing_number(G, V, E) == len(rows)
+    assert crossing_number(G, V, E, crossings=rows) == len(rows)
+
+
+def test_crossings_per_edge_pair_is_cr_over_m_choose_2(karate, karate_random_layout):
+    G, V = karate, karate_random_layout
+    E = np.random.default_rng(21).normal(size=(G.number_of_edges(), 2))
+    m = G.number_of_edges()
+
+    assert crossings_per_edge_pair(G, V, E) == pytest.approx(
+        crossing_number(G, V, E) / (m * (m - 1) / 2)
+    )
+    assert np.isnan(crossings_per_edge_pair(nx.path_graph(2), np.zeros((2, 2))))
+
+
+def test_lwcr_uses_the_chord_and_the_G_edges_order(karate, karate_random_layout):
+    """Recomputed here from `edge_lengths`, the order of record, against the metric."""
+    from twin.metrics.visual import edge_lengths
+
+    G, V = karate, karate_random_layout
+    E = np.random.default_rng(22).normal(size=(G.number_of_edges(), 2))
+    rows = crossing_pairs(G, V, E)
+    lengths = edge_lengths(V, G)
+
+    expected = sum(
+        (lengths[int(row[0])] + lengths[int(row[1])]) / 2 for row in rows
+    ) / lengths.mean()
+    assert length_weighted_crossings(G, V, E, crossings=rows) == pytest.approx(expected)
+
+
+def test_lwcr_weights_do_not_move_between_the_straight_and_curved_variants(
+    karate, karate_random_layout
+):
+    """The reason $L(e)$ is the chord (eq. 79). The arc length of the curved variant is strictly
+    longer, so an arc-weighted LWCr would differ between the variants even if they had exactly
+    the same crossings — confounding "fewer crossings" with "longer curves"."""
+    from twin.metrics.visual import edge_lengths
+
+    G, V = karate, karate_random_layout
+    E = np.random.default_rng(23).normal(size=(G.number_of_edges(), 2))
+
+    straight = edge_lengths(V, G)
+    # `edge_lengths` reads only the vertex points, so γ cannot enter it -- which is the point.
+    curved_controls = edge_curves(G, V, E, gamma=0.9)
+    np.testing.assert_allclose(
+        straight, np.linalg.norm(curved_controls[:, 2] - curved_controls[:, 0], axis=1)
+    )
+
+
+def test_lwcr_reduces_to_the_crossing_number_when_every_edge_is_the_same_length():
+    """With all $L(e) = \\bar L$, every weight is 1 and LWCr must equal Cr exactly."""
+    G = nx.cycle_graph(8)
+    angles = np.linspace(0, 2 * np.pi, 8, endpoint=False)
+    V = np.stack([np.cos(angles), np.sin(angles)], axis=1)
+    # A long chord through the middle of every edge forces plenty of crossings.
+    E = -2.0 * np.stack([np.cos(angles + np.pi / 8), np.sin(angles + np.pi / 8)], axis=1)
+
+    cr = crossing_number(G, V, E)
+    assert cr > 0
+    assert length_weighted_crossings(G, V, E) == pytest.approx(float(cr))
+
+
+def test_the_metrics_on_a_drawing_with_no_crossings():
+    """A path drawn on a line: no crossings, and LWCr is 0 rather than nan."""
+    G = nx.path_graph(4)
+    V = np.array([[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]])
+
+    assert crossing_number(G, V, None) == 0
+    assert crossings_per_edge_pair(G, V, None) == 0.0
+    assert length_weighted_crossings(G, V, None) == 0.0
+
+
+def test_lwcr_is_nan_when_there_is_nothing_to_weight():
+    assert np.isnan(length_weighted_crossings(nx.empty_graph(3), np.zeros((3, 2))))
+    assert np.isnan(length_weighted_crossings(nx.path_graph(3), np.zeros((3, 2))))
+
+
+def test_collinear_edges_touching_at_a_point_are_not_an_overlap():
+    """A path drawn along a straight line must not report a crossing at every interior vertex —
+    the consecutive edges are collinear and meet at exactly one point, which is the shared
+    vertex. Two *non-adjacent* collinear edges meeting at one point is the coincident-vertex
+    case, and that does count."""
+    path = nx.path_graph(4)
+    on_a_line = np.array([[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]])
+    assert crossing_number(path, on_a_line, None) == 0
+
+    disjoint = nx.Graph([(0, 1), (2, 3)])
+    touching = np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 0.0], [2.0, 0.0]])
+    report = crossing_pairs_report(disjoint, touching, None)
+    assert len(report.crossings) == 1
+    assert report.n_degenerate == 0  # a point, not a stretch

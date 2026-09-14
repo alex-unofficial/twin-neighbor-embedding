@@ -70,6 +70,9 @@ REQUIRED_EXPORTS = {
     "crossing_pairs",
     "crossing_pairs_report",
     "CrossingReport",
+    "crossing_number",
+    "crossings_per_edge_pair",
+    "length_weighted_crossings",
 }
 
 #: Names the current ``import *`` leaks because the module has no ``__all__``. Permitted, never
