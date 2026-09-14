@@ -1550,3 +1550,256 @@ stops being an assertion and becomes a measurement.
 backend has no coverage. `test_yifan_hu_is_handed_the_structure_and_nothing_else` reads the dot
 source rather than running the binary and still runs, so the plumbing stays guarded — the
 end-to-end layout does not.
+
+---
+
+# Step 6 — the label metrics
+
+## (39) Step 6 departures from `plans/step6-labels.md`, and why
+
+The plan held on substance. Five departures, each forced by something measured.
+
+### (39a) Both degenerate ends of the silhouette, not one
+
+The plan named the single-class case. `sklearn`'s accepted range is
+$2 \le |\mathcal{L}| \le n-1$, so it refuses the **all-singleton** case too — verified, not
+inferred from the docs.
+
+| case | returned | why |
+|---|---|---|
+| $\lvert\mathcal{L}\rvert = 1$ | `nan` | undefined, and a property of the *data* rather than a caller error; the package returns `nan` for the first and raises for the second |
+| $\lvert\mathcal{L}\rvert = n$ | **0.0** | Rousseeuw's convention already covers it: every $s_i$ is 0, so the mean is 0 |
+
+Returning `nan` for the second would have been a discontinuity of ours, not of the metric: a
+vector with one pair and $n-2$ singletons goes through `sklearn` normally and scores near 0.
+
+### (39b) `silhouette` reads `pdist`, not `sklearn`'s `metric="euclidean"`
+
+Committed first with `metric="euclidean"` and a justification that was wrong on every count, then
+corrected. The claim was that `silhouette_samples` chunks its Euclidean reduction and so never
+materialises $(n, n)$, making a precomputed matrix the dearer option. Measured, one process per
+route so each gets a clean high-water mark:
+
+| $n$ | `metric="euclidean"` | `pdist` + `squareform` |
+|---|---|---|
+| 5 007 (`tabula`) | 0.91 s, +373 MB | **0.60 s, +273 MB** |
+| 12 000 (extended) | 4.71 s, +2039 MB | **4.64 s, +1634 MB** |
+
+It does chunk, but `working_memory` defaults to **1024 MB**, so at these sizes it takes the
+matrix in one or two blocks and its reduction allocates more than the matrix itself. There was no
+trade-off to weigh: the exact route is faster, leaner **and** eight digits more accurate.
+
+The accuracy alone would not have justified it. `sklearn` computes distances as
+$\lVert x\rVert^2+\lVert y\rVert^2-2x\cdot y$, which loses digits when a layout sits far from the
+origin relative to its own extent — at an offset/extent ratio of 4000, $1.8\times10^{-8}$
+relative on tabula's `X_umap` against $1.2\times10^{-14}$ over `pdist`. Real layouts sit within a
+few multiples of their extent of the origin, where the deviation is $10^{-14}$ or below. ⚠️ But
+the *tolerance* would have been wrong: an invariance test pinned at $10^{-12}$ from the small
+graphs passes on `karate` ($7\times10^{-14}$) and **fails at tabula's $n$**
+($3\times10^{-12}$) — the session-5 lesson again, on a different quantity.
+
+Distances come through `common.pairwise_distances`, so in a metric sweep ADR, NND and the two
+distributions have already paid for the condensed vector and the marginal cost is the
+`squareform` copy. **Numerically neutral and verified so**: the golden `silhouette` is
+bit-identical between the two routes, so `metric_golden.json` was not touched.
+
+### (39c) `labels` comes first on both graph-side metrics
+
+Spec §2.3 writes `silhouette_graph(G, labels)` and `graph_neighborhood_accuracy(G, labels)`.
+Implemented as `(labels, G=None, *, ideal=None)` and `(labels, G)`.
+
+`labels` is the only argument Sil\* always requires — the graph is optional once `ideal` is
+supplied, as `_stress_pairs`' contract intends — so no sentinel-free ordering puts `G` first.
+Making the two graph-side metrics disagree about their order would be precisely the hazard (5)
+was written about: *the spec writes two orders for the same arguments, which is how
+argument-order bugs happen*. `_as_labels` requires 1-D, so `silhouette_graph(X, labels)` from
+muscle memory raises instead of returning a number computed from a layout.
+
+### (39d) The second graph-vote mode is `weighting="affinity"`, not `"distance"`
+
+The plan asked for `knn_accuracy`'s vocabulary. `tie_rule`'s is unchanged; `weighting`'s could
+not be. Eq. (62) votes with $w_{ij}$ — a coupling — where `knn_accuracy`'s `"distance"` mode
+applies $f(d) = 1/d$ to turn a *length* into a weight. They are opposite quantities, and naming
+the graph mode `"distance"` would invite exactly the substitution the stamp guard exists to
+refuse. Uniform weighting reads no valuation at all and therefore carries no guard, the same
+reasoning as `visual.py`'s deliberate absence of one.
+
+### (39e) Exclusion is by vote mass, and `n_isolated` is reported beside `n_excluded`
+
+§2.3 says isolated vertices are excluded and the count returned. A vertex of positive degree
+whose every incident affinity is zero also has nothing to vote with, and an all-zero score row
+reads as *every class tied* — worth 1/|L| under the fractional rule, which is noise dressed as a
+score. So the rule is "no vote mass", and the two counts are separated: `n_excluded` is what was
+dropped, `n_isolated` the structural reason. They are equal under uniform weighting and on every
+registered dataset. `majority_class_rate` is computed over the **scored** vertices, so the score
+and its floor share a denominator.
+
+## (40) What the label metrics say on real layouts
+
+SG-*t*-SNE layouts, seed 0 unless stated, λ = 1, as steps 3-5 used. Four measurements the plan
+asked for, and all four moved something.
+
+### Sil\* behaves as a label-validity check — and its scale is not the one anybody assumes
+
+Across every labelled dataset, graph side only (no layout involved):
+
+| dataset | label set | Sil\* | shuffled labels | Acc\* | floor | classes |
+|---|---|---|---|---|---|---|
+| `ring_of_cliques` | `clique` | **0.532** | −0.337 … −0.272 | 1.0000 | 0.100 | 10 |
+| `karate_weighted` | `club` | 0.377 | −0.014 … 0.007 | 0.9412 | 0.500 | 2 |
+| `football_2023` | `conference` | 0.330 | −0.138 … −0.125 | 0.9697 | 0.106 | 11 |
+| `football_2023` | `division` | **0.020** | −0.024 … −0.017 | 0.9886 | 0.591 | 3 |
+| `football_2023` | `conference_division` | 0.327 | −0.178 … −0.153 | 0.9722 | 0.106 | 15 |
+| `digits` | `digit` | 0.367 | −0.034 … −0.026 | 0.9853 | 0.102 | 10 |
+| `tabula` | `cell_ontology_class` | 0.284 | −0.081 … −0.069 | 0.9615 | 0.311 | 13 |
+| `tabula` | `compartment` | 0.298 | −0.021 … −0.018 | 0.9897 | 0.528 | 4 |
+| `tabula` | `donor` | **0.310** | −0.0004 … 0.0006 | 0.9873 | 0.571 | 2 |
+| `tabula` | `method` | 0.085 | −0.020 … 0.011 | 0.9868 | **0.958** | 2 |
+| `tabula` | `compartment_cell_type` | 0.284 | −0.083 … −0.064 | 0.9615 | 0.311 | 13 |
+
+**The check works**: every real label set scores clearly above its own shuffled level, and the one
+that does not — football's `division`, at 0.020 against a shuffled −0.02 — is the one where it
+*should* not, since a division is West/East/none and orthogonal to conference. That is the
+justification for "validity check, not baseline" turned from an assertion into a measurement.
+
+⚠️ **Two facts about the scale, both against the obvious reading.**
+
+- **The ceiling is far below 1.** `ring_of_cliques`' labels *are* its topology and it scores
+  0.532. Inside a clique $a^*_i = 1$; the nearest other clique is 2–3 hops away, so
+  $b^*_i = 1.75$ for a vertex holding a ring edge and $s^*_i = 0.43$. Graph distances are small
+  integers and $b^*$ is a *mean* over the nearest class. **A Sil\* of 0.5 is strong agreement,
+  not mediocre**, and the write-up must not read it on a 0-to-1 scale.
+- **Chance is negative, not zero**, and by a dataset-dependent amount: −0.32 on a 10-class
+  graph, −0.13 on 11 classes, −0.0004 on 2. $b^*_i$ is a min over $|\mathcal{L}|-1$ class means
+  and so sits below the overall mean while $a^*_i$ is at it, and the bias grows with the class
+  count. **"Low means the labels are not in the topology" needs a per-dataset reference level**,
+  the role `majority_class_rate` plays for the accuracy metrics. Nothing computes one yet; a
+  shuffled-label control is three lines and belongs in step 11's reporting layer.
+
+**Acc\* is above 0.94 everywhere and is nearly uninformative on its own.** A 1-hop neighbourhood
+of a $k$-NN graph is almost perfectly label-homogeneous by construction, so the number to read is
+the gap to the floor: 0.969 against 0.106 on football's conference is decisive, 0.987 against
+**0.958** on tabula's `method` is not. Reporting Acc\* without the floor beside it would make the
+weakest case look like the strongest.
+
+### ⚠️ The auxiliary-label claim is false for `donor` and true for `method`
+
+`DECISIONS.md`, `DATASET_PROVENANCE.md` and spec §3.4 all assert that a **low** silhouette on
+tabula's `donor` and `method` is the good outcome — a layout separating cells by batch covariate
+is displaying an artifact. Measured on an $A_{tne}$ layout, seed 0:
+
+| label set | role | Sil | Sil\* | Acc@20 | Acc\* | floor |
+|---|---|---|---|---|---|---|
+| `cell_ontology_class` | primary | 0.106 | 0.284 | 0.947 | 0.962 | 0.311 |
+| `compartment` | sub | 0.110 | 0.298 | 0.987 | 0.990 | 0.528 |
+| **`donor`** | auxiliary | **0.206** | **0.310** | 0.983 | 0.987 | 0.571 |
+| `method` | auxiliary | 0.057 | 0.085 | 0.985 | 0.987 | 0.958 |
+| `compartment_cell_type` | composite | 0.106 | 0.284 | 0.947 | 0.962 | 0.311 |
+
+**`donor` is first on Sil, at roughly double `cell_ontology_class`** — the outcome the claim says
+would be bad. Controls confirm the number is real: a random Gaussian layout scores 0.0007 on
+`donor` and −0.085 on `cell_ontology_class`, and shuffling `donor` on the real layout gives
+−0.0008 … 0.0011.
+
+**It is not a layout artifact, and the reason is confounding.** `donor` is first on **Sil\*** too,
+so the structure is already in the graph before anything is laid out — and the two donors sampled
+almost disjoint cell populations:
+
+| | TSP14 | TSP6 |
+|---|---|---|
+| hepatocyte | **1491** | 67 |
+| macrophage | 2 | **1379** |
+| monocyte | 7 | 605 |
+| endothelial cell | 267 | 0 |
+| endothelial cell of hepatic sinusoid | 80 | 341 |
+| *column total* | 2147 | 2860 |
+
+TSP14 is 69 % hepatocytes and TSP6 48 % macrophages. $\mathrm{NMI}(\mathrm{donor},
+\mathrm{cell\ type}) = 0.413$, against $\mathrm{NMI}(\mathrm{method}, \mathrm{cell\ type}) =
+0.059$.
+
+So the donor silhouette is largely **cell-type structure read through a confounded label**, and a
+low score on it is not an achievable target. `method` is the clean covariate — nearly independent
+of cell type — and it behaves exactly as the claim predicts, at 0.057 on the layout and 0.085 in
+the graph.
+
+**What to change, and it is prose rather than code.** The "low silhouette on a batch covariate is
+the good outcome" reading is sound in general and unsound for tabula's `donor` specifically.
+`DATASET_PROVENANCE.md`'s and §3.4's wording should say that `method` is the batch covariate the
+argument applies to, and that `donor` is confounded with cell type at NMI 0.41 and cannot be read
+that way. The `LabelSet` note above ("`donor` and `method` are auxiliary batch covariates… a
+*low* silhouette is the good outcome there") is the sentence that needs the qualifier. Suggested
+thesis placement: §3.1 where the tabula label sets are introduced. **Left to the author —
+`thesis/` is read-only (CLAUDE.md).**
+
+### Silhouette separates the three representations decisively — and orders them differently from every other label metric
+
+Five matched seeds, one shared label vector per dataset:
+
+| dataset | | $A_V$ | $A_E$ | $A_{tne}$ |
+|---|---|---|---|---|
+| `football_2023` | Sil | **0.758** [0.748, 0.771] | 0.540 [0.512, 0.550] | 0.617 [0.606, 0.633] |
+| | Acc@11 | 0.9697 (all seeds) | 0.955 [0.947, 0.962] | 0.9697 (all seeds) |
+| | recall@11 | 0.715 | 0.645 | 0.710 |
+| `digits` | Sil | **0.480** [0.470, 0.488] | 0.431 [0.417, 0.447] | 0.419 [0.404, 0.458] |
+| | Acc@16 | 0.985 [0.983, 0.986] | 0.965 [0.958, 0.970] | 0.983 [0.981, 0.985] |
+| | recall@16 | 0.639 | 0.539 | 0.632 |
+
+**It is not a quiet instrument.** Unlike NND, which step 4 found could barely see anything, Sil
+separates $A_V$ from both others *disjointly across all five seeds* on both datasets, and all
+three pairwise on football. Step 3 had to strain to see the §1.6 fix in recall; this has no such
+problem.
+
+⚠️ **But it is not measuring label recovery, and two results show it.**
+
+- On football, `knn_accuracy` is **identical to the digit** for $A_V$ and $A_{tne}$ (0.9697 on
+  every seed) while Sil separates them disjointly, 0.758 against 0.617.
+- On digits the two metrics **invert the ordering**: Sil puts $A_{tne}$ *below* $A_E$ (1/5 seeds,
+  overlapping) where `knn_accuracy` puts it clearly above (5/5, disjoint), as does `knn_recall`
+  (0.632 against 0.539).
+
+Sil is a distance-based compactness-and-separation score; `knn_accuracy` and `knn_recall` are
+rank-based. The twin graph inserts an edge node between every pair of adjacent vertices, which
+stretches within-class neighbourhoods geometrically without changing who is whose neighbour — and
+Sil, being scale-invariant but not rank-based, reads that as lost separation. **So Sil must not
+be tabulated as "which representation recovers the labels best".** Both belong in the results,
+and §5 should say which question each answers rather than letting a reader average them.
+
+### ⚠️ Silhouette is the noisiest metric measured in this project so far
+
+Seven seeds of $A_{tne}$ on `digits`, against step 4's bands:
+
+| metric | rel IQR | full spread |
+|---|---|---|
+| NND$_{16}$ | 0.4 % | — |
+| VNR | 1.2 % | — |
+| `edge_length_cv` | 2.4 % | — |
+| `knn_accuracy@16` | **0.24 %** | 0.74 % |
+| **`silhouette`** | **3.6 %** | **19.0 %** (0.380 … 0.458) |
+
+Raw: 0.4577, 0.4079, 0.4070, 0.4038, 0.4190, 0.3934, 0.3802. And it is
+representation-dependent — over the same five seeds $A_V$ spans 3.8 % where $A_{tne}$ spans 13 %.
+
+**This explains the inversion above rather than excusing it**: the $A_{tne}$-versus-$A_E$ gap on
+digits is about 3 %, *inside* the noise band, which is exactly why it came out 1/5 and
+overlapping. It also sets a floor for step 8: **a λ sweep reporting silhouette differences below
+~4 % on a single seed is reporting noise**, where the same sweep can trust `knn_accuracy` to
+0.25 %. Sil needs seed replication to be read at all; the crowding metrics do not.
+
+### §2.5's cost class is wrong about Sil\*, and now by a measured margin
+
+§2.5 names SNS and Sil\* as the metrics that will not run on tabula. On `tabula` ($n = 5007$,
+$m = 49368$):
+
+| | time | notes |
+|---|---|---|
+| `ideal_distances` closure | 14.9 s, +254 MB | **shared per dataset** with SNS and the stresses |
+| Sil\*, given the closure | **0.58 s** | |
+| Sil\*, all four label sets off one closure | **2.07 s** | the results-path pattern |
+| Sil on the layout | 0.60 s, +273 MB | shares its `pdist` with ADR and NND |
+| Acc\* | 0.49 s | |
+
+Against crossings' **40 s and +428 MB per layout**, Sil\* is among the cheapest things in the
+suite. The expensive metrics scale with $m$, and the label family scales with $n$ — which is
+5007. §0.5 corrects the cost class in principle; these are the numbers, and step 7's run planner
+reads it.
