@@ -75,6 +75,10 @@ REQUIRED_EXPORTS = {
     "length_weighted_crossings",
     # spec §2.2, deferred from step 4 to step 5 because it needs `edge_curves`.
     "detour_ratio",
+    # spec §2.3, added at step 6. The k-NN accuracy family above landed early, at step 3.
+    "silhouette",
+    "silhouette_report",
+    "SilhouetteReport",
 }
 
 #: Names the current ``import *`` leaks because the module has no ``__all__``. Permitted, never

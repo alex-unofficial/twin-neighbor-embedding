@@ -41,9 +41,12 @@ from twin.metrics.crossings import (
 )
 from twin.metrics.label import (
     KnnAccuracyReport,
+    SilhouetteReport,
     knn_accuracy,
     knn_accuracy_report,
     majority_class_rate,
+    silhouette,
+    silhouette_report,
 )
 from twin.metrics.visual import (
     edge_length_cv,
@@ -117,6 +120,9 @@ __all__ = [
     "optimal_scale",
     "raw_stress",
     "scale_normalized_stress",
+    "SilhouetteReport",
+    "silhouette",
+    "silhouette_report",
     "mean_pairwise_distance",
     "pairwise_distances",
     "require_n_by_d",
