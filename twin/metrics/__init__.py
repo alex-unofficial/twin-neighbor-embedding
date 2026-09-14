@@ -29,7 +29,12 @@ from twin.metrics.common import (
     require_n_by_d,
 )
 from twin.metrics.context import EvaluationContext
-from twin.metrics.crossings import edge_curves
+from twin.metrics.crossings import (
+    CrossingReport,
+    crossing_pairs,
+    crossing_pairs_report,
+    edge_curves,
+)
 from twin.metrics.label import (
     KnnAccuracyReport,
     knn_accuracy,
@@ -70,6 +75,9 @@ __all__ = [
     "NeighborPreservationReport",
     "adjacency_distance_ratio",
     "condensed",
+    "CrossingReport",
+    "crossing_pairs",
+    "crossing_pairs_report",
     "edge_curves",
     "edge_index_array",
     "edge_length_cv",

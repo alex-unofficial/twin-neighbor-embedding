@@ -67,6 +67,9 @@ REQUIRED_EXPORTS = {
     # the crossing layer, is `edge_index_array` — ADR's CSR ordering is a different one.
     "edge_index_array",
     "edge_curves",
+    "crossing_pairs",
+    "crossing_pairs_report",
+    "CrossingReport",
 }
 
 #: Names the current ``import *`` leaks because the module has no ``__all__``. Permitted, never
