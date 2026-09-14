@@ -1,24 +1,43 @@
-r"""Spec §2.3 eqs. (49)-(52) — the layout-side silhouette, against an independent oracle.
+r"""Spec §2.3 — the silhouette family, against an independent oracle.
 
-The implementation is ``sklearn``-backed, so the whole validation is the oracle below: a
-transcription of thesis §3.1.2's $a_i$ and $b_i$ in pure Python that **shares no code with
-what it checks**. Session 4's audit found `twin_adjacency` untested through three sessions
-because every test compared two callers of one function; an sklearn-versus-sklearn check here
-would repeat that exactly.
+Eqs. (49)-(52) are the layout side and (53)-(55) the graph side, and the two differ only in
+which $d$ they read — so **one** oracle checks both: a transcription of thesis §3.1.2's $a_i$
+and $b_i$ in pure Python that **shares no code with what it checks**. Session 4's audit found
+`twin_adjacency` untested through three sessions because every test compared two callers of one
+function; an sklearn-versus-sklearn check here would repeat that exactly.
+
+Spec §4.4's disconnected policy is load-bearing for Sil\* and is exercised at the bottom: the
+`mask` refusal on all three paths a policy can arrive by, and the `lcc` subset that
+`ideal_distances` deliberately does not perform for its caller.
 """
 
 import math
 
+import networkx as nx
 import numpy as np
 import pytest
 
 from twin.datasets import load_dataset
-from twin.metrics import silhouette, silhouette_report
+from twin.metrics import (
+    ideal_distances,
+    silhouette,
+    silhouette_graph,
+    silhouette_graph_report,
+    silhouette_report,
+)
+from twin.metrics.context import EvaluationContext
 
 
 # --------------------------------------------------------------------------- #
 #                            The independent oracle                            #
 # --------------------------------------------------------------------------- #
+
+
+def vertex_graph_distance(dataset):
+    """The least-derived distance form — what `ideal_distances` is meant to be called on."""
+    from twin.layoutgraph import vertex_graph
+
+    return vertex_graph(dataset).distance
 
 
 def euclidean_matrix(X) -> list[list[float]]:
@@ -353,3 +372,211 @@ def test_refuses_a_two_dimensional_label_vector(karate_structured_layout):
     """`silhouette_graph` takes labels first, so the two argument orders must not blur."""
     with pytest.raises(ValueError, match="1-D"):
         silhouette(karate_structured_layout, karate_structured_layout)
+
+
+# --------------------------------------------------------------------------- #
+#                  Sil* — the graph side (eqs. 53-55, spec §4.4)               #
+# --------------------------------------------------------------------------- #
+
+
+def test_sil_star_agrees_with_the_oracle_on_karate(karate_labels):
+    """The same oracle, handed graph geodesics instead of Euclidean distances.
+
+    That is the whole content of eqs. (53)-(55): $d_{ij}$ replaces
+    $\\lVert x_i - x_j\\rVert$ and nothing else changes. Using one oracle for both is what makes
+    the claim checkable.
+    """
+    ctx = EvaluationContext.for_dataset(load_dataset("karate_weighted"))
+    expected = rousseeuw_silhouette(ctx.ideal.tolist(), karate_labels)
+    assert silhouette_graph(karate_labels, ideal=ctx) == pytest.approx(expected, rel=1e-12)
+
+
+def test_the_context_and_the_graph_paths_agree(karate_labels):
+    """`ideal=ctx` must be an optimisation and not a second definition."""
+    dataset = load_dataset("karate_weighted")
+    ctx = EvaluationContext.for_dataset(dataset)
+    assert silhouette_graph(karate_labels, vertex_graph_distance(dataset)) == pytest.approx(
+        silhouette_graph(karate_labels, ideal=ctx), rel=1e-12
+    )
+
+
+def test_labels_matching_the_topology_score_far_above_a_shuffled_partition():
+    r"""What makes Sil\* a label-validity check rather than a layout score.
+
+    `ring_of_cliques` is ten 4-cliques in a ring and its `clique` labels *are* its topology, so
+    the labels are as recoverable from the graph as labels get. Shuffling them destroys that
+    while leaving every class size intact — so the comparison isolates label-topology agreement
+    from the class-size effect the diagnostics track.
+
+    ⚠️ **Two measured facts about the scale, both of which contradict the obvious reading:**
+
+    * The aligned score is **0.532**, not near 1. Sil\* has a structural ceiling well below 1:
+      $a^*_i = 1$ inside a clique, but the nearest other clique is 2-3 hops away, so
+      $b^*_i = 1.75$ for a vertex holding a ring edge and $s^*_i = 0.43$. Graph distances are
+      small integers, and $b^*$ is a *mean* over the nearest class; a Sil\* of 0.5 is therefore
+      strong agreement, not mediocre.
+    * A shuffled partition scores **−0.32**, not 0 (−0.346 to −0.296 over ten permutations).
+      Chance is negative, not zero, whenever there are several classes: $b^*_i$ is a min over
+      nine class means and so sits below the overall mean, while $a^*_i$ is at it. "Low means
+      the labels are not in the topology" therefore needs a per-dataset chance level to be read
+      against — the same role ``majority_class_rate`` plays for the accuracy metrics.
+    """
+    dataset = load_dataset("ring_of_cliques")
+    ctx = EvaluationContext.for_dataset(dataset)
+    labels = dataset.labels("clique")
+
+    aligned = silhouette_graph(labels, ideal=ctx)
+    shuffled = [
+        silhouette_graph(np.random.default_rng(seed).permutation(labels), ideal=ctx)
+        for seed in range(10)
+    ]
+
+    assert aligned == pytest.approx(0.5324675324675324, rel=1e-12)
+    assert max(shuffled) < -0.25
+    assert aligned > max(shuffled) + 0.8
+
+
+# ---------------------------------------------------------- the `mask` refusal
+
+
+def test_refuses_the_mask_policy_as_a_keyword(karate_labels, karate_dataset):
+    with pytest.raises(ValueError, match="refuses disconnected='mask'"):
+        silhouette_graph(karate_labels, vertex_graph_distance(karate_dataset), disconnected="mask")
+
+
+def test_refuses_a_context_built_under_the_mask_policy(karate_labels, karate_dataset):
+    """§4.4 permits `mask` for SNS only, so a context carrying it must still be refused here.
+
+    A runner that sets `mask` once for SNS would otherwise get an inflated Sil\\* for free.
+    """
+    ctx = EvaluationContext.for_dataset(karate_dataset, disconnected="mask")
+    with pytest.raises(ValueError, match="refuses disconnected='mask'"):
+        silhouette_graph(karate_labels, ideal=ctx)
+
+
+def test_refuses_the_mask_footprint_in_a_bare_array(disjoint_paths):
+    """The backstop: a raw array where neither the kwarg nor the context is visible.
+
+    Under `mask` the smaller component keeps its own internal distances, so an excluded vertex
+    has more than one finite entry in its row — which is the footprint checked for. Without it
+    the array would be scored as if it had come from `lcc`, silently changing the policy.
+    """
+    labels = np.array([0, 0, 1, 1, 0, 1, 1])
+    masked = ideal_distances(disjoint_paths, disconnected="mask")
+    with pytest.raises(ValueError, match="footprint of disconnected='mask'"):
+        silhouette_graph(labels, ideal=masked)
+
+
+def test_the_refusal_is_unconditional_not_conditional_on_disconnection(karate_dataset):
+    """`karate_weighted` is connected, so `lcc` and `mask` would give the identical array.
+
+    The guard still fires. A guard that only triggers on a disconnected graph would be inert on
+    the whole current roster — dormant until the first dataset that needs it, which is the one
+    case where it must not be.
+    """
+    assert karate_dataset.is_connected()
+    lcc = ideal_distances(vertex_graph_distance(karate_dataset), disconnected="lcc")
+    masked = ideal_distances(vertex_graph_distance(karate_dataset), disconnected="mask")
+    assert np.array_equal(lcc, masked)
+
+    with pytest.raises(ValueError, match="refuses disconnected='mask'"):
+        silhouette_graph(karate_dataset.labels("club"), ideal=masked, disconnected="mask")
+
+
+
+# ------------------------------------------------ the `lcc` subset and n_excluded
+
+
+def test_excludes_vertices_outside_the_largest_component_and_reports_the_count(
+    disjoint_paths,
+):
+    """⚠️ `ideal_distances` returns the full (n, n) with `inf` outside the component.
+
+    It does not subset; the consumer does. And the alternative is not an inflated number:
+    `silhouette_samples` rejects a precomputed matrix containing `inf` outright, so forgetting
+    the subset fails with an sklearn message about input validation. `n_excluded` is what makes
+    the discard reportable.
+    """
+    labels = np.array([0, 0, 1, 1, 0, 1, 1])  # 4-path is 0-3; triangle is 4-6
+    report = silhouette_graph_report(labels, disjoint_paths)
+
+    assert report.n_excluded == 3
+    assert report.n_classes == 2
+    assert report.min_class_size == 2  # the scored subset's classes, not the whole graph's
+
+    # The score is exactly the 4-path's own, computed on a graph that has nothing else in it.
+    path_only = silhouette_graph_report(labels[:4], nx.path_graph(4))
+    assert report.value == pytest.approx(path_only.value, rel=1e-12)
+    assert path_only.n_excluded == 0
+
+
+def test_a_connected_graph_excludes_nothing(karate_labels, karate_dataset):
+    report = silhouette_graph_report(karate_labels, ideal=EvaluationContext.for_dataset(
+        karate_dataset
+    ))
+    assert report.n_excluded == 0
+
+
+def test_sklearn_would_have_refused_the_unsubsetted_matrix(disjoint_paths):
+    """Why the subset is mandatory rather than tidy — asserted, so the reason cannot rot."""
+    from sklearn.metrics import silhouette_samples
+
+    labels = np.array([0, 0, 1, 1, 0, 1, 1])
+    D = ideal_distances(disjoint_paths)
+    assert np.isinf(D).any()
+    with pytest.raises(ValueError, match="infinity"):
+        silhouette_samples(D, labels, metric="precomputed")
+
+
+# ----------------------------------------------------------------- the contract
+
+
+def test_refuses_a_condensed_ideal(karate_labels, karate_dataset):
+    """Sil* needs the square form; the stresses take the condensed one. Mixing them is silent."""
+    ctx = EvaluationContext.for_dataset(karate_dataset)
+    with pytest.raises(ValueError, match="square"):
+        silhouette_graph(karate_labels, ideal=ctx.ideal_condensed)
+
+
+def test_refuses_ideal_together_with_ideal_distance_kwargs(karate_labels, karate_dataset):
+    ctx = EvaluationContext.for_dataset(karate_dataset)
+    with pytest.raises(ValueError, match="would be ignored"):
+        silhouette_graph(karate_labels, ideal=ctx, weight_transform="inverse")
+
+
+def test_refuses_neither_graph_nor_ideal(karate_labels):
+    with pytest.raises(ValueError, match="either a graph or precomputed"):
+        silhouette_graph(karate_labels)
+
+
+def test_refuses_a_size_mismatch(karate_labels, karate_dataset):
+    ctx = EvaluationContext.for_dataset(karate_dataset)
+    with pytest.raises(ValueError, match="entries"):
+        silhouette_graph(karate_labels[:10], ideal=ctx)
+    with pytest.raises(ValueError, match="entries"):
+        silhouette_graph(karate_labels[:10], ideal=ctx.ideal)
+
+
+def test_refuses_an_affinity_valued_graph(karate_labels, karate_dataset):
+    """Owned by `ideal_distances`, exercised here so the path is known to reach it.
+
+    §1.6's bug class: an affinity read as a length inverts the target, and on `digits` the
+    stored `weight` attribute genuinely is a distance while `karate_weighted`'s is an affinity.
+    """
+    from twin.layoutgraph import vertex_graph
+
+    affinity = vertex_graph(karate_dataset).affinity_graph()
+    with pytest.raises(ValueError, match="stamped 'affinity'"):
+        silhouette_graph(karate_labels, affinity)
+
+
+def test_both_graph_side_docstrings_say_label_validity_check_not_a_baseline():
+    """§5.3 guard 2 is a schema rule at step 11; the sentence has to exist before anyone reads
+    a number. The exporter cannot be written from a docstring, but a docstring that never said
+    it is how the rule gets forgotten."""
+    from twin.metrics.label import silhouette_graph, silhouette_graph_report
+
+    for function in (silhouette_graph, silhouette_graph_report):
+        text = " ".join(function.__doc__.split())
+        assert "not a baseline" in text.lower()
+        assert "incomparable" in text.lower()

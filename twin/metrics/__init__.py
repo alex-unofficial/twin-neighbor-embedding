@@ -46,6 +46,8 @@ from twin.metrics.label import (
     knn_accuracy_report,
     majority_class_rate,
     silhouette,
+    silhouette_graph,
+    silhouette_graph_report,
     silhouette_report,
 )
 from twin.metrics.visual import (
@@ -122,6 +124,8 @@ __all__ = [
     "scale_normalized_stress",
     "SilhouetteReport",
     "silhouette",
+    "silhouette_graph",
+    "silhouette_graph_report",
     "silhouette_report",
     "mean_pairwise_distance",
     "pairwise_distances",

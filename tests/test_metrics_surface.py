@@ -79,6 +79,9 @@ REQUIRED_EXPORTS = {
     "silhouette",
     "silhouette_report",
     "SilhouetteReport",
+    # The graph side of §2.3: a label-validity check, not a baseline (§5.3 guard 2).
+    "silhouette_graph",
+    "silhouette_graph_report",
 }
 
 #: Names the current ``import *`` leaks because the module has no ``__all__``. Permitted, never

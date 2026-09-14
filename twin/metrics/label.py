@@ -9,16 +9,22 @@ own labels (CLAUDE.md).
 implements it, verified directly rather than assumed; what it does *not* implement is either
 degenerate end, and those are handled here (see :func:`silhouette_report`).
 
-The graph-side counterparts of §2.3 — Sil\* and the 1-hop accuracy — land in the two commits
-after this one.
+⚠️ **:func:`silhouette_graph` scores the graph, not the layout, and it is not a baseline.**
+It answers "are these labels reflected in the topology at all?", on a scale incomparable with
+the layout score (spec §2.3, §5.3): it says when a low :func:`silhouette` is uninformative
+because the labels were never recoverable. It is not a target a layout is trying to reach and
+not a number to subtract from one. The 1-hop counterpart of the accuracy family lands in the
+commit after this one.
 """
 
 from dataclasses import dataclass
 
+import networkx as nx
 import numpy as np
 from sklearn.metrics import silhouette_samples
 
-from twin.metrics.common import _loo_neighbors, require_n_by_d
+from twin.metrics.common import _loo_neighbors, ideal_distances, require_n_by_d
+from twin.metrics.context import EvaluationContext
 
 
 def _as_labels(labels, name: str = "labels") -> np.ndarray:
@@ -177,6 +183,179 @@ def silhouette_report(X: np.ndarray, labels: np.ndarray) -> SilhouetteReport:
 def silhouette(X: np.ndarray, labels: np.ndarray) -> float:
     """Score only — see :func:`silhouette_report` for the diagnostics and full docstring."""
     return silhouette_report(X, labels).value
+
+
+#: The message :func:`silhouette_graph` refuses ``disconnected="mask"`` with, in one place
+#: because three call paths can carry the policy in (an explicit kwarg, a context built under
+#: it, and a raw array bearing its footprint).
+_MASK_REFUSAL = (
+    "silhouette_graph refuses disconnected='mask' (spec §4.4, §0.5 decision 4). Under 'mask' a "
+    "vertex whose nearest *other* cluster lies in another component has b(i) = inf, so "
+    "s(i) -> 1 and a **disconnected** layout scores better: the policy inflates exactly the "
+    "quantity this metric measures. Acceptable for SNS, dangerous for Sil*. The refusal is "
+    "unconditional rather than conditional on the graph actually being disconnected — every "
+    "registered dataset is connected today, so a conditional guard would be inert until the "
+    "first dataset that needs it, which is the one case where it must not be. Use "
+    "disconnected='lcc' (the default); n_excluded reports what that discards."
+)
+
+
+def _ideal_for_silhouette(labels: np.ndarray, G, ideal, ideal_distance_kw: dict):
+    r"""The $(n, n)$ ideal distances Sil\* scores against, resolved and policy-checked.
+
+    :func:`~twin.metrics.structural._stress_pairs`' contract, with two differences forced by
+    §4.4 and by ``sklearn``:
+
+    * ``disconnected="mask"`` is refused on all three paths it can arrive by;
+    * the **square** form is needed, not the condensed one, because ``metric="precomputed"``
+      takes a matrix. :attr:`~twin.metrics.context.EvaluationContext.ideal` is therefore the
+      right attribute to read, where the stresses read ``ideal_condensed``.
+    """
+    if ideal_distance_kw.get("disconnected") == "mask":
+        raise ValueError(_MASK_REFUSAL)
+
+    if ideal is None:
+        if G is None:
+            raise ValueError(
+                "pass either a graph or precomputed ideal distances (as an array or an "
+                "EvaluationContext)"
+            )
+        return ideal_distances(G, **ideal_distance_kw)
+
+    if ideal_distance_kw:
+        raise ValueError(
+            f"ideal distances were supplied, so {sorted(ideal_distance_kw)} would be ignored. "
+            "They configure how ideal distances are computed, which has already happened."
+        )
+
+    if isinstance(ideal, EvaluationContext):
+        if ideal.disconnected == "mask":
+            raise ValueError(_MASK_REFUSAL)
+        if ideal.n != labels.size:
+            raise ValueError(
+                f"the context is for {ideal.n} vertices and labels has {labels.size} entries"
+            )
+        return ideal.ideal
+
+    D = np.asarray(ideal, dtype=float)
+    if D.ndim != 2 or D.shape[0] != D.shape[1]:
+        raise ValueError(
+            f"Sil* needs the square (n, n) ideal distances for metric='precomputed', got shape "
+            f"{D.shape}. The condensed form the stress metrics take will not do here."
+        )
+    if D.shape[0] != labels.size:
+        raise ValueError(
+            f"ideal distances are ({D.shape[0]}, {D.shape[0]}) and labels has {labels.size} "
+            "entries"
+        )
+    return D
+
+
+def silhouette_graph_report(
+    labels: np.ndarray, G: nx.Graph | None = None, *, ideal=None, **ideal_distance_kw
+) -> SilhouetteReport:
+    r"""Sil\* — the same silhouette over graph geodesics (eqs. 53-55). **Not a baseline.**
+
+    .. math::
+
+        a^*_i = \frac{1}{|C_i| - 1}\sum_{j \in C_i, j \neq i} d_{ij},
+        \qquad
+        b^*_i = \min_{C \neq C_i}\frac{1}{|C|}\sum_{j \in C} d_{ij},
+        \qquad
+        \mathrm{Sil}^*_i = \frac{b^*_i - a^*_i}{\max\{a^*_i, b^*_i\}}
+
+    ⚠️ **This is a label-validity check on a scale incomparable with the layout score**
+    (spec §2.3, §5.3). It answers "are these labels reflected in the topology at all?" — it says
+    when a low :func:`silhouette` is uninformative because the labels were never recoverable
+    from the graph. It is **not** a target the layout is trying to reach and not a number to
+    subtract from the layout score: $d_{ij}$ is a shortest-path length in the graph's own units
+    and $\lVert x_i - x_j\rVert$ is a Euclidean distance in the layout's, and the two are related
+    by no fixed factor. §5.3 guard 2 keeps the pair out of adjacent columns of one table for
+    that reason — column adjacency is itself an invitation to difference two incomparable
+    quantities.
+
+    Args:
+        labels: ``(n,)`` integer-coded labels, per original vertex. **First**, unlike spec
+            §2.3's ``(G, labels)``, because it is the only argument that is always required —
+            the graph is optional once ``ideal`` is supplied. `DECISIONS.md` records the
+            reorder, with (5)'s precedent; ``labels`` is checked for 1-D so the two orders
+            cannot blur silently.
+        G: the **distance**-valued graph, if ``ideal`` is not supplied. Refused if it is stamped
+            ``"affinity"`` — by :func:`~twin.metrics.common.ideal_distances`, which owns that
+            guard.
+        ideal: precomputed ideal distances: a square ``(n, n)`` array or the
+            :class:`~twin.metrics.context.EvaluationContext` itself. **The context is the right
+            call on the results path** — it computes the closure once per dataset, where
+            recomputing it per label set is 200 MB and seconds at tabula's size, and tabula has
+            four label sets. Note this reads :attr:`~twin.metrics.context.EvaluationContext.
+            ideal` and not ``ideal_condensed``: ``sklearn``'s ``metric="precomputed"`` takes a
+            matrix.
+        **ideal_distance_kw: forwarded to :func:`~twin.metrics.common.ideal_distances`; refused
+            when ``ideal`` is supplied, since it would silently do nothing.
+
+    Returns:
+        A :class:`SilhouetteReport`. ``n_excluded`` counts the vertices outside the largest
+        connected component, which the ``"lcc"`` default scores nothing for.
+
+    Raises:
+        ValueError: on ``disconnected="mask"`` (see :data:`_MASK_REFUSAL`), on a condensed or
+            mis-shaped ``ideal``, or on an ``ideal`` whose infinities are not the ``"lcc"``
+            footprint.
+
+    Note:
+        **Under ``"lcc"``, ``ideal_distances`` returns the full ``(n, n)`` with ``inf`` outside
+        the component — it does not subset, so this does** (`DECISIONS.md`). That is not
+        optional tidiness: ``silhouette_samples`` rejects a precomputed matrix containing
+        ``inf``, so the alternative is not an inflated number but an sklearn error message about
+        input validation. The explicit subset is what makes ``n_excluded`` reportable.
+    """
+    labels = _as_labels(labels)
+    D = _ideal_for_silhouette(labels, G, ideal, ideal_distance_kw)
+
+    finite = np.isfinite(D)
+    if finite.all():
+        keep = np.ones(labels.size, dtype=bool)
+    else:
+        # The largest set of mutually reachable vertices, read off the row with the most finite
+        # entries. Policy-independent, and then checked against the "lcc" footprint rather than
+        # trusted: under "lcc" an excluded vertex is finite only on its own diagonal, so more
+        # than one finite entry in an excluded row means the array came from a policy that kept
+        # other components' internal distances — i.e. "mask", arriving as a bare array where
+        # neither of the two guards above can see it.
+        keep = finite[finite.sum(axis=1).argmax()]
+        if (finite[~keep].sum(axis=1) > 1).any():
+            raise ValueError(
+                "these ideal distances are finite within a component other than the largest, "
+                "which is the footprint of disconnected='mask'. " + _MASK_REFUSAL
+            )
+        if not finite[np.ix_(keep, keep)].all():
+            raise ValueError(
+                "the ideal distances have no single mutually-reachable block, so Sil* has no "
+                "well-defined support. ideal_distances under 'lcc' produces one by "
+                "construction; this array did not come from it."
+            )
+
+    n_excluded = int((~keep).sum())
+    D_scored = np.ascontiguousarray(D[np.ix_(keep, keep)])
+    # `metric="precomputed"` requires an exactly zero diagonal, and subsetting preserves it —
+    # asserted rather than assumed, because the failure is an sklearn message about the
+    # diagonal in the middle of a batch run.
+    np.fill_diagonal(D_scored, 0.0)
+
+    return _silhouette_report(
+        D_scored, labels[keep], metric="precomputed", n_excluded=n_excluded
+    )
+
+
+def silhouette_graph(
+    labels: np.ndarray, G: nx.Graph | None = None, *, ideal=None, **ideal_distance_kw
+) -> float:
+    r"""Score only — see :func:`silhouette_graph_report` for the full docstring.
+
+    ⚠️ A **label-validity check, not a baseline**: incomparable in scale with
+    :func:`silhouette`, and kept out of the same table by §5.3 guard 2.
+    """
+    return silhouette_graph_report(labels, G, ideal=ideal, **ideal_distance_kw).value
 
 
 @dataclass
