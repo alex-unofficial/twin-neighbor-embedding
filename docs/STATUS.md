@@ -2,21 +2,14 @@
 
 Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
-**Last updated:** end of session 4 (2026-08-26). It closed spec §7 step 4, closed both remaining
-open questions (`SpectralLayout`'s Laplacian, VNR's normaliser), ran a pre-step-5 audit of the
-test suite, and then verified the settled crossing algorithm and planned step 5 **without
-implementing any of it**. Branch `experiment-setup`; tree clean. **654 tests pass and 2 fail on
-an `sfdp` crash that is an environment regression, not a code one — see the section below before
-reading the failure as yours.**
+**Last updated:** end of session 5 (2026-09-14). It closed spec §7 step 5 — `twin/geometry.py`
+and `twin/metrics/crossings.py` now exist, crossings are computed exactly, and
+`plots.count_intersections` is built on them. Branch `experiment-setup`; tree clean. **750 tests
+pass and 2 fail on an `sfdp` crash that is an environment regression, not a code one — see the
+section below before reading the failure as yours.**
 
-> **Step 5 is planned, reviewed and approved, and not started.** No code exists for it:
-> `twin/geometry.py` and `twin/metrics/crossings.py` are both absent. Begin at commit 1 of
-> [`plans/step5-crossings.md`](plans/step5-crossings.md).
-
-**Docs-only update, 2026-09-13.** No code changed. The crossing algorithm for step 5 was settled
-in discussion before implementation: spec §2.4 Layers 1–2 rewritten, a §0.5 block added,
-`DECISIONS.md` (27)–(31) added and (14)/(15) superseded, and a new reference
-[`docs/CROSSING_GEOMETRY.md`](CROSSING_GEOMETRY.md).
+> **Step 6 is next** — `label.py`'s silhouette and the graph-side checks. Step 2 unblocked it and
+> nothing from step 5 constrains it. There is no plan file for it yet.
 
 ---
 
@@ -28,8 +21,8 @@ in discussion before implementation: spec §2.4 Layers 1–2 rewritten, a §0.5 
 | **2. `Dataset` and `LayoutGraph` (§3.4, §3.5)** | **Done** — session 2, plus the step-2b follow-up; plan: [`docs/plans/step2-datasets.md`](plans/step2-datasets.md) |
 | **3. `common.py` + `structural.py` — ADR, kNN family, SNS** | **Done** — session 3; plan: [`docs/plans/step3-metrics.md`](plans/step3-metrics.md), departures in `DECISIONS.md` |
 | **4. `visual.py` — NND, NR/VNR, distributions, edge lengths** | **Done** — session 4; plan: [`docs/plans/step4-visual.md`](plans/step4-visual.md), departures in `DECISIONS.md` |
-| **5. `crossings.py` — curves, detection, Cr/LWCr, detour** | **Next** |
-| 6. `label.py` — silhouette, accuracy, graph-side checks | not started (step 2 unblocked it) |
+| **5. `crossings.py` — curves, detection, Cr/LWCr, detour** | **Done** — session 5; plan: [`docs/plans/step5-crossings.md`](plans/step5-crossings.md), departures in `DECISIONS.md` (32)–(36) |
+| **6. `label.py` — silhouette, accuracy, graph-side checks** | **Next** (step 2 unblocked it; the kNN accuracy family already landed at step 3) |
 | 7. Registry, `evaluate_layout`, `batch_layout_metrics`, persistence | not started |
 | 8. λ sweep and selection, seeds, straight/curved variants | not started |
 | 9. Bugs §1.4, §1.5, §1.7; graph *t*-SNE baseline | not started |
@@ -55,14 +48,80 @@ Section 5 numbers before step 8.
 6. `docs/CROSSING_GEOMETRY.md` — **for step 5 specifically**: the crossing algorithm in full,
    with the derivation, the measurements and the degeneracy analysis. Spec §2.4 is the summary;
    this is the reference.
-7. [`docs/plans/step5-crossings.md`](plans/step5-crossings.md) — **the plan for the step in
-   progress: approved, current, and not yet started.** It records the pre-implementation
-   verification of the guide, the measured $K$, and two decisions already taken.
-   [`step2-datasets.md`](plans/step2-datasets.md), [`step3-metrics.md`](plans/step3-metrics.md)
-   and [`step4-visual.md`](plans/step4-visual.md) are **history**, kept for their record of where
-   the implementation departed from them — the departures themselves are in `DECISIONS.md`.
+7. All four plan files — [`step2-datasets.md`](plans/step2-datasets.md),
+   [`step3-metrics.md`](plans/step3-metrics.md), [`step4-visual.md`](plans/step4-visual.md) and
+   now [`step5-crossings.md`](plans/step5-crossings.md) — are **history**, kept for their record
+   of where the implementation departed from them. The departures themselves are in
+   `DECISIONS.md`. Step 6 has no plan yet.
 
 ---
+
+## What landed in session 5
+
+Spec §7 step 5, in nine commits — **750 tests, up from 656**; all eight `paper_figures` functions
+still render and Figure 3 is bit-identical to its pre-rewrite output. The plan
+([`plans/step5-crossings.md`](plans/step5-crossings.md)) held; the five departures are
+`DECISIONS.md` (32)–(36).
+
+- **`twin/geometry.py`** — the γ kernel, the γ→Bézier conversion, the power form, the bulge, the
+  exact AABB and the closed-form arc length, shared by `plots.draw_curved_edges` and the metrics.
+  The refactor is pinned bit-for-bit against the curves `draw_curved_edges` plotted before it.
+- **`twin/metrics/crossings.py`** — `edge_curves` (layer 1), `crossing_pairs` /
+  `crossing_pairs_report` (layer 2), `crossing_number` / `crossings_per_edge_pair` /
+  `length_weighted_crossings` (layer 3), and `detour_ratio`. No sampling anywhere; `n_samples`
+  does not exist.
+- **`plots.count_intersections` is built on layer 2**, behaviour-preserving against a pin taken
+  first. The tree now holds one intersection routine.
+- **`common.edge_index_array`** — the `G.edges()`-ordered endpoint array, lifted out of
+  `edge_lengths` so the crossing layer indexes edges through the same function.
+- **The golden file grew by 10 keys, additively.** Both §4.3 variants of all three crossing
+  metrics, plus `detour_ratio`.
+
+### What the measurements said
+
+- **The guide reproduces to the digit.** $K$ is *identical* to the pre-work measurement on all
+  three datasets (27 058 / 1 380 736 / 11 375 494) and $Q_4$'s distribution matches to three
+  digits. Two of its figures were understatements: the Bernstein filter rejects **46–59 %** on
+  real layouts rather than 35 %, and §4.3 costs **1.7×** rather than 2× because at γ=0 no quartic
+  is built at all.
+- **0 disagreements over 19 586 non-adjacent candidate pairs** of a real football twin layout,
+  against a 1200-segment polyline oracle, plus 1200 random pairs at three γ. Two adjacent pairs
+  disagree and **the exact method is the one that is right**: re-solved at 50 digits, both have a
+  genuine second root distinct from the shared-vertex root — one at $s = 1.4956546183\times10^{-6}$
+  against $1.4956546170\times10^{-6}$ from the double-precision solve — which a 1200-segment
+  polyline cannot separate from the endpoint.
+- ⚠️ **Tolerances do not survive contact with the large dataset.** Two of them were designed
+  against `football_2023`, where the data shows a clean gap, and `digits` turned out to be a
+  **continuum** in the same quantity. That killed the distance-based shared-vertex rule outright
+  (DECISIONS (32)); the replacement divides the known root out of the quartic and has no
+  tolerance at all. **Check a tolerance's distribution on `digits` or `tabula` before believing
+  a gap on a small graph.**
+- **The coupled $\lVert D\rVert$ / $Q_4$ band that the guide predicts is empty**, and not because
+  of $\varepsilon_{\text{lin}}$ — the deflation closes it before the conditioning can matter
+  ((33)). Verified across twelve decades with constructed pairs, since no real layout populates
+  the band at all.
+- **Cost, and (31)'s call: stay in NumPy.** Tabula is **40.2 s curved / 28.9 s straight** end to
+  end, peak +428 MB, which is 1.3× over (31)'s line rather than the 1.5–2× the plan estimated.
+  Rung 2 of the escalation — parallelism across layouts — is untouched and **belongs to step 7's
+  runner**.
+- **γ=0 is a numerically special case that does not announce itself.** `arc_length`'s first
+  implementation was out by a factor of 2 on the entire straight variant, because at γ=0 the
+  quadratic coefficient is not bitwise zero but rounding noise *with an arbitrary direction* —
+  so a collinearity guard reads the noise as a real direction. Three branches, not the spec's
+  two ((35)).
+
+### Where step 6 starts
+
+No plan file exists yet. What step 5 leaves for it:
+
+- **Scope is silhouette (eqs. 49–52) and the graph-side variants (53–55, 61–64).** The kNN
+  accuracy family already landed at step 3, so `label.py` exists and is half-built.
+- **`MetricSpec` / `METRIC_REGISTRY` / `evaluate_layout` are still step 7** — the boundary steps
+  3, 4 and 5 all held. Step 5's one concession to it is the `crossings=` argument on the three
+  layer-3 metrics, which exists so the registry can solve once and summarise three times.
+- **The crossing metrics are the expensive ones and the runner must know it.** 40 s per tabula
+  layout, 428 MB peak, and the grid is ~150 layouts. §2.5's cost class still says the wrong thing
+  (it names SNS and Sil\*), which matters at step 7, not step 6.
 
 ## What landed in session 4
 
@@ -347,7 +406,7 @@ from 94**; all eight `paper_figures` functions still render.
 
 ## ⚠️ Broken in the environment, not in the tree: `sfdp` / `YifanHuLayout`
 
-**`venv/bin/python -m pytest` currently reports 654 passed, 2 failed. Neither failure is ours.**
+**`venv/bin/python -m pytest` currently reports 750 passed, 2 failed. Neither failure is ours.**
 
 ```
 FAILED tests/test_embedding.py::test_every_method_touches_exactly_the_form_it_declares[yifanhu]
@@ -398,7 +457,7 @@ doing its job.
 ## Health check
 
 ```bash
-venv/bin/python -m pytest -q          # 654 passing, 2 failing (sfdp — see above), 1 deselected
+venv/bin/python -m pytest -q          # 750 passing, 2 failing (sfdp — see above), 1 deselected
 venv/bin/python -m pytest -q -m slow  # the opt-in tabula figure, ~2 min
 python -m twin.report            # the roster table; regenerates docs/DATASET_REPORT.md with -o
 git status --short               # clean; if notebooks appear modified, the filter is unset
@@ -422,17 +481,19 @@ one of the eight.)
 | `EvaluationContext.release()` exists but nothing calls it, and it now drops three arrays rather than one — tabula's closure is 200 MB and its condensed form another 100 MB. `clear_pairwise_cache()` and `clear_loo_cache()` are the same story | step 7 |
 | The neighbourhood metrics are not sweep-consistent on a layout with exact duplicates (`DECISIONS.md`). No registered dataset produces one; a crowding-heavy layout at large λ might | whenever a layout first collapses two points |
 | ~~Re-measure the §1.6 fix in quality terms~~ — done: recall separates disjointly over seven seeds, ADR and SNS do not | discharged |
-| ⚠️ **Spec §2.5's cost class is wrong.** It says SNS and Sil\* are what will not run on tabula; the largest n is 5007, so the O(n²) closure is 200 MB and `max_n=20000` never trips. The expensive metrics scale with **m** — crossings, 49368 edges on tabula | a run planner built on it would size the wrong thing: **steps 5 and 7** |
+| ⚠️ **Spec §2.5's cost class is wrong, and now it is quantified.** It says SNS and Sil\* are what will not run on tabula; the largest n is 5007, so the O(n²) closure is 200 MB and `max_n=20000` never trips. The expensive metrics scale with **m**: crossings on tabula is **40 s and +428 MB per layout**, against seconds for everything else | a run planner built on it would size the wrong thing: **step 7** |
 | Memory runs need **one case per process**: `peak_mem_mb` is a delta from the entry baseline, and glibc does not always return freed memory, so later cases in a batch measure from a higher floor | step 7 |
 | A persisted layout must store the dataset's registry **name and params**, never the `Dataset` object | step 7 |
 | `common_init` is not in the batch runner — deliberately deferred, since it needs the seed axis and the paired protocol; the column-slicing convention it depends on is already tested | step 8 |
 | `openTSNE` and `fa2_modified` not installed | step 9 |
-| One legacy `(d, n)` surface: `graph_embedding_all` → `paper_figures` → `plots`, and with it `twin/graphmatrix.py`'s pre-restructure classes and their `.affinity` / `.distance` shim | converges at steps 5 and 10; tracked in `DECISIONS.md` (2) |
+| ⚠️ **Crossing output is big.** A tabula layout produces 2.9 M crossing rows (139 MB as `(k, 6)`). The three layer-3 metrics take `crossings=` so one solve serves all three, but nothing yet *enforces* that, and persisting the array rather than the scalars would be a mistake | **step 7** |
+| `QUERY_CHUNK_EDGES = 1024` is the crossing pipeline's memory bound, measured on tabula. A runner that parallelises across layouts multiplies it by the worker count | step 7 |
+| One legacy `(d, n)` surface: `graph_embedding_all` → `paper_figures` → `plots`, and with it `twin/graphmatrix.py`'s pre-restructure classes and their `.affinity` / `.distance` shim. **Half discharged**: `count_intersections` is now layer 2 and transposes at its own boundary; `drawedges` / `draw_curved_edges` and `graph_embedding_all` are what remain | the rest converges at **step 10**; tracked in `DECISIONS.md` (2) |
 | Tabula's Leiden partition is still computed inside `tabula_sapiens_teaser` rather than registered as a `detected:leiden` label set | step 10, where the consumer and the cost land together |
 | ~~**Open:** VNR's normaliser~~ — **closed session 4**: the per-vertex median. Still one `[THESIS EDIT]`; eq. (69) never changed | discharged |
 | ~~**Open:** `SpectralLayout`'s Laplacian~~ — **closed session 4**: Hall's $D-W$ is the default, Koren's is selectable and reported once, §1.5's solver fix landed with it. §2.2's "hubs collapse inward" is now measured — true on hub graphs, false on the $k$-NN graphs, so **the thesis prose wants a qualifier** | thesis prose, before submission |
 | ⚠️ **`SpectralLayout` still does not handle a disconnected graph** — the zero eigenvalue's multiplicity is the component count, so column 0 is not the only trivial vector and the layout would keep component indicators as coordinates. §1.5's other half; §4.4's policy covers metrics, not the layout side | whenever a disconnected dataset joins the roster |
-| Two scheduled code divergences from the thesis: `count_intersections` versus eq. (78), and `fa2` → `fa2_modified` — spec §0.5's table | **steps 5 and 9** |
+| ~~Two scheduled code divergences from the thesis~~ — **one left**: `fa2` → `fa2_modified`. `count_intersections` versus eq. (78) was reclassified at step 5 as a **standing intentional divergence** for Figure 3, not a fix; §0.5's table now says so | `fa2`: **step 9** |
 | Step 9 is lighter than the table says: **§1.5 is done** (session 4), so what remains there is §1.4, §1.7 and the graph *t*-SNE baseline | step 9 |
 | Cache loop order: evaluate every metric of one layout before moving to the next, or a two-entry cache evicts on every switch. Nothing enforces it yet | **step 7**, the batch runner |
 | **Open, needs the author's call:** VNR's `"mean"` normaliser is **exactly** NND$_1$, so under the `[THESIS EDIT]` the point-crowding column is NND at two values of $k$; the thesis's `"max"` is a genuinely second measurement but is distorted by outlier vertices. Both are implemented, both are in the golden file, and the comparison §0.5 asked for is done — `DECISIONS.md` | before the results tables are designed: **step 11**, but the decision can be taken now |

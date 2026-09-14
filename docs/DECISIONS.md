@@ -1311,3 +1311,118 @@ intentional divergence for that figure**, not a scheduled fix. The table current
 latter ("step 5 reimplements it on layer 2 anyway"), which will be wrong the moment step 5 lands:
 the reimplementation happens and the divergence deliberately survives it. Step 5's last commit
 moves that row.
+
+## Step 5 departures from `plans/step5-crossings.md`, and why
+
+Nine commits, as planned, and the plan held. Four places where implementation contradicted it or
+the guide, each found by measurement rather than by reading.
+
+### (32) The shared-vertex root is **divided out**, not filtered out by distance
+
+(13) says to discard intersection points lying within `tol` of the position of a vertex the two
+edges share *by index*. Shared-ness by identity survives; **the `tol` does not**, because there is
+nowhere safe to put it. On a `digits` twin layout the distance from a root to its pair's shared
+vertex is a **continuum** with no gap:
+
+| distance to the shared vertex | roots |
+|---|---|
+| $< 10^{-12}$ | 166 286 |
+| $[10^{-12}, 10^{-9})$ | 208 |
+| $[10^{-9}, 10^{-7})$ | 54 |
+| $[10^{-7}, 10^{-6})$ | 326 |
+| $[10^{-6}, 10^{-5})$ | 1 488 |
+| $[10^{-5}, 10^{-4})$ | 3 246 |
+
+`football_2023` happens to show a clean gap at $[10^{-7}, 10^{-6})$ and would have suggested a
+threshold there — a good example of why the small graph proves nothing. Worse, a tight threshold
+mislabels in *both* directions: a football pair whose root sat $9.7\times10^{-8}$ from the shared
+vertex **was** the vertex (verified against a 50-digit solve), while two other pairs had genuine
+second crossings at $1.5\times10^{-6}$ and $1.2\times10^{-4}$ in the curve parameter.
+
+The replacement uses what identity already tells us. Both curves pass through the shared vertex,
+so $s \in \{0, 1\}$ is a **known root** of the quartic: reflect $s=1$ to $u=1-s$ and drop the
+constant term. Exact, no tolerance, no coordinate comparison at all — which is more faithful to
+(13)'s intent than (13)'s own mechanism — and a genuine crossing arbitrarily close to the shared
+vertex survives, which is what makes the $1.5\times10^{-6}$ case come out right.
+
+The segment path gets the same rule for free and exactly: two distinct lines meet in at most one
+point, both curves pass through the shared vertex, so an adjacent pair's proper intersection *is*
+that vertex. Only a collinear overlap survives.
+
+### (33) The $\lVert D\rVert$ / $Q_4$ band is empty, and `EPS_LIN` is not why
+
+(30) as corrected predicts a band where $\lVert D_A\rVert$ sits just above the straight-edge
+cutoff — so no segment dispatch — while $Q_4 = -16\det(D_A,D_B)^2$ is already small enough to
+wreck the companion matrix. It was looked for with **constructed** pairs sweeping
+$\lVert D\rVert$ across twelve decades, since no real layout populates it (minimum
+$\lVert D\rVert$ on a football twin layout is $5.5\times10^{-4}$):
+
+| $\lVert D_B\rVert$ | $\lvert Q_4\rvert/\max\lvert Q\rvert$ | companion cond. | count | point error |
+|---|---|---|---|---|
+| $10^{-1}$ | 4.4e-2 | 2.4e1 | 1 ✓ | 5.7e-16 |
+| $10^{-4}$ | 4.0e-8 | 2.5e7 | 1 ✓ | 7.8e-16 |
+| $10^{-7}$ | 4.1e-14 | 2.5e13 | 1 ✓ | 2.2e-15 |
+| $10^{-9}$ | 4.0e-18 | 2.5e17 | 1 ✓ | 2.5e-16 |
+
+**The deflation closes it.** By the time the conditioning could matter, $|Q_4|/\max|Q|$ is already
+below `EPS_DEFLATE` and a well-conditioned cubic is solved instead — so the two thresholds are
+coupled in principle and the coupling is broken in practice by a third one. `EPS_LIN`'s only real
+job is routing an exactly-zero bulge (γ=0, or a vertex-only layout) to the segment path. The same
+sweep with *both* curves near-straight, and with exactly parallel bulges ($Q_4 = 0$ exactly), also
+comes out right.
+
+$Q_4$'s own distribution reproduces the guide to three digits: **0 %** of football's 27 058
+candidate pairs below $10^{-9}$, 0.0517 % below $10^{-6}$, 2.9566 % below $10^{-3}$ (guide: 0 %,
+0.05 %, 2.96 %).
+
+### (34) $K$ reproduces exactly, and the broad phase needs a box pad to do it
+
+$K$ came out **identical to (31a)'s measurement on all three datasets** — 27 058 / 1 380 736 /
+11 375 494 — but only with the exact boxes grown by $10^{-12}$ before the overlap query. Without
+the pad, football gives 26 909 and karate loses 9 of 2154 pairs: two edges sharing a vertex touch
+*exactly* there, and when that point is extremal in the same coordinate for both curves, the two
+box coordinates come from different expressions — an endpoint on one side, the closed-form
+stationary value on the other — and differ by a couple of ulp, so the query calls the boxes
+disjoint. It is not a geometric tolerance: nothing downstream reads it and it cannot create a
+crossing, it only restores "never discards a crossing pair".
+
+### (35) `arc_length` needs three branches, and γ=0 lands in the one the spec did not name
+
+§2.2 gives two guards: $a \approx 0$ (straight) and $4ac = b^2$ (the cusp). **An exact-zero test
+for the first is wrong**, and wrong on the entire straight variant. At γ=0 the quadratic
+coefficient $w$ is not bitwise zero; it is a rounding residue with an *arbitrary direction*, so
+the collinear test reads the noise as a real direction and the antiderivative divides by
+$a \sim 10^{-33}$. The first implementation was out by a factor of 2 on every straight edge.
+
+Measured against 40-digit quadrature, the closed form's relative error grows as
+$10^{-16}/(\lVert w\rVert/\lVert u\rVert)$ — $2.6\times10^{-2}$ at a ratio of $10^{-14}$, 2.8 at
+$10^{-16}$ — while the $2\lVert u\rVert$ approximation errs by about half the ratio. A three-term
+binomial series covers $\lVert w\rVert \le 10^{-3}\lVert u\rVert$ to $10^{-12}$ and is exact when
+$w$ really is zero, so the whole range is now good to ~1e-12.
+
+### (36) Timings, and (31)'s call: **stay in NumPy**
+
+End-to-end on a tabula twin layout, single process, `QUERY_CHUNK_EDGES = 1024`:
+
+| variant | $K$ | crossings | Bernstein rejects | time | peak |
+|---|---|---|---|---|---|
+| curved γ=0.5 | 11 375 494 | 2 893 169 | 58.6 % | **40.2 s** | +428 MB |
+| straight γ=0 | 11 359 536 | 2 868 965 | — (segment path) | **28.9 s** | +436 MB |
+
+40 s against (31)'s ~30 s line is 1.3× over, not the 1.5–2× the plan estimated from per-stage
+costs. The ordered escalation of (31) says compiling is not the next rung: rung 1 (the exact box)
+is in, and **rung 2 — parallelism across layouts — is untouched and belongs to step 7's runner**.
+A compiled version is a different algorithm to test, for a metric that runs once per layout.
+§4.3 costs **1.7×**, not 2×, because at γ=0 no quartic is built at all.
+
+`QUERY_CHUNK_EDGES` is the memory bound and was measured, not guessed: 4096 → 40.2 s / +768 MB,
+**1024 → 39.4 s / +428 MB**, 256 → 39.4 s / +492 MB, with identical counts at every setting.
+
+Two smaller things the plan did not cover:
+
+- **The Bernstein filter rejects 46–59 % on real layouts** (football 46.2 %, digits 56.3 %, tabula
+  58.6 %), better than the guide's Revision-3 figure of 35 % and much better than R1's 21 %.
+- **`include_adjacent` changes no count in a *straight* drawing**, except for collinear overlap.
+  Two distinct straight edges sharing a vertex meet only there, and that is excluded by identity
+  either way. So `count_intersections`' divergence from eq. (78), while real and standing, is
+  vacuous for the figure it serves unless four vertices are collinear.

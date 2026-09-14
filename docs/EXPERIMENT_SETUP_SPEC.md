@@ -516,7 +516,7 @@ The five divergences, each with what should happen to it:
 |---|---|
 | ~~`SpectralLayout` reads the symmetric-normalised Laplacian~~ | **closed, session 4** — the code moved to Hall's $L_w = D - W$, eqs. (12)–(14). See the session-4 block below; the "different trivial eigenvector" reasoning was itself wrong, and the real argument is that the old layout contradicted §2.2's description of it |
 | `knn_accuracy`'s default `tie_rule="fractional"` makes eq. (60) an expectation over tie-breakings rather than an Iverson-bracket fraction of vertices. §2.3 asks for it deliberately; the thesis states no tie convention at all | new **[THESIS EDIT]** — prose |
-| `plots.py::count_intersections` skips edge pairs sharing a vertex and counts only `Point` intersections; eq. (78) says explicitly that such pairs are **not** excluded, and §2.4's degeneracy convention counts collinear overlap as 1. Latent today: its only caller is `tree_of_cliques`, on straight segments, where a shared endpoint cannot produce a crossing | code, **step 5**, which reimplements it on layer 2 anyway |
+| `plots.py::count_intersections` skips edge pairs sharing a vertex and counts only `Point` intersections; eq. (78) says explicitly that such pairs are **not** excluded, and §2.4's degeneracy convention counts collinear overlap as 1 | ⚠️ **standing intentional divergence, not a scheduled fix — changed at step 5.** The function *was* reimplemented on layer 2 (session 5, commit 8), and it passes `include_adjacent=False` so the rewrite stays behaviour-preserving and Figure 3 does not move (DECISIONS (31a)). The thesis convention lives in `crossing_pairs`' own default and is what §4.3 reports. Do not close this as an outstanding bug. Measured afterwards: in a *straight* drawing the flag changes no count except for collinear overlap, since two distinct straight edges sharing a vertex meet only there and layer 2 excludes that by identity either way — DECISIONS (36) |
 | §2.3 of the thesis names the `fa2` package; §1.7 here plans the move to `fa2_modified` for reproducibility | code, **step 9**; the prose follows the code |
 | §2.1.1 says a disconnected graph's components "can be identified and the algorithm applied to each component separately"; §0.5 decision 3 refuses exactly that (`"components"` raises). §3.1.1 already defers to "the convention specified in the experimental setup", so only that one sentence diverges | new **[THESIS EDIT]** — prose |
 
@@ -650,6 +650,35 @@ degree 3 and above, where implicitisation gives degree 9 or 25 instead of 4.
 ⚠️ **The cost estimate has exactly one free parameter: $K$, the number of candidate pairs
 surviving the broad phase.** Everything else in it is measured. Print $K$ on the largest layout as
 soon as the broad phase runs, before building anything downstream of it — see DECISIONS (31).
+
+---
+
+### Session 5 corrections — what implementing step 5 established
+
+The block above is **pre-work**; this is what happened when it was built. `crossings.py` and
+`twin/geometry.py` exist, the guide's algorithm is confirmed on real layouts, and five of its
+details needed changing. Full detail and the measurements: `DECISIONS.md` (32)–(36).
+
+**The guide holds where it was measured, and reproduces to the digit.** $K$ came out *identical*
+to (31a) on all three datasets (27 058 / 1 380 736 / 11 375 494) and $Q_4$'s distribution matches
+to three digits (0 % / 0.0517 % / 2.9566 % below $10^{-9}$ / $10^{-6}$ / $10^{-3}$). Against a
+1200-segment polyline oracle the exact method agreed on **19 586 of 19 586** non-adjacent
+candidate pairs of a real football twin layout, and on 1200 random pairs across three γ.
+
+| was | now |
+|---|---|
+| (13)/(29): discard roots within `tol` of the shared vertex's *position* | the shared-vertex root is **divided out of the quartic** — its parameter is known from identity, so no tolerance exists. There is nowhere safe to put one: the root-to-vertex distance is a continuum from $10^{-14}$ to $10^{-3}$ on `digits` — (32) |
+| (30): choose $\varepsilon_{\text{lin}}$ so the coupled $\lVert D\rVert$ / $Q_4$ band is empty | the band is empty **because of the deflation**, not because of $\varepsilon_{\text{lin}}$; verified across twelve decades of $\lVert D\rVert$ with constructed pairs — (33) |
+| the broad phase queries the exact boxes | the boxes must be **padded by $10^{-12}$** first, or shared-vertex touches are lost to a 2-ulp disagreement between two ways of computing one coordinate, and $K$ comes out 0.55 % low — (34) |
+| §2.2: `arc_length` guards $a\approx0$ and $4ac=b^2$ | **three** branches. γ=0 does not give $a=0$ bitwise; it gives rounding noise with an arbitrary direction, which the collinear guard reads as a real direction. A series branch covers it — (35) |
+| (31): compile if a layout costs more than ~30 s | **stay in NumPy.** Tabula is 40.2 s curved / 28.9 s straight end to end, and rung 2 of (31)'s escalation — parallelism across layouts — is untouched and belongs to step 7's runner — (36) |
+
+Two figures in §2.4 are now understatements: the Bernstein filter rejects **46–59 %** on real
+layouts, not 35 %, and §4.3 costs **1.7×** rather than 2×, because at γ=0 no quartic is built.
+
+⚠️ **The divergence table above has been edited**: `count_intersections` versus eq. (78) moved
+from "scheduled fix" to **standing intentional divergence**. The reimplementation happened and
+the divergence deliberately survived it.
 
 ## 1. Bugs to fix first
 

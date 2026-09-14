@@ -31,8 +31,13 @@ import numpy as np
 from twin.datasets import load_dataset
 from twin.metrics import (
     adjacency_distance_ratio,
+    crossing_number,
+    crossing_pairs,
+    crossings_per_edge_pair,
+    detour_ratio,
     edge_length_cv,
     edge_lengths,
+    length_weighted_crossings,
     knn_accuracy,
     knn_jaccard,
     knn_precision,
@@ -67,6 +72,21 @@ def karate_structured_layout(graph: nx.Graph) -> np.ndarray:
     return np.column_stack([labels * 0.6, degrees * 0.2]) + jitter
 
 
+def karate_edge_points(graph: nx.Graph, X: np.ndarray, bulge: float = 0.3) -> np.ndarray:
+    """Edge points at a fixed perpendicular offset from each chord, in ``G.edges()`` order.
+
+    The golden layout is vertex-only, and the crossing metrics need an edge point per edge to
+    have anything curved to measure. This rule is arbitrary but **deterministic and
+    RNG-free** — a fixed fraction of the chord, rotated 90° — which is all a golden file needs:
+    its job is to notice movement, not to be a realistic drawing.
+    """
+    edges = np.array(list(graph.edges()))
+    start, end = X[edges[:, 0]], X[edges[:, 1]]
+    chord = end - start
+    perpendicular = np.stack([-chord[:, 1], chord[:, 0]], axis=1)
+    return (start + end) / 2 + bulge * perpendicular
+
+
 def build() -> dict:
     dataset = load_dataset("karate_weighted")
     ctx = EvaluationContext.for_dataset(dataset)
@@ -88,10 +108,34 @@ def build() -> dict:
         "node_resolution_vertexwise@max": node_resolution_vertexwise(X, "max"),
         "node_resolution_vertexwise@mean": node_resolution_vertexwise(X, "mean"),
         "edge_length_cv": edge_length_cv(X, dataset.graph),
-        # Eq. (80), the mean edge length LWCr will normalise by — pinned now so that step 5
-        # inherits a fixed value rather than establishing one.
+        # Eq. (80), the mean edge length LWCr normalises by — pinned at step 4 so that step 5
+        # inherited a fixed value rather than establishing one.
         "edge_lengths@mean": float(edge_lengths(X, dataset.graph).mean()),
     }
+
+    # Spec §2.4, added at step 5. Both variants of §4.3 are pinned, because they exercise
+    # different code paths: at γ=0 every pair takes the segment branch and no quartic is ever
+    # built. LWCr's weights are the chord and so are identical between the two — that is the
+    # property the straight-versus-curved comparison rests on, and two keys that share a
+    # normaliser are how a change to it becomes visible.
+    E = karate_edge_points(dataset.graph, X)
+    for variant, edge_points, gamma in (("straight", None, 0.5), ("curved", E, 0.5)):
+        rows = crossing_pairs(dataset.graph, X, edge_points, gamma=gamma)
+        values[f"crossing_number@{variant}"] = crossing_number(
+            dataset.graph, X, edge_points, gamma=gamma, crossings=rows
+        )
+        values[f"crossings_per_edge_pair@{variant}"] = crossings_per_edge_pair(
+            dataset.graph, X, edge_points, gamma=gamma, crossings=rows
+        )
+        values[f"length_weighted_crossings@{variant}"] = length_weighted_crossings(
+            dataset.graph, X, edge_points, gamma=gamma, crossings=rows
+        )
+        # The bulge above is a fixed *fraction* of each chord, so every curved edge has the same
+        # shape and the mean and max detour ratios coincide -- a free check that the ratio is
+        # scale-free, on top of pinning the value.
+        ratios = detour_ratio(dataset.graph, X, edge_points, gamma=gamma)
+        values[f"detour_ratio@{variant}_mean"] = float(ratios.mean())
+        values[f"detour_ratio@{variant}_max"] = float(ratios.max())
     # The two distributions are arrays and are deliberately not summarised by the metric
     # (§3.1.3). They still have to be pinned, or a silent move in either is invisible until
     # step 11 plots it — so three order statistics each, which is a summary of the *fixture*

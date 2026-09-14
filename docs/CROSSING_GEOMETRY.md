@@ -12,6 +12,14 @@ subdivision fallback. Measurement showed the triangle filter costs 3x what it sa
 vectorised implementation, and subdivision is unnecessary for quadratics. Both removed,
 along with the flatness / recursion-depth analysis that supported them.
 
+**Revision 4 (post-implementation).** The algorithm was built (session 5, spec §7 step 5) and
+runs on real layouts. Everything R3 measured **reproduced, to the digit**: K is identical on all
+three datasets and the Q4 distribution matches to three digits. Five details changed, each marked
+inline and recorded in `DECISIONS.md` (32)-(36): the broad phase needs a **box pad** (§2); the
+Bernstein rejection rate is **46-59 %**, not 35 % (§4); the shared-endpoint root is **divided out**
+rather than filtered by distance (§5); the coupled ||D|| / Q4 band is empty **because of the
+deflation**, not because of eps_lin (§5); and the C question is **settled: stay in NumPy** (§4).
+
 **Revision 3 (pre-implementation verification).** Everything load-bearing in R2 was
 independently re-derived and re-measured before step 5 began, and it holds: the gamma kernel
 is the quadratic Bezier to 5.1e-15, the exact AABB is tight (0 failures / 3000, and it equals
@@ -71,6 +79,15 @@ per *edge*, not per pair, so 6 ms for all of tabula. Since candidate counts scal
 area, this also cuts K by roughly a third.
 
 Guard: denominator is zero for a straight edge; then the endpoints are the whole range.
+
+⚠️ **R4: pad the boxes by 1e-12 (unit-box units) before querying the tree.** Two edges that share
+a vertex touch *exactly* there, and when that point is extremal in the same coordinate for both
+curves the two box coordinates are computed by different expressions — an endpoint on one side,
+the closed-form stationary value on the other — and can differ by a couple of ulp. Unpadded, the
+query reports the boxes as disjoint: K comes out 0.55 % low on football (26909 against the
+measured 27058) and karate loses 9 of 2154 pairs. With the pad, K reproduces §6's table exactly
+on all three datasets. It is not a geometric tolerance — nothing downstream reads it and it
+cannot create a crossing.
 
 ## 3. Intersections: one quartic per pair
 
@@ -139,6 +156,10 @@ beta_j = sum_{k<=j} [ C(j,k) / C(4,k) ] * Q_k        # fixed 5x5 triangular map
 
 **65 ns/pair, rejects 35 %** — measured on a real `football_2023` twin layout (K = 27058).
 The 108 ns / 21 % in R1 came from random curves and understates the filter on real data.
+
+⚠️ **R4: it is better still.** In the built pipeline the filter rejects **46.2 %** on football,
+**56.3 %** on digits and **58.6 %** on tabula. Nobody should "optimise" a stage that is already
+paying for itself an order of magnitude over.
 
 **No false negatives for transversal crossings, and that is a theorem rather than a
 measurement:** the hull property gives `min(beta) <= min Q < 0 < max Q <= max(beta)`, so a
@@ -240,6 +261,15 @@ case for C — the metric runs once per layout. Cheaper escalations first: the e
 cuts K ~1/3 for 6 ms), parallelism across layouts (the grid is embarrassingly parallel),
 and the length-thresholded variant (shrinks m directly).
 
+⚠️ **R4: settled — stay in NumPy.** Measured end to end on a tabula twin layout, one process:
+**40.2 s curved** (K = 11375494, 2893169 crossings) and **28.9 s straight**, peak +428 MB. That is
+1.3x over the 30 s line, and the escalation order says C is not the next rung: the exact box is
+already in, and parallelism across layouts is untouched and belongs to step 7's runner. Note also
+that §4.3 costs **1.7x**, not 2x, because at gamma=0 no quartic is built at all.
+
+Memory is bounded by chunking the *query*, not the solve: 4096 edges/query -> 768 MB,
+**1024 -> 428 MB**, 256 -> 492 MB, identical counts throughout.
+
 ## 5. Degeneracies
 
 `D` and `beta` bound nothing in this design; they appear only here.
@@ -248,9 +278,9 @@ and the length-thresholded variant (shrinks m directly).
 |---|---|---|
 | Straight edge | `norm(D) < eps * scale` | segment–segment test (also covers gamma=0 and A_V layouts) |
 | Collinear controls | `abs(beta) < eps` | segment path over swept interval |
-| **Near-straight curve** (R2 called this "parallel bulges") | `abs(Q4) < eps` — `Q4 = -16 det(D_A,D_B)^2`, small when **either** bulge is small | deflate to cubic or lower before the companion matrix. ⚠️ this `eps` is **coupled** to the straight-edge one above — see §4 |
+| **Near-straight curve** (R2 called this "parallel bulges") | `abs(Q4) < eps` — `Q4 = -16 det(D_A,D_B)^2`, small when **either** bulge is small | deflate to cubic or lower before the companion matrix. ⚠️ R3 called this `eps` **coupled** to the straight-edge one; **R4: the band is empty, and the deflation is why.** Swept across twelve decades of \|\|D\|\| with constructed pairs, the count stays right and the point stays within 2.5e-15 of both curves even where the undeflated companion matrix would have condition number 2.5e17 — by then `|Q4|/max|Q|` is below the deflation threshold and a well-conditioned cubic is solved instead. `eps_lin`'s real job is only routing an exactly-zero bulge to the segment path |
 | Identical / overlapping | all `Q_k ~ 0` | count as exactly 1 (spec convention); detect before root-finding |
-| Adjacent edges | shared vertex | exclude roots at the shared vertex **by vertex identity**, not coordinate; keep genuine second crossings |
+| Adjacent edges | shared vertex | ⚠️ **R4: divide the known root out of the quartic** (reflect s=1 to u=1-s, drop the constant term). Still by vertex identity, now with no tolerance at all. A distance test has nowhere safe to sit — on digits the root-to-shared-vertex distance is a continuum from 1e-14 to 1e-3 — and it mislabels both ways: a football root at 9.7e-8 *was* the vertex, while genuine second crossings occur at 1.5e-6. Deflation keeps those |
 | Tangency | double real root | count as 1; report near-tangential pair count alongside Cr |
 | Scale | — | normalise layout to unit bounding box first |
 
