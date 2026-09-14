@@ -13,9 +13,9 @@ import seaborn as sns
 
 from sklearn.metrics import pairwise_distances
 
-from shapely.geometry import LineString
-
 from twin import geometry
+from twin.metrics.crossings import crossing_pairs
+from twin.metrics.visual import edge_lengths
 
 
 def block_adj(A, b=7):
@@ -574,46 +574,50 @@ def draw_metrics(experiment, figsize=(12 * 2 / 3, 8 * 2 / 3)):
 
 
 def count_intersections(G, y):
-    edges = []
-    lines = []
-    for e in G.edges():
-        edges += [e]
-        lines += [LineString([y[:, e[0]], y[:, e[1]]])]
+    """Crossings against a length threshold — the data behind the paper's Figure 3.
 
-    lengths = np.array(list(map(lambda l: l.length, lines)))
+    Returns ``(lengths, per_edge, cumulative)``, all **sorted by decreasing edge length**:
+    the chord lengths, how many crossings each edge is involved in, and the running total of
+    crossings among the edges at least that long.
+
+    Reimplemented on `twin.metrics.crossings` at spec §7 step 5, so the tree holds one
+    intersection routine rather than two. ⚠️ **It keeps `include_adjacent=False`, permanently and
+    by intent** (DECISIONS (31a)): the shapely version skipped edge pairs sharing a vertex, and
+    preserving that is what keeps the rewrite behaviour-preserving and Figure 3 where it was. The
+    thesis convention is the opposite — eq. (78) counts those pairs — so this is a **standing
+    intentional divergence for this figure**, not a defect awaiting repair. The thesis convention
+    lives in `crossing_pairs`' own default and is what §4.3 reports.
+
+    `tests/test_plots.py` pins all three arrays against the pre-rewrite output.
+
+    Args:
+        G: the graph.
+        y: ``(d, n)`` vertex positions. ⚠️ This is the legacy orientation, which `plots.py` still
+            uses throughout (CLAUDE.md); the metric layer is ``(n, d)`` and the transpose happens
+            here, at the boundary.
+
+    Returns:
+        Three ``(m,)`` arrays in decreasing-length order.
+    """
+    V = np.asarray(y, dtype=float).T
+    m = G.number_of_edges()
+
+    lengths = edge_lengths(V, G)
     sorted_by_len = (np.argsort(lengths))[::-1]
 
-    intersections = np.zeros(len(edges))
-    cumulative_intersections = np.zeros(len(edges))
+    # Straight edges: E=None is the chord, which is what the shapely version drew.
+    crossings = crossing_pairs(G, V, None, include_adjacent=False)
+    a = crossings[:, 0].astype(np.int64)
+    b = crossings[:, 1].astype(np.int64)
 
-    for base, i in enumerate(sorted_by_len):
-        ei = edges[i]
-        li = lines[i]
+    intersections = np.bincount(a, minlength=m) + np.bincount(b, minlength=m)
 
-        cumulative_intersections[i] = cumulative_intersections[sorted_by_len[base - 1]]
+    # The cumulative curve counts each crossing once, at the shorter of its two edges -- which is
+    # the one that appears later in the descending order. Ties therefore break exactly as
+    # `argsort` breaks them, which is why the pin includes an all-ties fixture.
+    rank = np.empty(m, dtype=np.int64)
+    rank[sorted_by_len] = np.arange(m)
+    shorter = np.where(rank[a] > rank[b], a, b)
+    cumulative = np.cumsum(np.bincount(shorter, minlength=m)[sorted_by_len]).astype(float)
 
-        for j in sorted_by_len[:base]:
-            ej = edges[j]
-            lj = lines[j]
-
-            # If edges share a node, continue
-            if len(np.intersect1d(ei, ej)) > 0:
-                continue
-
-            # If edges geometrically cross, add a crossing and continue
-            if li.intersects(lj):
-                intersection_point = li.intersection(lj)
-
-                if intersection_point.is_empty:
-                    continue
-                if intersection_point.geom_type == "Point":
-                    intersections[i] += 1
-                    intersections[j] += 1
-
-                    cumulative_intersections[i] += 1
-
-    return (
-        lengths[sorted_by_len],
-        intersections[sorted_by_len],
-        cumulative_intersections[sorted_by_len],
-    )
+    return lengths[sorted_by_len], intersections[sorted_by_len].astype(float), cumulative
