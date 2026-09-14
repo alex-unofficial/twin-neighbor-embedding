@@ -22,10 +22,16 @@ from dataclasses import dataclass
 import networkx as nx
 import numpy as np
 import scipy.sparse as sp
+from scipy.spatial.distance import squareform
 from sklearn.metrics import silhouette_samples
 
 from twin.forms import SOURCE_KEY, graph_side
-from twin.metrics.common import _loo_neighbors, ideal_distances, require_n_by_d
+from twin.metrics.common import (
+    _loo_neighbors,
+    ideal_distances,
+    pairwise_distances,
+    require_n_by_d,
+)
 from twin.metrics.context import EvaluationContext
 
 
@@ -93,10 +99,11 @@ class SilhouetteReport:
 def _silhouette_report(data, labels: np.ndarray, *, metric: str, n_excluded: int = 0):
     r"""The mean of Rousseeuw's per-vertex scores, plus diagnostics — eqs. (49)-(52).
 
-    One core for both sides of the metric: ``metric="euclidean"`` over an ``(n, d)`` layout is
-    the layout score, ``metric="precomputed"`` over an ``(n, n)`` distance matrix is Sil\*. The
-    equations differ only in which $d$ they read, so implementing them twice would be two
-    chances to get $b_i$'s $1/|C|$ wrong (it is not $1/(|C|-1)$ — vertex $i$ is not in $C$).
+    One core for both sides of the metric, and both reach it as ``metric="precomputed"``: the
+    layout side squares up its cached ``pdist`` (see :func:`silhouette_report`) and Sil\* passes
+    the ideal distances. The equations differ only in which $d$ they read, so implementing them
+    twice would be two chances to get $b_i$'s $1/|C|$ wrong (it is not $1/(|C|-1)$ — vertex $i$
+    is not in $C$).
 
     **Both degenerate ends are handled here, because ``sklearn`` refuses both.** Its accepted
     range is $2 \le |\mathcal{L}| \le n-1$:
@@ -157,17 +164,30 @@ def silhouette_report(X: np.ndarray, labels: np.ndarray) -> SilhouetteReport:
         A :class:`SilhouetteReport`.
 
     Note:
-        ⚠️ **Invariant in exact arithmetic, invariant to about eight digits here.**
-        ``silhouette_samples`` computes Euclidean distances by the
-        $\lVert x\rVert^2 + \lVert y\rVert^2 - 2x\cdot y$ expansion, which loses digits for a
-        layout sitting far from the origin relative to its own extent: measured
+        **Distances come from ``pdist`` through the package's cache, not from ``sklearn``'s
+        ``metric="euclidean"``.** That route computes distances by the
+        $\lVert x\rVert^2+\lVert y\rVert^2-2x\cdot y$ expansion, which loses digits when the
+        layout sits far from the origin relative to its own extent —
         $1.8\times10^{-8}$ relative on `tabula`'s stored UMAP at an offset/extent ratio of 4000,
-        against $1.2\times10^{-14}$ when the same code is handed exact distances.
-        ``metric="precomputed"`` would remove it and is deliberately not used —
-        ``silhouette_samples`` chunks its Euclidean reduction and never materialises $(n, n)$,
-        where a precomputed matrix is 200 MB at tabula's size, once per label set. Real layouts
-        sit within a few multiples of their extent of the origin, where the deviation is
-        $10^{-14}$ or below (`tests/test_silhouette.py`).
+        against $10^{-14}$ here. That alone would not justify the change, since real layouts sit
+        within a few multiples of their extent of the origin; what does is that the exact route
+        is **also cheaper on both axes**, contrary to the obvious guess that a $(n, n)$ matrix
+        must cost more than a chunked reduction. Measured on `tabula` ($n = 5007$) and on a
+        12000-row extension of it:
+
+        =======  ====================  ====================
+        $n$      ``metric="euclidean"``  ``pdist`` + squareform
+        =======  ====================  ====================
+        5 007    0.91 s, +373 MB       0.60 s, +273 MB
+        12 000   4.71 s, +2039 MB      4.64 s, +1634 MB
+        =======  ====================  ====================
+
+        ``silhouette_samples`` does chunk its Euclidean reduction, but ``working_memory``
+        defaults to 1024 MB, so at these sizes it takes the whole matrix in one or two blocks
+        and its reduction allocates more than the matrix itself. And the condensed vector is
+        **shared**: :func:`~twin.metrics.common.pairwise_distances` caches it, so during a
+        metric sweep ADR, NND and the distributions have already paid for it and the marginal
+        cost here is the ``squareform`` copy.
 
     Note:
         ⚠️ **Coincident points inflate this metric**, as spec §0.5 decision 1 predicts: two
@@ -179,7 +199,13 @@ def silhouette_report(X: np.ndarray, labels: np.ndarray) -> SilhouetteReport:
     """
     labels = _as_labels(labels)
     X = require_n_by_d(X, labels.size, "X")
-    return _silhouette_report(X, labels, metric="euclidean")
+    if labels.size < 2 or np.unique(labels).size in (1, labels.size):
+        # Both degenerate ends short-circuit inside the core, so do not pay for an (n, n)
+        # matrix to reach them.
+        return _silhouette_report(np.empty((labels.size, 0)), labels, metric="precomputed")
+    return _silhouette_report(
+        squareform(pairwise_distances(X)), labels, metric="precomputed"
+    )
 
 
 def silhouette(X: np.ndarray, labels: np.ndarray) -> float:

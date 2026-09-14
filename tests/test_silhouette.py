@@ -217,9 +217,12 @@ def test_invariant_under_translation_rotation_and_uniform_scaling(
     ``scale_normalized_stress`` is built on).
 
     The tolerance is measured rather than guessed, and on `digits` and `tabula` rather than here
-    (CLAUDE.md): at these offsets the worst relative deviation is $7\times10^{-14}$ on this
-    fixture and $3\times10^{-12}$ at tabula's $n = 5007$. See the next test for why it is not
-    $10^{-12}$.
+    (CLAUDE.md): over ``pdist`` distances the worst relative deviation at these offsets is
+    $2\times10^{-15}$ on this fixture, $8\times10^{-16}$ on `digits` and $1\times10^{-16}$ at
+    tabula's $n = 5007$. On ``sklearn``'s ``metric="euclidean"`` the same three are
+    $7\times10^{-14}$, $2\times10^{-14}$ and $3\times10^{-12}$ — a decade short of this
+    tolerance at the largest $n$, which is the size the guess would have been wrong at. See the
+    next test.
     """
     X = karate_structured_layout
     base = silhouette(X, karate_labels)
@@ -229,33 +232,33 @@ def test_invariant_under_translation_rotation_and_uniform_scaling(
         [[math.cos(theta), -math.sin(theta)], [math.sin(theta), math.cos(theta)]]
     )
     for transformed in (X + 17.0, X @ rotation.T, X * 1e3, X * 1e-3):
-        assert silhouette(transformed, karate_labels) == pytest.approx(base, rel=1e-11)
+        assert silhouette(transformed, karate_labels) == pytest.approx(base, rel=1e-12)
 
 
-def test_translation_invariance_is_only_exact_to_about_eight_digits():
-    r"""⚠️ ``sklearn``'s Euclidean path is the $\lVert x\rVert^2+\lVert y\rVert^2-2x\cdot y$
+def test_translation_invariance_survives_an_adversarial_offset():
+    r"""⚠️ It would not, on ``sklearn``'s ``metric="euclidean"`` route.
+
+    That route computes distances by the $\lVert x\rVert^2+\lVert y\rVert^2-2x\cdot y$
     expansion, which loses digits when the layout sits far from the origin relative to its own
-    extent. Measured on real configurations at an offset/extent ratio of 4000:
+    extent. At an offset/extent ratio of 4000 on real configurations:
 
-    ==========================  =================  =====================
-    layout                      ``sklearn`` route  exact-distance route
-    ==========================  =================  =====================
-    `digits`, PCA 2-D, n=1797   4.4e-9             1.0e-13
-    `tabula`, ``X_umap``, n=5007 1.8e-8            1.2e-14
-    ==========================  =================  =====================
+    ============================  ======================  ======================
+    layout                        ``metric="euclidean"``  ``pdist`` + squareform
+    ============================  ======================  ======================
+    `digits`, PCA 2-D, n=1797     4.4e-9                  1.0e-13
+    `tabula`, ``X_umap``, n=5007  1.8e-8                  1.2e-14
+    ============================  ======================  ======================
 
-    So the metric is invariant and the *implementation* is invariant to about eight digits.
-    ``metric="precomputed"`` from ``pdist`` would remove it, and is **deliberately not used**:
-    ``silhouette_samples`` chunks its Euclidean reduction and never materialises $(n, n)$, where
-    a precomputed matrix is 200 MB at tabula's size — paid per label set, of which tabula has
-    four. Real layouts sit within a few multiples of their own extent of the origin, where the
-    deviation is $10^{-14}$ or below; eight digits is far below any effect the results report.
+    Eight digits is far below anything the results report, so accuracy alone did not decide
+    it — the exact route turned out to be **faster and leaner too**, against the obvious guess
+    that an $(n, n)$ matrix must cost more than a chunked reduction (0.60 s / +273 MB against
+    0.91 s / +373 MB at tabula's $n = 5007$; 4.64 s / +1634 MB against 4.71 s / +2039 MB at
+    $n = 12000$). ``working_memory`` defaults to 1024 MB, so at these sizes the chunked
+    reduction takes the matrix in one or two blocks and allocates more than the matrix itself.
 
-    The second assertion is what identifies the cause: handed exact distances, the same
-    ``sklearn`` code is three orders tighter, so the loss is in the distance expansion and not
-    in the silhouette.
+    Both halves are asserted: the implementation is tight, and the route it does not take
+    would not have been.
     """
-    from scipy.spatial.distance import pdist, squareform
     from sklearn.metrics import silhouette_samples
 
     rng = np.random.default_rng(0)
@@ -263,16 +266,31 @@ def test_translation_invariance_is_only_exact_to_about_eight_digits():
     labels = rng.integers(0, 4, size=200)
     far = X - 4.0
 
-    base = silhouette(X, labels)
-    assert silhouette(far, labels) == pytest.approx(base, rel=1e-7)
-    assert silhouette(far, labels) != pytest.approx(base, rel=1e-12)
+    assert silhouette(far, labels) == pytest.approx(silhouette(X, labels), rel=1e-12)
 
-    def exact(Y):
-        return float(
-            silhouette_samples(squareform(pdist(Y)), labels, metric="precomputed").mean()
-        )
+    def sklearn_euclidean(Y):
+        return float(silhouette_samples(Y, labels, metric="euclidean").mean())
 
-    assert exact(far) == pytest.approx(exact(X), rel=1e-12)
+    assert sklearn_euclidean(far) == pytest.approx(sklearn_euclidean(X), rel=1e-7)
+    assert sklearn_euclidean(far) != pytest.approx(sklearn_euclidean(X), rel=1e-12)
+
+
+def test_the_layout_side_goes_through_the_shared_pairwise_cache():
+    """Why the exact route costs nothing extra during a metric sweep.
+
+    ADR, NND and the two distance distributions all read ``common.pairwise_distances``, so Sil
+    reading it too makes its marginal cost the ``squareform`` copy alone.
+    """
+    from twin.metrics.common import _pairwise_cache, clear_pairwise_cache
+
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(50, 2))
+    labels = rng.integers(0, 3, size=50)
+
+    clear_pairwise_cache()
+    assert not _pairwise_cache
+    silhouette(X, labels)
+    assert _pairwise_cache, "Sil did not reach the shared pdist cache"
 
 
 def test_coincident_points_inflate_the_score(karate_coincident_layout, karate_labels):
@@ -284,9 +302,7 @@ def test_coincident_points_inflate_the_score(karate_coincident_layout, karate_la
     what it would do to the number. There is no defensible repair inside the metric — an epsilon
     moves the threshold rather than removing it — so the behaviour is pinned instead.
     """
-    from twin.metrics.label import _silhouette_report
-
-    per_vertex = _silhouette_report(karate_coincident_layout, karate_labels, metric="euclidean")
+    per_vertex = silhouette_report(karate_coincident_layout, karate_labels)
     assert np.isfinite(per_vertex.value)
 
     collapsed = karate_coincident_layout[:9]
