@@ -635,8 +635,10 @@ class CrossingReport:
             number is correspondingly delicate.
         n_degenerate: pairs whose curves coincide or overlap along a stretch, each counted as
             exactly 1 crossing rather than eq. (74)'s infinite set.
-        n_shared_endpoint: roots discarded because they sat on a vertex the two edges share
-            **by index**. Not a defect — it is how often adjacent edges were in play.
+        n_shared_endpoint: contacts removed because they were at a vertex the two edges share
+            **by index**. Not a defect — it is how often adjacent edges were in play. It counts
+            contacts *divided out*, so an adjacent pair the Bernstein test rejects before the
+            solve does not appear here even though its curves do meet at the shared vertex.
     """
 
     crossings: np.ndarray

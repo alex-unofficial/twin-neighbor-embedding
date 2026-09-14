@@ -20,7 +20,13 @@ import numpy as np
 import pytest
 
 from twin import geometry
-from twin.metrics.crossings import candidate_pairs, edge_curves, normalize_to_unit_box
+from twin.metrics.crossings import (
+    candidate_pairs,
+    crossing_pairs,
+    crossing_pairs_report,
+    edge_curves,
+    normalize_to_unit_box,
+)
 
 
 def _sample(B: np.ndarray, n: int) -> np.ndarray:
@@ -218,3 +224,319 @@ def test_the_broad_phase_on_degenerate_inputs():
     assert list(candidate_pairs(np.zeros((1, 3, 2)))) == []
     # Two identical degenerate curves still overlap and must be offered to the solver.
     assert sum(b.shape[1] for b in candidate_pairs(np.zeros((2, 3, 2)))) == 1
+
+
+# --------------------------------------------------------------------------- #
+#                     Layer 2b — the oracle, and the constructions             #
+# --------------------------------------------------------------------------- #
+
+
+def _pair(Ba: np.ndarray, Bb: np.ndarray):
+    """Two non-adjacent edges drawn as exactly these Bézier curves.
+
+    At γ=0.5 the conversion is the identity — $B_1 = 2\\gamma P_1 + (1-2\\gamma)(P_0+P_2)/2 = P_1$
+    — so a curve can be specified by its control points and fed straight through `edge_curves`.
+    """
+    G = nx.Graph([(0, 1), (2, 3)])
+    V = np.array([Ba[0], Ba[2], Bb[0], Bb[2]])
+    E = np.array([Ba[1], Bb[1]])
+    return G, V, E
+
+
+def _count(Ba, Bb, **kw) -> int:
+    return len(crossing_pairs(*_pair(Ba, Bb), gamma=0.5, **kw))
+
+
+def _polyline_oracle(Ba: np.ndarray, Bb: np.ndarray) -> int | None:
+    """Crossings by dense polyline intersection. Shares no code with `crossings.py`.
+
+    None when the two polylines overlap along a stretch, which shapely reports as a `LineString`
+    and which the convention counts differently — those pairs are checked by construction
+    instead.
+    """
+    from shapely.geometry import LineString, MultiPoint, Point
+
+    inter = LineString(_sample(Ba, 1200)).intersection(LineString(_sample(Bb, 1200)))
+    if inter.is_empty:
+        return 0
+    if isinstance(inter, Point):
+        return 1
+    if isinstance(inter, MultiPoint):
+        return len(inter.geoms)
+    return None
+
+
+def test_the_exact_method_agrees_with_a_dense_polyline_oracle():
+    """1200 random non-adjacent pairs, counts must agree. The oracle is built here, from
+    `_sample`, and never from `plots.count_intersections` — which is about to be built on top of
+    the thing under test and is documented to disagree on shared-endpoint pairs."""
+    rng = np.random.default_rng(0)
+    disagreements, checked, worst = [], 0, 0.0
+
+    for gamma in (0.5, 0.9, 1.3):
+        for _ in range(400):
+            P = rng.normal(size=(2, 3, 2))
+            B = geometry.bezier_control_points(P, gamma)
+            G = nx.Graph([(0, 1), (2, 3)])
+            V = np.array([B[0, 0], B[0, 2], B[1, 0], B[1, 2]])
+            rows = crossing_pairs(G, V, np.array([P[0, 1], P[1, 1]]), gamma=gamma)
+
+            want = _polyline_oracle(B[0], B[1])
+            if want is None:
+                continue
+            checked += 1
+            if len(rows) != want:
+                disagreements.append((gamma, len(rows), want))
+            for row in rows:
+                t, s = row[2], row[3]
+                pa = (1 - t) ** 2 * B[0, 0] + 2 * t * (1 - t) * B[0, 1] + t**2 * B[0, 2]
+                pb = (1 - s) ** 2 * B[1, 0] + 2 * s * (1 - s) * B[1, 1] + s**2 * B[1, 2]
+                worst = max(worst, np.linalg.norm(pa - pb), np.linalg.norm(pa - row[4:]))
+
+    assert checked >= 1000
+    assert disagreements == []
+    assert worst < 1e-7, "every reported point must lie on both curves"
+
+
+# --- the five intersection counts, from one family --------------------------- #
+#
+# y = x^2 - 1 and x = y^2 - 1 meet where x(x+1)(x^2-x-1) = 0, i.e. at four real points
+# x = -1, -0.618, 0, 1.618. Shortening the second parabola's arc from below drops them one at a
+# time, so 0/1/2/3/4 intersections come out of a single construction with one parameter.
+#
+# The arc of y = x^2 for x in [-a, a] is the Bézier (-a, a^2), (0, -a^2), (a, a^2); a sub-arc of
+# x = y^2 - 1 for y in [y0, y1] is (y0^2-1, y0), (y0*y1-1, (y0+y1)/2), (y1^2-1, y1).
+
+PARABOLA_A = np.array([[-2.0, 3.0], [0.0, -5.0], [2.0, 3.0]])  # y = x^2 - 1, x in [-2, 2]
+
+
+def _sideways_parabola(y0: float, y1: float = 2.0) -> np.ndarray:
+    return np.array([[y0 * y0 - 1, y0], [y0 * y1 - 1, (y0 + y1) / 2], [y1 * y1 - 1, y1]])
+
+
+@pytest.mark.parametrize(
+    "y0, expected",
+    [(-2.0, 4), (-0.9, 3), (-0.5, 2), (0.5, 1), (1.9, 0)],
+)
+def test_exactly_k_intersections(y0, expected):
+    """Bézout's bound is 4 and every count below it is reachable; all five are constructed."""
+    B = _sideways_parabola(y0)
+    assert _count(PARABOLA_A, B) == expected
+    assert _polyline_oracle(PARABOLA_A, B) == expected
+
+
+def test_interior_tangency_counts_once_and_is_reported():
+    """$y = x^2$ and $y = -x^2$ touch at the origin without crossing: a double root.
+
+    This is the one case the Bernstein filter's hull property does not cover — Q touches zero
+    without changing sign — so it is constructed rather than hoped for.
+    """
+    up = np.array([[-1.0, 1.0], [0.0, -1.0], [1.0, 1.0]])
+    down = np.array([[-1.0, -1.0], [0.0, 1.0], [1.0, -1.0]])
+
+    report = crossing_pairs_report(*_pair(up, down), gamma=0.5)
+    assert len(report.crossings) == 1
+    assert report.n_near_tangential >= 1
+    np.testing.assert_allclose(report.crossings[0, 4:], [0.0, 0.0], atol=1e-6)
+
+
+def test_identical_curves_count_as_exactly_one():
+    """Eq. (74)'s cardinality is infinite here; spec §2.4 fixes the convention at 1."""
+    curve = np.array([[0.0, 0.0], [1.0, 2.0], [2.0, 0.0]])
+
+    report = crossing_pairs_report(*_pair(curve, curve.copy()), gamma=0.5)
+    assert len(report.crossings) == 1
+    assert report.n_degenerate == 1
+
+
+def test_collinear_control_points_do_not_break_the_solve():
+    """β = 2·det(B1-B0, B2-B0) vanishes, so this curve can never be the one implicitised.
+
+    The control points are collinear but B1 is not the midpoint, so the curve runs out to x=1.8
+    and doubles back — the parameter of a point on it is *not* the parameter of the segment it
+    sweeps, which is why `_parameter_at_point` solves the quadratic rather than interpolating.
+    """
+    folding = np.array([[0.0, 0.0], [3.0, 0.0], [1.0, 0.0]])
+    crossing = np.array([[1.0, -1.0], [1.0, 0.0], [1.0, 1.0]])
+
+    rows = crossing_pairs(*_pair(folding, crossing), gamma=0.5)
+    assert len(rows) == 1
+    np.testing.assert_allclose(rows[0, 4:], [1.0, 0.0], atol=1e-9)
+
+
+def test_parallel_bulges_the_q4_equals_zero_path():
+    """$Q_4 = -16\\det(D_A, D_B)^2$ is exactly zero when the two bulges are parallel.
+
+    Building the companion matrix divides by $Q_4$, so without deflation this is a division by
+    zero rather than a hard case (DECISIONS (30)).
+    """
+    a = np.array([[0.0, 0.0], [1.0, 1.0], [2.0, 0.0]])
+    b = np.array([[0.5, -1.0], [1.0, 1.5], [1.5, 2.0]])
+    Ba = geometry.bezier_control_points(a, 0.5)
+    Bb = geometry.bezier_control_points(b, 0.5)
+    da, db = geometry.bulge(Ba), geometry.bulge(Bb)
+    assert abs(da[0] * db[1] - da[1] * db[0]) == 0.0, "the construction must give Q4 == 0 exactly"
+
+    expected = _polyline_oracle(Ba, Bb)
+    assert expected == 1
+    assert _count(a, b) == expected
+
+
+def test_a_vertex_lying_exactly_on_another_edges_curve_is_found():
+    """The Bernstein filter's one real false negative: a root exactly at s=0 or s=1.
+
+    Edge (2,3) starts *on* edge (0,1)'s curve. The pair is non-adjacent, so this is a genuine
+    crossing — the coincident-vertex crowding case — and the plain sign test would drop it.
+    """
+    arc = np.array([[0.0, 0.0], [1.0, 2.0], [2.0, 0.0]])
+    on_curve = 0.25 * (arc[0] + 2 * arc[1] + arc[2])  # the curve at t = 1/2
+
+    G = nx.Graph([(0, 1), (2, 3)])
+    V = np.array([arc[0], arc[2], on_curve, on_curve + np.array([0.0, -2.0])])
+    E = np.array([arc[1], on_curve + np.array([0.0, -1.0])])
+
+    rows = crossing_pairs(G, V, E, gamma=0.5)
+    assert len(rows) == 1
+    np.testing.assert_allclose(rows[0, 4:], on_curve, atol=1e-9)
+
+
+def test_the_bernstein_endpoint_case_directly():
+    """The guide's example: ``Q = [0, 1, 1, 1, 1]`` is ``s(s+1)(s^2+1)``, a root at 0 exactly,
+    and its Bernstein coefficients never change sign. β0 = Q(0) and β4 = Q(1) exactly, which is
+    what makes the fix free."""
+    from twin.metrics.crossings import BERNSTEIN
+
+    Q = np.array([[0.0, 1.0, 1.0, 1.0, 1.0]])
+    beta = Q @ BERNSTEIN.T
+
+    np.testing.assert_allclose(beta[0], [0.0, 0.25, 2 / 3, 1.5, 4.0], atol=1e-15)
+    assert not ((beta > 0).any() and (beta < 0).any()), "no sign change — the false negative"
+    assert beta[0, 0] == Q[0, 0]  # = Q(0)
+    assert beta[0, 4] == pytest.approx(Q.sum())  # = Q(1)
+
+
+# --- adjacent edges ---------------------------------------------------------- #
+
+
+def _adjacent(second_end, second_mid):
+    """Edges (0,1) and (0,2): an arc and a second edge, sharing vertex 0."""
+    G = nx.Graph([(0, 1), (0, 2)])
+    V = np.array([[0.0, 0.0], [4.0, 0.0], second_end])
+    E = np.array([[2.0, 4.0], second_mid])
+    return G, V, E
+
+
+def test_adjacent_edges_meeting_only_at_the_shared_vertex_do_not_cross():
+    """The contact at the shared vertex is excluded by identity, and nothing else is there.
+
+    Here the Bernstein test rejects the pair before the solve, so `n_shared_endpoint` — which
+    counts contacts *divided out*, not contacts that exist — stays 0. The pair below, which has a
+    genuine second crossing and therefore reaches the solve, is where that counter moves.
+    """
+    report = crossing_pairs_report(*_adjacent([4.0, -3.0], [2.0, -1.5]), gamma=0.5)
+    assert len(report.crossings) == 0
+
+
+def test_adjacent_edges_keep_a_genuine_second_crossing():
+    """§3.1.3's reason for ``include_adjacent=True``: curved edges incident to a shared vertex
+    may still cross away from it. The arc is $y = 2x - x^2/2$ and the second edge is $y = 0.75x$,
+    which meet again at exactly $(2.5, 1.875)$."""
+    report = crossing_pairs_report(*_adjacent([4.0, 3.0], [2.0, 1.5]), gamma=0.5)
+
+    assert len(report.crossings) == 1
+    np.testing.assert_allclose(report.crossings[0, 4:], [2.5, 1.875], atol=1e-9)
+    assert report.n_shared_endpoint == 1
+
+
+def test_include_adjacent_false_drops_the_pair_entirely():
+    args = _adjacent([4.0, 3.0], [2.0, 1.5])
+    assert len(crossing_pairs(*args, gamma=0.5, include_adjacent=True)) == 1
+    assert len(crossing_pairs(*args, gamma=0.5, include_adjacent=False)) == 0
+
+
+def test_straight_adjacent_edges_meet_only_at_their_shared_vertex():
+    """The segment path gets the same rule for free, and exactly: two distinct lines meet once."""
+    G = nx.Graph([(0, 1), (0, 2)])
+    V = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]])
+    assert len(crossing_pairs(G, V, None)) == 0
+
+
+def test_collinear_overlapping_straight_edges_count_as_one():
+    """Two edges drawn along the same line, overlapping: cardinality is infinite, `cr` is 1."""
+    G = nx.Graph([(0, 1), (2, 3)])
+    V = np.array([[0.0, 0.0], [2.0, 0.0], [1.0, 0.0], [3.0, 0.0]])
+
+    report = crossing_pairs_report(G, V, None)
+    assert len(report.crossings) == 1
+    assert report.n_degenerate == 1
+
+
+# --- invariance and plumbing -------------------------------------------------- #
+
+
+@pytest.mark.parametrize("gamma", [0.0, 0.5])
+def test_the_count_is_invariant_under_similarity(karate, karate_random_layout, gamma):
+    """Rotation, translation and uniform scaling move no crossing — and the unit-box
+    normalisation is what makes that true of the *implementation* as well as the geometry."""
+    G, V = karate, karate_random_layout
+    E = np.random.default_rng(11).normal(size=(G.number_of_edges(), 2))
+    base = len(crossing_pairs(G, V, E, gamma=gamma))
+    assert base > 0
+
+    angle = 0.7
+    rotation = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+    for transform in (
+        lambda X: X + np.array([13.0, -7.0]),
+        lambda X: X @ rotation.T,
+        lambda X: X * 1e3,
+        lambda X: X * 1e-3,
+        lambda X: (X @ rotation.T) * 250 + np.array([-4.0, 9.0]),
+    ):
+        assert len(crossing_pairs(G, transform(V), transform(E), gamma=gamma)) == base
+
+
+def test_the_count_does_not_depend_on_the_query_chunk(karate, karate_random_layout):
+    """`QUERY_CHUNK_EDGES` bounds memory; it must not be able to change an answer."""
+    from twin.metrics import crossings as module
+
+    G, V = karate, karate_random_layout
+    E = np.random.default_rng(12).normal(size=(G.number_of_edges(), 2))
+    saved = module.QUERY_CHUNK_EDGES
+    try:
+        counts = []
+        for chunk in (1, 7, 4096):
+            module.QUERY_CHUNK_EDGES = chunk
+            counts.append(len(crossing_pairs(G, V, E)))
+    finally:
+        module.QUERY_CHUNK_EDGES = saved
+    assert len(set(counts)) == 1
+
+
+def test_the_output_columns_are_what_they_claim(karate, karate_random_layout):
+    G, V = karate, karate_random_layout
+    E = np.random.default_rng(13).normal(size=(G.number_of_edges(), 2))
+    rows = crossing_pairs(G, V, E)
+
+    a, b, t, s = rows[:, 0].astype(int), rows[:, 1].astype(int), rows[:, 2], rows[:, 3]
+    assert (a < b).all()
+    assert (0 <= t).all() and (t <= 1).all() and (0 <= s).all() and (s <= 1).all()
+
+    B = edge_curves(G, V, E)
+    for row, ea, eb, tt, ss in zip(rows, a, b, t, s):
+        ca = (1 - tt) ** 2 * B[ea, 0] + 2 * tt * (1 - tt) * B[ea, 1] + tt**2 * B[ea, 2]
+        cb = (1 - ss) ** 2 * B[eb, 0] + 2 * ss * (1 - ss) * B[eb, 1] + ss**2 * B[eb, 2]
+        np.testing.assert_allclose(ca, cb, atol=1e-7)
+        np.testing.assert_allclose(ca, row[4:], atol=1e-7)
+
+
+def test_a_three_dimensional_layout_is_refused(karate):
+    G = karate
+    V = np.random.default_rng(14).normal(size=(G.number_of_nodes(), 3))
+    with pytest.raises(ValueError, match="planar"):
+        crossing_pairs(G, V)
+
+
+def test_an_edgeless_graph_has_no_crossings():
+    report = crossing_pairs_report(nx.empty_graph(4), np.zeros((4, 2)))
+    assert report.crossings.shape == (0, 6)
+    assert report.n_candidates == 0
