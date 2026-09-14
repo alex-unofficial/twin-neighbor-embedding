@@ -2,14 +2,14 @@
 
 Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
-**Last updated:** end of session 5 (2026-09-14). It closed spec §7 step 5 — `twin/geometry.py`
-and `twin/metrics/crossings.py` now exist, crossings are computed exactly, and
-`plots.count_intersections` is built on them. Branch `experiment-setup`; tree clean. **750 pass
-and 2 skip** — the two `sfdp` cases, behind a runtime probe of the broken backend (see below).
+**Last updated:** end of session 6 (2026-09-15). It closed spec §7 step 6 — `label.py` now holds
+the silhouette family and the 1-hop graph-side accuracy, so **the metric suite of §2 is
+complete**. Branch `experiment-setup`; tree clean. **830 pass and 2 skip** — the two `sfdp` cases,
+behind a runtime probe of the broken backend (see below).
 
-> **Step 6 is next** — `label.py`'s silhouette and the graph-side checks. Step 2 unblocked it and
-> nothing from step 5 constrains it. The plan is
-> [`plans/step6-labels.md`](plans/step6-labels.md): **approved, current, and not yet started.**
+> **Step 7 is next** — the registry, `evaluate_layout`, `batch_layout_metrics` and persistence.
+> There is no plan file for it yet. Everything from steps 3-6 that was deferred to it is
+> collected under "Where step 7 starts" below; the carried-forward table is the authority.
 
 ---
 
@@ -22,8 +22,8 @@ and 2 skip** — the two `sfdp` cases, behind a runtime probe of the broken back
 | **3. `common.py` + `structural.py` — ADR, kNN family, SNS** | **Done** — session 3; plan: [`docs/plans/step3-metrics.md`](plans/step3-metrics.md), departures in `DECISIONS.md` |
 | **4. `visual.py` — NND, NR/VNR, distributions, edge lengths** | **Done** — session 4; plan: [`docs/plans/step4-visual.md`](plans/step4-visual.md), departures in `DECISIONS.md` |
 | **5. `crossings.py` — curves, detection, Cr/LWCr, detour** | **Done** — session 5; plan: [`docs/plans/step5-crossings.md`](plans/step5-crossings.md), departures in `DECISIONS.md` (32)–(36) |
-| **6. `label.py` — silhouette, accuracy, graph-side checks** | **Next** (step 2 unblocked it; the kNN accuracy family already landed at step 3) |
-| 7. Registry, `evaluate_layout`, `batch_layout_metrics`, persistence | not started |
+| **6. `label.py` — silhouette, accuracy, graph-side checks** | **Done** — session 6; plan: [`docs/plans/step6-labels.md`](plans/step6-labels.md), departures in `DECISIONS.md` (39), measurements (40) |
+| **7. Registry, `evaluate_layout`, `batch_layout_metrics`, persistence** | **Next** — no plan file yet |
 | 8. λ sweep and selection, seeds, straight/curved variants | not started |
 | 9. Bugs §1.4, §1.5, §1.7; graph *t*-SNE baseline | not started |
 | 10. Plotting refactor (§3.6) | not started |
@@ -48,15 +48,95 @@ Section 5 numbers before step 8.
 6. `docs/CROSSING_GEOMETRY.md` — **for step 5 specifically**: the crossing algorithm in full,
    with the derivation, the measurements and the degeneracy analysis. Spec §2.4 is the summary;
    this is the reference.
-7. [`docs/plans/step6-labels.md`](plans/step6-labels.md) — **the plan for the step in progress:
-   approved, current, and not yet started.** It records two spec claims checked against the data
-   before planning, and four decisions taken at review.
+7. **All six plan files are history**, kept for their record of where the implementation
+   departed from them — the departures themselves are in `DECISIONS.md`.
    [`step2-datasets.md`](plans/step2-datasets.md), [`step3-metrics.md`](plans/step3-metrics.md),
-   [`step4-visual.md`](plans/step4-visual.md) and [`step5-crossings.md`](plans/step5-crossings.md)
-   are **history**, kept for their record of where the implementation departed from them — the
-   departures themselves are in `DECISIONS.md`.
+   [`step4-visual.md`](plans/step4-visual.md), [`step5-crossings.md`](plans/step5-crossings.md)
+   and [`step6-labels.md`](plans/step6-labels.md). **Step 7 has no plan yet.**
 
 ---
+
+## What landed in session 6
+
+Spec §7 step 6, in six commits — **830 tests, up from 750**; the tabula figure still renders. The
+plan ([`plans/step6-labels.md`](plans/step6-labels.md)) held on substance; the five departures are
+`DECISIONS.md` (39) and the measurements (40). **The metric suite of §2 is now complete** —
+everything remaining is machinery.
+
+- **`twin/metrics/label.py` is finished**: `silhouette` / `silhouette_report` (eqs. 49-52),
+  `silhouette_graph` / `silhouette_graph_report` (53-55), `graph_neighborhood_accuracy` /
+  `graph_neighborhood_accuracy_report` (61-64). The $k$-NN accuracy family had landed at step 3.
+- **`sklearn`-backed, validated against a hand-rolled oracle** in `tests/test_silhouette.py` that
+  shares no code with it — one oracle for both sides, since eqs. (53)-(55) differ from (49)-(52)
+  only in which $d$ they read. The graph-side accuracy has its own dictionary-count oracle.
+- **Sil\* refuses `disconnected="mask"` on all three paths a policy can arrive by** — an explicit
+  kwarg, an `EvaluationContext` built under it, and a bare array bearing its footprint — and
+  subsets to the largest component itself, reporting `n_excluded`.
+- **`_vote_outcome` is shared** by Acc$^k$ and Acc\*; the difference between them is the
+  neighbourhood, not the voting. Bit-identical — `LABEL_PINS` and the golden file both pin
+  `knn_accuracy`.
+- **The golden file grew by 6 keys, additively** (now 44), including `majority_class_rate`, which
+  was missing and is the floor every accuracy number is read against.
+
+### What the measurements said
+
+- ⚠️ **The auxiliary-label claim is false for `donor` and true for `method`.** A *low* silhouette
+  on tabula's batch covariates is asserted to be the good outcome in three places. `donor` scores
+  **0.206**, double `cell_ontology_class`'s 0.106 and first of the four — and first on Sil\* too,
+  so the structure is in the graph before any layout. The cause is **confounding**: the two donors
+  sampled almost disjoint cell populations, NMI(donor, cell type) = **0.413** against 0.059 for
+  `method`. A low donor score is not an achievable target; `method` is the covariate the argument
+  applies to. **Thesis and §3.4 prose to change, not code** — `DECISIONS.md` (40) has the wording.
+- ⚠️ **Sil separates the ablation decisively and orders it differently from every other label
+  metric.** Disjoint across five seeds for $A_V$ against both others on both datasets. But
+  `knn_accuracy` is *identical to the digit* for $A_V$ and $A_{tne}$ on football (0.9697 every
+  seed) where Sil separates them 0.758 to 0.617, and on `digits` the two **invert** $A_E$ against
+  $A_{tne}$. Sil is distance-based, the accuracy family rank-based, and the twin graph stretches
+  within-class neighbourhoods without changing who is whose neighbour. **Sil is not "which
+  representation recovers labels best".**
+- ⚠️ **Sil is the noisiest metric in the project so far**: rel IQR **3.6 %** and a **19 %** spread
+  over seven seeds on `digits`, against NND's 0.4 %, VNR's 1.2 %, `edge_length_cv`'s 2.4 % and
+  `knn_accuracy`'s 0.24 %. That explains the inversion — the gap is inside the band — and sets
+  step 8's floor.
+- **Sil\* works as a label-validity check, and its scale is not the one anyone assumes.** Every
+  real label set is clearly above its shuffled level, and the one that is not is football's
+  `division`, which should not be. But the **ceiling is ~0.53** even where labels *are* the
+  topology (`ring_of_cliques`), and **chance is negative** by a class-count-dependent amount
+  (−0.32 at 10 classes, −0.0004 at 2). Acc\* exceeds 0.94 everywhere and is near-useless without
+  its floor: 0.987 against a **0.958** floor on tabula's `method`.
+- **§2.5's cost class is wrong about Sil\*, now by a measured margin.** 0.58 s on tabula given the
+  shared closure, 2.07 s for all four label sets, against crossings' 40 s. The label family scales
+  with $n$, and the largest $n$ is 5007.
+- ⚠️ **A wrong justification caught by measuring it.** `silhouette` shipped in commit 1 on
+  `sklearn`'s `metric="euclidean"` with a claim that its chunked reduction never materialises
+  $(n, n)$. It does, because `working_memory` defaults to 1024 MB — the exact `pdist` route is
+  **faster, leaner and eight digits more accurate** (0.60 s / +273 MB against 0.91 s / +373 MB at
+  $n = 5007$). Corrected in its own commit, numerically neutral and verified so: the golden value
+  is bit-identical. ⚠️ **The tolerance would not have been**: an invariance test pinned at
+  $10^{-12}$ from `karate` ($7\times10^{-14}$) fails at tabula's $n$ ($3\times10^{-12}$).
+
+### Where step 7 starts
+
+**There is no plan file.** What steps 3-6 deferred to it, in one place:
+
+- **`MetricSpec`, `METRIC_REGISTRY`, `evaluate_layout`, `batch_layout_metrics`, persistence.**
+  The boundary held at steps 3, 4, 5 *and* 6. Two concessions to it exist in the metric layer:
+  the `crossings=` argument on the three layer-3 crossing metrics, and `ideal=` accepting an
+  `EvaluationContext` on the stresses and on Sil\*.
+- **The label-set enumeration is one line, not a thing to build.**
+  `dataset.label_sets_by_scoring_role(...)` and `dataset.composite_of` already exist. ⚠️ But
+  **tabula's composite is redundant** — `compartment_cell_type` is exactly
+  `cell_ontology_class` — so a naive enumeration emits a duplicate column.
+- ⚠️ **§4.4 permits `mask` for SNS only, and Sil\* now refuses it.** A runner that builds one
+  `EvaluationContext` per dataset with `disconnected="mask"` will be told rather than get an
+  inflated Sil\*. Two contexts, or `lcc` throughout.
+- **The reference levels the measurements say are mandatory are not computed anywhere.** Sil\*
+  needs a shuffled-label control (three lines) and Acc\* needs its floor carried alongside;
+  `majority_class_rate` exists and is now in the golden file. §5.3 guard 2 — the separate table —
+  is still unbuilt.
+- **The cost model is now fully measured** and §2.5 is wrong in both directions: crossings is 40 s
+  and +428 MB per tabula layout, the whole label family is under 4 s, and the `ideal_distances`
+  closure is 14.9 s paid **once per dataset**. The loop order matters more than the metric set.
 
 ## What landed in session 5
 
@@ -117,13 +197,12 @@ still render and Figure 3 is bit-identical to its pre-rewrite output. The plan
   so a collinearity guard reads the noise as a real direction. Three branches, not the spec's
   two ((35)).
 
-### Where step 6 starts
+### Where step 6 started — history; step 6 is done
 
-> **Read [`plans/step6-labels.md`](plans/step6-labels.md) — it is approved and current, and it
-> supersedes this section wherever they differ.** Two of §0.5's claims were checked against the
-> data while planning and one did not survive; four decisions are taken there.
+> Superseded by "What landed in session 6" above. Kept because the three items below were all
+> load-bearing and two of them turned out differently than this section expected.
 
-What step 5 leaves for it:
+What step 5 left for it:
 
 - **Scope is silhouette (eqs. 49–52) and the graph-side variants (53–55, 61–64).** The kNN
   accuracy family already landed at step 3, so `label.py` exists and is half-built.
@@ -138,7 +217,8 @@ What step 5 leaves for it:
   layer-3 metrics, which exists so the registry can solve once and summarise three times.
 - **The crossing metrics are the expensive ones and the runner must know it.** 40 s per tabula
   layout, 428 MB peak, and the grid is ~150 layouts. §2.5's cost class still says the wrong thing
-  (it names SNS and Sil\*), which matters at step 7, not step 6.
+  (it names SNS and Sil\*), which matters at step 7, not step 6. **Session 6 measured the other
+  half**: the whole label family is under 4 s on tabula, Sil\* 0.58 s.
 
 ## What landed in session 4
 
@@ -423,7 +503,7 @@ from 94**; all eight `paper_figures` functions still render.
 
 ## ⚠️ Broken in the environment, not in the tree: `sfdp` / `YifanHuLayout`
 
-**`venv/bin/python -m pytest` reports 750 passed, 2 skipped. The two skips are an upstream
+**`venv/bin/python -m pytest` reports 830 passed, 2 skipped. The two skips are an upstream
 graphviz crash, and they un-skip by themselves once the installed graphviz is new enough.**
 
 ```
@@ -506,7 +586,7 @@ plumbing is still guarded, only the end-to-end layout is not. **Do not "fix" the
 ## Health check
 
 ```bash
-venv/bin/python -m pytest -q          # 750 passing, 2 skipped (sfdp — see above), 1 deselected
+venv/bin/python -m pytest -q          # 830 passing, 2 skipped (sfdp — see above), 1 deselected
 venv/bin/python -m pytest -q -m slow  # the opt-in tabula figure, ~2 min
 python -m twin.report            # the roster table; regenerates docs/DATASET_REPORT.md with -o
 git status --short               # clean; if notebooks appear modified, the filter is unset
@@ -527,10 +607,11 @@ one of the eight.)
 | ~~`exp_decay` vs `exp_decay_sq` never compared~~ — measured on digits, `DECISIONS.md` | discharged |
 | ~~A metric needs the vertex `LayoutGraph`~~ — `twin/metrics/context.py` | discharged |
 | SNS on a Kamada-Kawai or neato layout is close to a measure of optimiser success. The caveat is in the SNS docstring; the **reporting flag that acts on it** is not built | step 11 |
+| ~~`label.py` is half-built — the silhouette family and the graph-side checks are missing~~ — landed in session 6; **the metric suite of §2 is complete** | discharged |
 | `EvaluationContext.release()` exists but nothing calls it, and it now drops three arrays rather than one — tabula's closure is 200 MB and its condensed form another 100 MB. `clear_pairwise_cache()` and `clear_loo_cache()` are the same story | step 7 |
 | The neighbourhood metrics are not sweep-consistent on a layout with exact duplicates (`DECISIONS.md`). No registered dataset produces one; a crowding-heavy layout at large λ might | whenever a layout first collapses two points |
 | ~~Re-measure the §1.6 fix in quality terms~~ — done: recall separates disjointly over seven seeds, ADR and SNS do not | discharged |
-| ⚠️ **Spec §2.5's cost class is wrong, and now it is quantified.** It says SNS and Sil\* are what will not run on tabula; the largest n is 5007, so the O(n²) closure is 200 MB and `max_n=20000` never trips. The expensive metrics scale with **m**: crossings on tabula is **40 s and +428 MB per layout**, against seconds for everything else | a run planner built on it would size the wrong thing: **step 7** |
+| ⚠️ **Spec §2.5's cost class is wrong, and now it is quantified on both sides.** It says SNS and Sil\* are what will not run on tabula; the largest n is 5007, so the O(n²) closure is 200 MB and `max_n=20000` never trips. Measured: Sil\* **0.58 s** given the shared closure, all four tabula label sets **2.07 s**, Sil 0.60 s, Acc\* 0.49 s, the closure itself 14.9 s **once per dataset** — against crossings' **40 s and +428 MB per layout**. The expensive metrics scale with **m** | a run planner built on it would size the wrong thing: **step 7** |
 | Memory runs need **one case per process**: `peak_mem_mb` is a delta from the entry baseline, and glibc does not always return freed memory, so later cases in a batch measure from a higher floor | step 7 |
 | A persisted layout must store the dataset's registry **name and params**, never the `Dataset` object | step 7 |
 | `common_init` is not in the batch runner — deliberately deferred, since it needs the seed axis and the paired protocol; the column-slicing convention it depends on is already tested | step 8 |
@@ -549,7 +630,14 @@ one of the eight.)
 | **Open, needs the author's call:** VNR's `"mean"` normaliser is **exactly** NND$_1$, so under the `[THESIS EDIT]` the point-crowding column is NND at two values of $k$; the thesis's `"max"` is a genuinely second measurement but is distorted by outlier vertices. Both are implemented, both are in the golden file, and the comparison §0.5 asked for is done — `DECISIONS.md` | before the results tables are designed: **step 11**, but the decision can be taken now |
 | The three visual metrics have a measured seed-noise band on `digits` (NND 0.4 %, VNR 1.2 %, `edge_length_cv` 2.4 %). Nothing reads it yet; a λ sweep that reports differences smaller than it would be reporting noise | step 8 |
 | ⚠️ **NND and VNR reward uniformity, which a good layout of clustered data does not have** — a random control tops both and comes last on ADR and recall. The reporting layer must not rank on them alone, and the joint reading is not enforced anywhere yet | step 11 |
-| `NodeResolutionReport.n_zero_denominator` joins `n_ties` / `n_zero_distance` in the diagnostics table of `DECISIONS.md` (18); nothing collects that table yet | step 7 |
+| `NodeResolutionReport.n_zero_denominator` joins `n_ties` / `n_zero_distance` in the diagnostics table of `DECISIONS.md` (18); nothing collects that table yet. Step 6 adds `SilhouetteReport`'s four class-size columns, and `GraphAccuracyReport`'s `n_isolated` beside its `n_excluded` | step 7 |
+| ⚠️ **§4.4 permits `disconnected="mask"` for SNS only, and `silhouette_graph` now refuses it unconditionally** — including on a connected graph, where `lcc` and `mask` give the identical array. A runner sharing one `EvaluationContext` between SNS and Sil\* under `mask` will be told rather than get an inflated number. Two contexts, or `lcc` throughout | **step 7**, the runner |
+| ⚠️ **The label-set enumeration is one line but must not be naive**: tabula's `compartment_cell_type` is *exactly* `cell_ontology_class` (`compartment` is a function of it), so scoring every composite emits a duplicate column | step 7 |
+| ⚠️ **Sil\* and Acc\* need a reference level printed beside them, and nothing computes one.** Sil\*'s chance is **negative** by a class-count-dependent amount (−0.32 at 10 classes, −0.0004 at 2) and its ceiling is ~0.53 where labels *are* the topology; Acc\* exceeds 0.94 on every dataset and is near-useless without its floor (0.987 against a 0.958 floor on tabula's `method`). A shuffled-label control is three lines; `majority_class_rate` exists | step 7 for the column, **step 11** for the table |
+| ⚠️ **§5.3 guard 2 is unbuilt**: Sil\*/Acc\* must be emitted in a *separate* table from Sil/Acc. The docstrings say "label-validity check, not a baseline" and two tests assert the sentence exists, which is all that can be enforced from here | step 11 |
+| ⚠️ **Sil needs seed replication to be read at all** — rel IQR 3.6 % and a 19 % spread over seven seeds on `digits`, the noisiest metric measured, against `knn_accuracy`'s 0.24 %. A λ sweep reporting Sil differences below ~4 % on one seed is reporting noise | step 8 |
+| ⚠️ **Sil must not be tabulated as "which representation recovers labels best".** It separates the ablation disjointly but orders it *differently* from `knn_accuracy` and `knn_recall` — identical Acc for A_V and A_tne on football where Sil separates them 0.758/0.617, and an inverted A_E/A_tne on digits. Distance-based versus rank-based; §5 must say which question each answers | step 11 |
+| ⚠️ **The tabula `donor` silhouette contradicts the "low is good" reading for batch covariates**, because `donor` is confounded with cell type at NMI 0.41. `method` is the covariate the argument applies to. `DATASET_PROVENANCE.md`, spec §3.4 and `DECISIONS.md`'s `LabelSet` note all want the qualifier; the wording is in `DECISIONS.md` (40) | thesis and docs prose, before submission |
 | ⚠️ **`notebooks/metrics.ipynb` cannot run at all** — it imports `twin.metadata`, deleted at step 2. It is also the sole consumer of `embedding_metrics_all` / `metrics_to_typ` / `metrics_to_df`, so notebook and functions share a fate | step 11 |
 | The other notebooks import modules that have moved; `twin-gui.ipynb` is the only consumer of `plots.application_plot`, which is **wanted** and needs porting to the new interface | step 10 |
 | `twin/batching.py` is 1562 lines with one smoke test plus the twelve key-contract tests added in session 4. The rest of the engine is unexercised; CLAUDE.md says not to rewrite it, so the question is what step 7 leans on | step 7 |
@@ -557,9 +645,23 @@ one of the eight.)
 
 ## Traps
 
-- **All three plan files are history, not instructions** — `step2-datasets.md`,
-  `step3-metrics.md` and now `step4-visual.md`. Each records where the implementation departed
-  from it; the departures are in `DECISIONS.md`. Step 5 has no plan yet.
+- **All six plan files are history, not instructions** — `step2-datasets.md` through
+  `step6-labels.md`. Each records where the implementation departed from it; the departures are
+  in `DECISIONS.md`. Step 7 has no plan yet.
+- **`sklearn` refuses both degenerate ends of the silhouette**, not just the single-class one:
+  its range is $2 \le |\mathcal{L}| \le n-1$. `label.py` returns `nan` for one class and
+  **0.0** for all-singletons, which Rousseeuw's convention already implies.
+- **The two graph-side label metrics take `labels` first**, departing from spec §2.3's
+  `(G, labels)`, because `G` is optional for Sil\* once `ideal` is supplied. Both check that
+  `labels` is 1-D, so passing a layout in that slot raises rather than returning a number.
+- **`graph_neighborhood_accuracy`'s weighted mode is `"affinity"`, not `"distance"`.** Eq. (62)
+  votes with $w_{ij}$; `knn_accuracy`'s `"distance"` applies $f(d) = 1/d$ to a length. Opposite
+  quantities, and the metric refuses a `"distance"`-stamped graph under `"affinity"`.
+- **Not every plausible memory argument survives measurement.** `silhouette` shipped on
+  `sklearn`'s chunked Euclidean route to avoid an $(n, n)$ matrix; `working_memory` defaults to
+  1024 MB, so it builds one anyway and the exact `pdist` route is faster *and* leaner at both
+  $n = 5007$ and $n = 12000$. Measure one process per route — `ru_maxrss` is a high-water mark,
+  so two routes in one process give the second one a free pass.
 - **Two per-edge orderings coexist and look identical.** `G.edges()` is the order of record for
   per-edge arrays; ADR alone uses the CSR upper triangle, because its lengths must align with
   the weights from the same matrix. They agree on `karate` and `football_2023` and disagree in
@@ -568,9 +670,6 @@ one of the eight.)
   free, and it would make a metric's value depend on evaluation order whenever a layout has
   exact duplicates. `tests/test_metrics_common.py` asserts both that it does not and that
   slicing would have changed the answer.
-- **`docs/plans/step2-datasets.md` is now history, not instructions.** Where the implementation
-  departed from it — `LayoutGraph`'s module, the commit ordering, the shim on the legacy classes
-  — `DECISIONS.md` records why.
 - **`twin/graphmatrix.py` is not the representation layer any more.** `twin/layoutgraph.py` is.
   The old classes survive for `paper_figures` only; adding a caller re-entangles the two layers.
 - **A `Dataset` is never laid out and a `LayoutGraph` is never labelled.** If a metric or figure

@@ -1,5 +1,9 @@
 # Step 6 — `label.py`: silhouette and the graph-side checks
 
+> **Executed and closed in session 6. This file is history, not instructions.** The five
+> departures are `DECISIONS.md` (39) and the measurements (40); `STATUS.md` has the summary.
+> Read below for what was planned and, by difference, what the implementation had to change.
+
 The executable sequence for spec §7 step 6. Read `CLAUDE.md`, then `docs/STATUS.md`, then spec
 §2.3 and §4.4 before starting. This file is what to do, in what order, and how to know it worked;
 the design record is `DECISIONS.md`.

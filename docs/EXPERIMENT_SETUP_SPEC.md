@@ -157,8 +157,8 @@ Of the metrics defined in thesis §3, **only three partial implementations exist
 | $k$-NN recall / precision / Jaccard $R^k, P^k, J^k$ | (32)–(35) | ~ — `knn_neighbor_preservation_accuracy` implements these |
 | Weighted recall $W^k$ | (36)–(38) | ~ — via `mode="weighted recall"` |
 | Scale-normalized stress SNS | (43)–(45) | ✗ |
-| Silhouette Sil, and graph-side Sil* | (49)–(55) | ✗ |
-| $k$-NN classification accuracy Acc$^k$, and graph-side Acc* | (57)–(64) | ✗ (`knn_classification_accuracy` exists but **is broken**, see §1) |
+| Silhouette Sil, and graph-side Sil* | (49)–(55) | ✓ — `metrics/label.py`, step 6. Sil\* refuses `disconnected="mask"` (§4.4) |
+| $k$-NN classification accuracy Acc$^k$, and graph-side Acc* | (57)–(64) | ✓ — Acc$^k$ at step 3, Acc\* at step 6. §0.5 corrects "is broken": it was valid sklearn, reimplemented for control |
 | Normalized NN distance NND$_k$ | (65)–(67) | ✗ |
 | Node resolution NR, vertex-wise VNR | (68), (69) | ✗ |
 | Distance distributions | (70), (71) | ✗ |
@@ -679,6 +679,62 @@ layouts, not 35 %, and §4.3 costs **1.7×** rather than 2×, because at γ=0 no
 ⚠️ **The divergence table above has been edited**: `count_intersections` versus eq. (78) moved
 from "scheduled fix" to **standing intentional divergence**. The reimplementation happened and
 the divergence deliberately survived it.
+
+### Session 6 corrections — what implementing step 6 established
+
+`label.py` is complete: `silhouette`, `silhouette_graph`, `graph_neighborhood_accuracy` and the
+three `*_report` siblings. **The metric suite of §2 is now finished**; everything remaining is
+machinery. Full detail and the measurements: `DECISIONS.md` (39)–(40).
+
+**⚠️ Decision 9's premise does not hold, so the guard is a diagnostic and not a filter.** It
+cites "14 conferences × 3 divisions over 132 teams" producing many tiny classes where silhouette
+is 0 by convention. Measured on the roster:
+
+| dataset | primary | composite |
+|---|---|---|
+| `football_2023` | **11** conferences, not 14; min 4, median 13 | 15 classes, min **4**, median 7, **no singletons** |
+| `tabula` | 13 classes, min 34 | 13 classes — **identical to the primary**; `compartment` is a function of `cell_ontology_class`, so scoring it produces a duplicate column |
+
+There is no class-size collapse anywhere in the roster. A minimum-size filter at 3 would remove
+nothing and at 5 would remove one football class, so `SilhouetteReport` reports class count and
+min/median size and `n_singletons` and does no filtering — §0.5 decision 3's precedent. **§2.3's
+"~14 conferences" should read 11.**
+
+**Also corrected here:**
+
+| was | now |
+|---|---|
+| §2.3: `silhouette_graph(G, labels)`, `graph_neighborhood_accuracy(G, labels)` | `labels` **first** on both. It is the only argument Sil\* always requires, since `ideal` may replace `G`; and (5)'s hazard is two orders for one argument list. `labels` is checked 1-D so a layout in that slot raises — (39c) |
+| §2.3: the graph vote is `weighting="distance"` by analogy with Acc$^k$ | `weighting="affinity"`. Eq. (62) votes with $w_{ij}$, a coupling, where Acc$^k$'s `"distance"` applies $f(d)=1/d$ to a length. Opposite quantities; the name would invite the §1.6 substitution the stamp guard refuses — (39d) |
+| §2.3: singletons score 0, and `sklearn` may be used | both true, and `sklearn` refuses **both** degenerate ends: $\lvert\mathcal{L}\rvert = 1$ returns `nan` and $\lvert\mathcal{L}\rvert = n$ returns **0.0**, which the convention already implies — (39a) |
+| §2.5's cost class names Sil\* as what will not run on tabula | Sil\* is **0.58 s** there given the shared closure, 2.07 s for all four label sets, against crossings' 40 s. It is among the cheapest in the suite |
+
+**⚠️ The auxiliary-label claim in §3.4 is false for `donor` and true for `method`.** A *low*
+silhouette on tabula's batch covariates is asserted to be the good outcome. `donor` scores
+**0.206**, roughly double `cell_ontology_class`'s 0.106 and first of the four — and it is first on
+Sil\* too, so the structure is in the graph before any layout. The cause is confounding: the two
+donors sampled almost disjoint cell populations (TSP14 69 % hepatocytes, TSP6 48 % macrophages),
+$\mathrm{NMI}(\mathrm{donor}, \mathrm{cell\ type}) = 0.413$ against 0.059 for `method`. So a low
+donor score is not an achievable target, and `method` is the covariate the argument actually
+applies to. **Prose to change, not code** — `DECISIONS.md` (40) has the wording and the
+placement.
+
+**Three reporting rules the measurements force, for §5 and step 11:**
+
+- **Sil must not be tabulated as "which representation recovers the labels best".** It separates
+  $A_V$ / $A_E$ / $A_{tne}$ disjointly across five seeds — no quiet instrument — but on football
+  `knn_accuracy` is identical to the digit for $A_V$ and $A_{tne}$ where Sil separates them
+  0.758 to 0.617, and on digits the two **invert** $A_E$ against $A_{tne}$. Sil is distance-based
+  and the accuracy family rank-based.
+- **Sil needs seed replication; the crowding metrics do not.** Seven seeds on `digits`: rel IQR
+  **3.6 %** and a **19 %** spread, against NND's 0.4 %, VNR's 1.2 % and `knn_accuracy`'s 0.24 %.
+  It is the noisiest metric in the project so far. A λ sweep reporting Sil differences below ~4 %
+  on one seed is reporting noise.
+- **Sil\* and Acc\* both need a reference level printed beside them.** Sil\*'s chance is
+  **negative** by a class-count-dependent amount (−0.32 at 10 classes, −0.0004 at 2), and its
+  ceiling is ~0.53 even where the labels *are* the topology — so it is not read on a 0-to-1
+  scale. Acc\* exceeds 0.94 on every dataset and is near-useless without its floor: 0.987 against
+  a **0.958** floor on tabula's `method`.
 
 ## 1. Bugs to fix first
 
