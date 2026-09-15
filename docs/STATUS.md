@@ -4,7 +4,7 @@ Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
 **Last updated:** end of session 6 (2026-09-15). It closed spec §7 step 6 — `label.py` now holds
 the silhouette family and the 1-hop graph-side accuracy, so **the metric suite of §2 is
-complete**. Branch `experiment-setup`; tree clean. **841 pass and 2 skip** — the two `sfdp` cases,
+complete**. Branch `experiment-setup`; tree clean. **862 pass and 2 skip** — the two `sfdp` cases,
 behind a runtime probe of the broken backend (see below).
 
 > **Step 7 is next** — the registry, `evaluate_layout`, `batch_layout_metrics` and persistence.
@@ -503,7 +503,7 @@ from 94**; all eight `paper_figures` functions still render.
 
 ## ⚠️ Broken in the environment, not in the tree: `sfdp` / `YifanHuLayout`
 
-**`venv/bin/python -m pytest` reports 841 passed, 2 skipped. The two skips are an upstream
+**`venv/bin/python -m pytest` reports 862 passed, 2 skipped. The two skips are an upstream
 graphviz crash, and they un-skip by themselves once the installed graphviz is new enough.**
 
 ```
@@ -586,10 +586,11 @@ plumbing is still guarded, only the end-to-end layout is not. **Do not "fix" the
 ## Health check
 
 ```bash
-venv/bin/python -m pytest -q          # 841 passing, 2 skipped (sfdp — see above), 1 deselected
-venv/bin/python -m pytest -q -m slow  # the opt-in tabula figure, ~2 min
+venv/bin/python -m pytest -q          # 862 passing, 2 skipped (sfdp — see above), 7 deselected
+venv/bin/python -m pytest -q -m slow  # the tabula figure and the large-dataset score pins, ~4 min
 python -m twin.report            # the roster table; regenerates docs/DATASET_REPORT.md with -o
-                                 # ~36 s, most of it the graph-side label scores; --no-label-scores skips them
+                                 # ~2 min, most of it the label scores' permutation nulls;
+                                 # --no-label-scores drops to 11 s
 git status --short               # clean; if notebooks appear modified, the filter is unset
 ```
 
@@ -634,7 +635,12 @@ one of the eight.)
 | `NodeResolutionReport.n_zero_denominator` joins `n_ties` / `n_zero_distance` in the diagnostics table of `DECISIONS.md` (18); nothing collects that table yet. Step 6 adds `SilhouetteReport`'s four class-size columns, and `GraphAccuracyReport`'s `n_isolated` beside its `n_excluded` | step 7 |
 | ⚠️ **§4.4 permits `disconnected="mask"` for SNS only, and `silhouette_graph` now refuses it unconditionally** — including on a connected graph, where `lcc` and `mask` give the identical array. A runner sharing one `EvaluationContext` between SNS and Sil\* under `mask` will be told rather than get an inflated number. Two contexts, or `lcc` throughout | **step 7**, the runner |
 | ⚠️ **The label-set enumeration is one line but must not be naive**: tabula's `compartment_cell_type` is *exactly* `cell_ontology_class` (`compartment` is a function of it), so scoring every composite emits a duplicate column | step 7 |
-| ~~Sil\* and Acc\* need a reference level printed beside them, and nothing computes one~~ — **`python -m twin.report` now does**: a shuffled-label control for both and a Leiden **compactness ceiling** for Sil\*. The real label sets sit at 73-100 % of that ceiling, which is what answers "why is Sil\* only 0.33". The metric layer still returns bare scores, so **step 7's rows must carry the same two columns** or the results tables inherit the unanswerable version | discharged for the report; **step 7** for the metric frame |
+| ~~Sil\* and Acc\* need a reference level printed beside them, and nothing computes one~~ — **`python -m twin.report` now does**: a permutation-null **z-score** for both, a Leiden **compactness ceiling** for Sil\* (the real label sets sit at 73-100 % of it, which answers "why is Sil\* only 0.33"), and **Cramér's V against the scoring primary** as a confound column. All pinned in `tests/test_report_numbers.py`. The metric layer still returns bare scores, so **step 7's rows must carry the same columns** or the results tables inherit the unanswerable version | discharged for the report; **step 7** for the metric frame |
+| ⚠️ **The z-score answers "above chance", not "how strongly".** $\sigma_0$ depends on class count and balance, so tabula's `donor` reaches $z = 475$ at Sil\* 0.31 where `cell_ontology_class` reaches 15.8 at 0.28. A results table that ranks label sets on $z$ would be ranking class balance. Magnitude needs conditioning at matched class counts — `DECISIONS.md` (42) | **step 11**, the reporting layer |
+| ⚠️ **A permutation null can be a point mass, and `np.std` does not say so** — on tabula's `method` the Acc\* null has one distinct value and `std` returns 2.3e-16, which gave $z = 8.7\times10^{13}$. `PermutationNull` counts distinct values instead. Any future per-row null needs the same treatment | **step 7**, wherever a null is computed per row |
+| ⚠️ **Tabula's residual batch effect is a stated limitation, not a defect** — `donor` survives conditioning in two of three testable cell types (Sil\* 0.685 within t cell, 0.321 within endothelial-sinusoid, −0.024 within hepatocyte), and `method` shows 0.233 within macrophage. Every method scored on tabula inherits it, so it does not bias the $A_V$/$A_E$/$A_{tne}$ comparison, but it caps what a high `cell_ontology_class` score can be claimed to mean | thesis §3.1 prose; `DECISIONS.md` (42) |
+| **Open, the author's:** `LabelSet.parent` is overloaded — it means "refines exactly" on tabula and "ordered display modifier" on football, and it has **no consumer in the tree**. Tightening it (validated in `__post_init__`, which football would then fail) or splitting it into a structural and a display field would let the composite guard read a declaration instead of recomputing a class count | `DECISIONS.md` (43); any time before step 10 |
+| **Open, decided but reversible:** the headline Acc\* is **uniform** voting, though affinity weighting is better on all 7 weighted label sets and equal on 4. The gains are 0.002-0.029 and eq. (61) is the definition; what would flip it is a dataset where the gap is tens of points — `DECISIONS.md` (41) | confirm before **step 7**'s registry bakes it in |
 | ⚠️ **§5.3 guard 2 is unbuilt**: Sil\*/Acc\* must be emitted in a *separate* table from Sil/Acc. The docstrings say "label-validity check, not a baseline" and two tests assert the sentence exists, which is all that can be enforced from here | step 11 |
 | ⚠️ **Sil needs seed replication to be read at all** — rel IQR 3.6 % and a 19 % spread over seven seeds on `digits`, the noisiest metric measured, against `knn_accuracy`'s 0.24 %. A λ sweep reporting Sil differences below ~4 % on one seed is reporting noise | step 8 |
 | ⚠️ **Sil must not be tabulated as "which representation recovers labels best".** It separates the ablation disjointly but orders it *differently* from `knn_accuracy` and `knn_recall` — identical Acc for A_V and A_tne on football where Sil separates them 0.758/0.617, and an inverted A_E/A_tne on digits. Distance-based versus rank-based; §5 must say which question each answers | step 11 |
