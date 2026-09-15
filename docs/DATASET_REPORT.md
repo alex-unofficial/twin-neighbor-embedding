@@ -111,10 +111,100 @@ reported rather than the fraction of edges at the maximum weight.
 Class counts exclude the noise class. Scoring and display roles are independent:
 football scores the coarse label and takes hue from it, tabula inverts that. An
 `auxiliary` set is a technical covariate scored **deliberately** — a layout that
-separates cells by donor rather than by cell type is displaying an artifact, so a low
+separates cells by batch rather than by cell type is displaying an artifact, so a low
 score there is the good outcome.
 
+⚠️ **That reading holds for `method` and fails for `donor`.** It assumes the covariate
+is independent of the biology, and tabula's two donors sampled almost disjoint cell
+populations: NMI(`donor`, `cell_ontology_class`) is **0.413**, against 0.059 for
+`method`. So `donor`'s score is largely cell-type structure read through a confounded
+label — it is the *highest* of tabula's four on both Sil and Sil\*, and a low score on
+it is not an achievable target. `method` is the covariate the argument applies to.
+
 Declared composites: `football_2023` / `conference_division`, `tabula` / `compartment_cell_type`.
+
+## Graph-side label scores — Sil\* and Acc\*
+
+**Label-validity checks, not baselines** (spec §2.3, §5.3 guard 2). These score the
+*graph*: they answer whether the labels are reflected in the topology at all, which is
+what says when a low layout score is uninformative. Their layout-side counterparts are
+deliberately not in this table — the scales are incomparable, and column adjacency is
+an invitation to difference them.
+
+### Sil\* (eqs. 53-55), under `disconnected='lcc'`
+
+| dataset | label set | role | Sil\* | shuffled | margin | ceiling | % of ceiling | excluded |
+|---|---|---|---|---|---|---|---|---|
+| `ring_of_cliques` | `clique` | primary | 0.5325 | -0.3507 … -0.2724 | +0.8048 | 0.5325 | 100 % | 0 |
+| `karate_weighted` | `club` | primary | 0.3774 | -0.0326 … +0.0451 | +0.3324 | 0.3890 | 97 % | 0 |
+| `football_2023` | `conference` | primary | 0.3304 | -0.1388 … -0.1179 | +0.4484 | 0.3433 | 96 % | 0 |
+|  | `division` | sub | 0.0203 | -0.0364 … -0.0167 | +0.0370 |  | 6 % | 0 |
+|  | `conference_division` | composite | 0.3266 | -0.1823 … -0.1514 | +0.4779 |  | 95 % | 0 |
+| `digits` | `digit` | primary | 0.3670 | -0.0355 … -0.0255 | +0.3925 | 0.3950 | 93 % | 0 |
+| `tabula` | `cell_ontology_class` | primary | 0.2839 | -0.0755 … -0.0630 | +0.3469 | 0.3890 | 73 % | 0 |
+|  | `compartment` | sub | 0.2975 | -0.0395 … -0.0213 | +0.3188 |  | 76 % | 0 |
+|  | `donor` | auxiliary | 0.3102 | -0.0013 … +0.0002 | +0.3100 |  | 80 % | 0 |
+|  | `method` | auxiliary | 0.0849 | -0.0079 … -0.0014 | +0.0863 |  | 22 % | 0 |
+|  | `compartment_cell_type` | composite | 0.2839 | -0.0755 … -0.0630 | +0.3469 |  | 73 % | 0 |
+
+⚠️ **Do not read Sil\* on a 0-to-1 scale.** Its bounds are properties of the graph, not
+of the labels: $a^*_i$ averages over all of one's own class and $b^*_i$ over all of the
+nearest other one, so once classes have internal extent comparable to the gap between
+them — which any connected $k$-NN graph guarantees — the two means converge. The
+measured $b^*/a^*$ is 1.50 on football's conferences, 1.64 on `digits` and 1.50 on
+`tabula`, capping Sil\* near $1 - 1/1.5 \approx 0.33$ before label quality enters at
+all. The implementation reaches 0.80 on a graph built to allow it (two cliques joined
+by a path), so the ceiling is the data's and not the metric's.
+
+The **ceiling** column is therefore the reference: the best Sil\* a Leiden partition
+of the same graph reaches, over resolutions 0.5, 1.0, 2.0.
+A modularity partition picks its own classes and so *should* win — a ground truth
+matching it exactly would mean the labels add nothing to the topology. What the column
+says is how much of the available compactness the labels capture. The **shuffled**
+column is the other end, and it is **not zero**: $b^*_i$ is a min over
+$\lvert\mathcal{L}\rvert - 1$ class means, so chance is negative by an amount that
+grows with the class count.
+
+### Acc\* (eqs. 61-64), 1-hop neighbourhood
+
+| dataset | label set | Acc\* | affinity-weighted | shuffled | floor | margin over floor | ties | excluded |
+|---|---|---|---|---|---|---|---|---|
+| `ring_of_cliques` | `clique` | 1.0000 | 1.0000 | 0.0250 … 0.1792 | 0.1000 | +0.9000 | 0 | 0 |
+| `karate_weighted` | `club` | 0.9412 | 0.9706 | 0.2647 … 0.6471 | 0.5000 | +0.4412 | 2 | 0 |
+| `football_2023` | `conference` | 0.9697 | 0.9697 | 0.0340 … 0.1218 | 0.1061 | +0.8636 | 0 | 0 |
+|  | `division` | 0.9886 | 0.9886 | 0.5114 … 0.5909 | 0.5909 | +0.3977 | 1 | 0 |
+|  | `conference_division` | 0.9722 | 0.9722 | 0.0290 … 0.0936 | 0.1061 | +0.8662 | 2 | 0 |
+| `digits` | `digit` | 0.9853 | 0.9855 | 0.0767 … 0.1134 | 0.1018 | +0.8834 | 4 | 0 |
+| `tabula` | `cell_ontology_class` | 0.9615 | 0.9683 | 0.2844 … 0.2967 | 0.3112 | +0.6504 | 21 | 0 |
+|  | `compartment` | 0.9897 | 0.9930 | 0.4872 … 0.4957 | 0.5279 | +0.4619 | 1 | 0 |
+|  | `donor` | 0.9873 | 0.9918 | 0.5286 … 0.5479 | 0.5712 | +0.4161 | 7 | 0 |
+|  | `method` | 0.9868 | 0.9918 | 0.9575 … 0.9575 | 0.9575 | +0.0294 | 10 | 0 |
+|  | `compartment_cell_type` | 0.9615 | 0.9683 | 0.2844 … 0.2967 | 0.3112 | +0.6504 | 21 | 0 |
+
+⚠️ **Acc\* exceeds 0.94 on every registered dataset, so the raw value says almost
+nothing** — a 1-hop neighbourhood of a $k$-NN graph is label-homogeneous nearly by
+construction. Read the margin over the floor: +0.86 on football's conference is
+decisive, **+0.03** on tabula's `method` is not, and the two raw scores differ by less
+than 0.002. `affinity-weighted` is eq. (62); it equals the uniform column exactly on a
+dataset declared unweighted, because the declaration wins over any stray edge
+attribute. `ties` counts vertices with more than one class tied for the argmax, which a
+variable-size neighbourhood produces far more readily than a fixed $k$ — the reported
+score resolves them by the fractional rule and is an expectation over tie-breakings to
+that extent.
+
+### What the two disagree about
+
+Where Sil\* and Acc\* diverge they are both right, and the pair says more than either:
+Sil\* is global compactness and Acc\* is local homogeneity (thesis §3.1.2). The clearest
+case in the roster is football's `division` — Acc\* near the top of the table and Sil\*
+at chance, because teams play mostly within their division while "West" spans eleven
+conferences that sit far apart in the graph. A multi-modal class is locally clean and
+globally diffuse, and only reporting both shows it.
+
+Shuffle counts scale with $n$ (`ring_of_cliques` 20, `karate_weighted` 20, `football_2023` 20, `digits` 11, `tabula` 3),
+because the reference's variance falls with $n$ while one Sil\* costs 0.38 s at
+tabula's size. A fixed count is too noisy on the small graphs and pure waste on the
+large ones.
 
 ## Weight-source consistency
 
