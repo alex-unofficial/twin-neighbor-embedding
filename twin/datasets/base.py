@@ -439,6 +439,57 @@ class Dataset:
         _, codes = np.unique(stacked, axis=0, return_inverse=True)
         return codes.astype(np.int64)
 
+    def degenerate_composites(self) -> dict[str, str]:
+        """Composites that **are** one of their own parts, renumbered — so scoring them duplicates a column.
+
+        A composite is the product partition of its parts, which always refines each part. It is
+        therefore *equal* to a part exactly when their class counts agree — no tolerance, no
+        sampling, one ``np.unique`` per part. That happens when one part already refines
+        another: `tabula`'s `cell_ontology_class` lies inside `compartment`, so
+        ``compartment_cell_type`` has the same 13 classes as `cell_ontology_class` and the two
+        score identically for every metric, whatever the data holds.
+
+        ⚠️ **This cannot be read off ``LabelSet.parent``, which was the obvious criterion and
+        does not work.** ``parent`` is documented as "the label set this one subdivides", and the
+        two datasets that set it mean different things by it:
+
+        =============  ==================================  ====================  ==========
+        dataset        declaration                         refines exactly?      composite
+        =============  ==================================  ====================  ==========
+        `tabula`       `cell_ontology_class` ⊂ `compartment`  **yes**            13 = 13 ✗
+        `football_2023`  `division` ⊂ `conference`            **no**             15 ≠ 11 ✓
+        =============  ==================================  ====================  ==========
+
+        football's `division` is West/East/none applied *across* conferences, so it is an
+        ordered display modifier rather than a refinement — and its composite is a genuine
+        15-class product. A guard keyed on the declaration would flag it wrongly. The refinement
+        test separates them because it checks the property that actually matters.
+
+        ``parent`` has no consumer anywhere in the tree (only two registry tests read it), so
+        tightening it to mean "refines exactly" — or splitting it into two fields — is available
+        and is the author's call; `DECISIONS.md` records it.
+
+        Returns:
+            ``{composite name: the part it collapses to}``, empty when none is degenerate.
+
+        Note:
+            This **reports** rather than raises, deliberately. Raising in ``__post_init__``
+            would make `tabula` unloadable until its registration changed, which would delete
+            the evidence that someone declared the composite meaningful; and the honest fix —
+            dropping the declaration — is a claim about what the dataset asserts, not a
+            validation rule. So the composite stays declared, is emitted **once** with the
+            redundancy stated (`twin.report`), and is flagged here for step 7's enumeration,
+            which is what would otherwise ship a duplicate column.
+        """
+        degenerate = {}
+        for name, parts in self.composite_of.items():
+            n_product = np.unique(self.composite_labels(name)).size
+            for part in parts:
+                if np.unique(self.label_sets[part].values).size == n_product:
+                    degenerate[name] = part
+                    break
+        return degenerate
+
     def label_set(self, name: str) -> LabelSet:
         return self.label_sets[name]
 

@@ -131,21 +131,26 @@ what says when a low layout score is uninformative. Their layout-side counterpar
 deliberately not in this table — the scales are incomparable, and column adjacency is
 an invitation to difference them.
 
-### Sil\* (eqs. 53-55), under `disconnected='lcc'`
+Every score below is under `disconnected='lcc'`, and **Acc\* is uniform voting with
+the fractional tie rule** (eq. 61) unless the column says otherwise — a convention that
+cannot be recovered from the numbers, and one that `DECISIONS.md` (41) argues for rather
+than inherits. `z` is the standardised gap from a null that permutes the label vector,
+preserving every class size; `V` is Cramér's V against the dataset's scoring primary.
 
-| dataset | label set | role | Sil\* | shuffled | margin | ceiling | % of ceiling | excluded |
-|---|---|---|---|---|---|---|---|---|
-| `ring_of_cliques` | `clique` | primary | 0.5325 | -0.3507 … -0.2724 | +0.8048 | 0.5325 | 100 % | 0 |
-| `karate_weighted` | `club` | primary | 0.3774 | -0.0326 … +0.0451 | +0.3324 | 0.3890 | 97 % | 0 |
-| `football_2023` | `conference` | primary | 0.3304 | -0.1388 … -0.1179 | +0.4484 | 0.3433 | 96 % | 0 |
-|  | `division` | sub | 0.0203 | -0.0364 … -0.0167 | +0.0370 |  | 6 % | 0 |
-|  | `conference_division` | composite | 0.3266 | -0.1823 … -0.1514 | +0.4779 |  | 95 % | 0 |
-| `digits` | `digit` | primary | 0.3670 | -0.0355 … -0.0255 | +0.3925 | 0.3950 | 93 % | 0 |
-| `tabula` | `cell_ontology_class` | primary | 0.2839 | -0.0755 … -0.0630 | +0.3469 | 0.3890 | 73 % | 0 |
-|  | `compartment` | sub | 0.2975 | -0.0395 … -0.0213 | +0.3188 |  | 76 % | 0 |
-|  | `donor` | auxiliary | 0.3102 | -0.0013 … +0.0002 | +0.3100 |  | 80 % | 0 |
-|  | `method` | auxiliary | 0.0849 | -0.0079 … -0.0014 | +0.0863 |  | 22 % | 0 |
-|  | `compartment_cell_type` | composite | 0.2839 | -0.0755 … -0.0630 | +0.3469 |  | 73 % | 0 |
+### Sil\* (eqs. 53-55)
+
+| dataset | label set | role | Sil\* | null mean | null sd | z | ceiling | % of ceiling | V vs primary |
+|---|---|---|---|---|---|---|---|---|---|
+| `ring_of_cliques` | `clique` | primary | 0.5325 | -0.3218 | 0.01826 | 46.8 | 0.5325 | 100 % | — |
+| `karate_weighted` | `club` | primary | 0.3774 | +0.0012 | 0.02382 | 15.8 | 0.3890 | 97 % | — |
+| `football_2023` | `conference` | primary | 0.3304 | -0.1309 | 0.00770 | 59.9 | 0.3433 | 96 % | — |
+|  | `division` | sub | 0.0203 | -0.0268 | 0.00512 | 9.2 |  | 6 % | 0.707 |
+|  | `conference_division` | composite | 0.3266 | -0.1700 | 0.00834 | 59.6 |  | 95 % | 1.000 |
+| `digits` | `digit` | primary | 0.3670 | -0.0315 | 0.00303 | 132 | 0.3950 | 93 % | — |
+| `tabula` | `cell_ontology_class` | primary | 0.2839 | -0.0804 | 0.02308 | 15.8 | 0.3890 | 73 % | — |
+|  | `compartment` | sub | 0.2975 | -0.0245 | 0.01095 | 29.4 |  | 76 % | 1.000 |
+|  | `donor` | auxiliary | 0.3102 | -0.0001 | 0.00065 | 475 |  | 80 % | 0.917 |
+|  | `method` | auxiliary | 0.0849 | -0.0025 | 0.00767 | 11.4 |  | 22 % | 0.597 |
 
 ⚠️ **Do not read Sil\* on a 0-to-1 scale.** Its bounds are properties of the graph, not
 of the labels: $a^*_i$ averages over all of one's own class and $b^*_i$ over all of the
@@ -160,37 +165,59 @@ The **ceiling** column is therefore the reference: the best Sil\* a Leiden parti
 of the same graph reaches, over resolutions 0.5, 1.0, 2.0.
 A modularity partition picks its own classes and so *should* win — a ground truth
 matching it exactly would mean the labels add nothing to the topology. What the column
-says is how much of the available compactness the labels capture. The **shuffled**
-column is the other end, and it is **not zero**: $b^*_i$ is a min over
-$\lvert\mathcal{L}\rvert - 1$ class means, so chance is negative by an amount that
-grows with the class count.
+says is how much of the available compactness the labels capture.
+
+⚠️ **`z` says how far a score sits above its own null; it does not compare magnitudes
+across label sets.** $\sigma_0$ depends on the class count and balance, so a 2-class
+balanced split has a tiny null spread and reaches a large $z$ at a modest Sil\*. Read
+`z` for *whether* a label set is encoded and the Sil\* and ceiling columns for *how
+strongly*; for a magnitude comparison between two label sets, condition on a stratum
+at matched class counts (`DECISIONS.md` (42)). Read it to two significant figures at
+most — $\sigma_0$ carries ~13 % error at 30 permutations — and past about 50 only as
+"far above chance".
+
+⚠️ **`V vs primary` is the confound column.** A covariate is only evidence about itself
+if it is not already a proxy for the biology, and a high $z$ cannot distinguish the two.
+A `sub` label or a composite reaching $V = 1$ is expected rather than informative — one
+coarsens or refines the primary by construction. The row to read is an **`auxiliary`**
+one: `tabula`'s `donor` at **0.917** against `cell_ontology_class` is a technical
+covariate that very nearly determines the biology, so neither its Sil\* nor its $z$ can
+be attributed to batch effect without conditioning — `DECISIONS.md` (42) does that.
 
 ### Acc\* (eqs. 61-64), 1-hop neighbourhood
 
-| dataset | label set | Acc\* | affinity-weighted | shuffled | floor | margin over floor | ties | excluded |
+| dataset | label set | Acc\* (uniform) | affinity-weighted | floor | margin over floor | z | ties | excluded |
 |---|---|---|---|---|---|---|---|---|
-| `ring_of_cliques` | `clique` | 1.0000 | 1.0000 | 0.0250 … 0.1792 | 0.1000 | +0.9000 | 0 | 0 |
-| `karate_weighted` | `club` | 0.9412 | 0.9706 | 0.2647 … 0.6471 | 0.5000 | +0.4412 | 2 | 0 |
-| `football_2023` | `conference` | 0.9697 | 0.9697 | 0.0340 … 0.1218 | 0.1061 | +0.8636 | 0 | 0 |
-|  | `division` | 0.9886 | 0.9886 | 0.5114 … 0.5909 | 0.5909 | +0.3977 | 1 | 0 |
-|  | `conference_division` | 0.9722 | 0.9722 | 0.0290 … 0.0936 | 0.1061 | +0.8662 | 2 | 0 |
-| `digits` | `digit` | 0.9853 | 0.9855 | 0.0767 … 0.1134 | 0.1018 | +0.8834 | 4 | 0 |
-| `tabula` | `cell_ontology_class` | 0.9615 | 0.9683 | 0.2844 … 0.2967 | 0.3112 | +0.6504 | 21 | 0 |
-|  | `compartment` | 0.9897 | 0.9930 | 0.4872 … 0.4957 | 0.5279 | +0.4619 | 1 | 0 |
-|  | `donor` | 0.9873 | 0.9918 | 0.5286 … 0.5479 | 0.5712 | +0.4161 | 7 | 0 |
-|  | `method` | 0.9868 | 0.9918 | 0.9575 … 0.9575 | 0.9575 | +0.0294 | 10 | 0 |
-|  | `compartment_cell_type` | 0.9615 | 0.9683 | 0.2844 … 0.2967 | 0.3112 | +0.6504 | 21 | 0 |
+| `ring_of_cliques` | `clique` | 1.0000 | 1.0000 | 0.1000 | +0.9000 | 24.9 | 0 | 0 |
+| `karate_weighted` | `club` | 0.9412 | 0.9706 | 0.5000 | +0.4412 | 5.1 | 2 | 0 |
+| `football_2023` | `conference` | 0.9697 | 0.9697 | 0.1061 | +0.8636 | 34.0 | 0 | 0 |
+|  | `division` | 0.9886 | 0.9886 | 0.5909 | +0.3977 | 20.9 | 1 | 0 |
+|  | `conference_division` | 0.9722 | 0.9722 | 0.1061 | +0.8662 | 38.4 | 2 | 0 |
+| `digits` | `digit` | 0.9853 | 0.9855 | 0.1018 | +0.8834 | 132 | 4 | 0 |
+| `tabula` | `cell_ontology_class` | 0.9615 | 0.9683 | 0.3112 | +0.6504 | 87.8 | 21 | 0 |
+|  | `compartment` | 0.9897 | 0.9930 | 0.5279 | +0.4619 | 89.4 | 1 | 0 |
+|  | `donor` | 0.9873 | 0.9918 | 0.5712 | +0.4161 | 56.3 | 7 | 0 |
+|  | `method` | 0.9868 | 0.9918 | 0.9575 | +0.0294 | *no test* | 10 | 0 |
 
 ⚠️ **Acc\* exceeds 0.94 on every registered dataset, so the raw value says almost
 nothing** — a 1-hop neighbourhood of a $k$-NN graph is label-homogeneous nearly by
 construction. Read the margin over the floor: +0.86 on football's conference is
 decisive, **+0.03** on tabula's `method` is not, and the two raw scores differ by less
-than 0.002. `affinity-weighted` is eq. (62); it equals the uniform column exactly on a
-dataset declared unweighted, because the declaration wins over any stray edge
-attribute. `ties` counts vertices with more than one class tied for the argmax, which a
+than 0.002.
+
+**`method` is also where the permutation test does not exist**, and the column says so
+rather than printing a number. Its split is 213 against 4794, so every relabelling
+leaves almost every neighbourhood majority-`10X`: the null is a point mass at the
+majority rate, $\sigma_0 = 0$, and $z$ is undefined. The honest statement there is the
+margin over the majority-class baseline, which is +0.029.
+
+`ties` counts vertices with more than one class tied for the argmax, which a
 variable-size neighbourhood produces far more readily than a fixed $k$ — the reported
 score resolves them by the fractional rule and is an expectation over tie-breakings to
-that extent.
+that extent. `affinity-weighted` is eq. (62); it equals the uniform column exactly on a
+dataset declared unweighted, because the declaration wins over any stray edge
+attribute, and it is **better on every weighted label set here** — which is why the
+uniform headline is a stated choice and not a default nobody examined.
 
 ### What the two disagree about
 
@@ -201,10 +228,27 @@ at chance, because teams play mostly within their division while "West" spans el
 conferences that sit far apart in the graph. A multi-modal class is locally clean and
 globally diffuse, and only reporting both shows it.
 
-Shuffle counts scale with $n$ (`ring_of_cliques` 20, `karate_weighted` 20, `football_2023` 20, `digits` 11, `tabula` 3),
-because the reference's variance falls with $n$ while one Sil\* costs 0.38 s at
-tabula's size. A fixed count is too noisy on the small graphs and pure waste on the
-large ones.
+### Composites omitted as degenerate
+
+A composite is the product partition of its parts, which always refines each part — so it
+**equals** a part exactly when their class counts agree, and scoring it then emits a
+duplicate column under a different name. Omitted here and flagged for step 7's
+enumeration:
+
+- `tabula` / `compartment_cell_type` **is** `cell_ontology_class` renumbered, so it is scored once, as `cell_ontology_class`.
+
+⚠️ This is **not** readable off `LabelSet.parent`, which was the obvious criterion.
+Both datasets that declare a parent compose it with its child, and only one is
+degenerate: tabula's `cell_ontology_class` does refine `compartment`, while
+football's `division` (West/East/none, applied across conferences) does not — so its
+composite is a genuine 15-class product. `parent` has no consumer in the tree and
+carries no refinement guarantee; `DECISIONS.md` (43) records that.
+
+Permutation counts scale with $n$ (`ring_of_cliques` 1000, `karate_weighted` 1000, `football_2023` 1000, `digits` 111, `tabula` 39),
+because one evaluation costs 0.001 s at karate's size and 0.87 s at tabula's, where
+five label sets multiply it — while a z-score needs about thirty draws before
+$\sigma_0$ is usable. Thirty is tolerable on `tabula` only because its $z$ values are
+large enough that a 13 % error in $\sigma_0$ cannot change the reading.
 
 ## Weight-source consistency
 

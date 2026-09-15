@@ -1803,3 +1803,235 @@ Against crossings' **40 s and +428 MB per layout**, Sil\* is among the cheapest 
 suite. The expensive metrics scale with $m$, and the label family scales with $n$ — which is
 5007. §0.5 corrects the cost class in principle; these are the numbers, and step 7's run planner
 reads it.
+
+## (41) The headline Acc\* is uniform voting — a decision, not an inheritance
+
+**Uniform (eq. 61) with the fractional tie rule is the reported column; affinity weighting
+(eq. 62) is reported beside it.** Settled here because step 7's registry would otherwise bake in
+whichever default nobody examined.
+
+The awkward fact first: **affinity weighting strictly dominates on this roster.** Better on all
+seven weighted label sets, equal on the four unweighted or declared-combinatorial ones, never
+worse.
+
+| label set | uniform | affinity |
+|---|---|---|
+| `karate_weighted` / `club` | 0.9412 | **0.9706** |
+| `digits` / `digit` | 0.9853 | **0.9855** |
+| `tabula` / `cell_ontology_class` | 0.9615 | **0.9683** |
+| `tabula` / `compartment` | 0.9897 | **0.9930** |
+| `tabula` / `donor` | 0.9873 | **0.9918** |
+| `tabula` / `method` | 0.9868 | **0.9918** |
+| `football_2023` (all three) | 0.9697 / 0.9886 / 0.9722 | identical — `Unweighted()` |
+
+There is a real argument for making affinity the headline: Acc\* is a *validity check*, so what
+it should report is the most favourable reading of the graph — if even the best graph-side
+reading is weak, the labels are not there. Affinity weighting gives that reading.
+
+**Uniform wins anyway, on two grounds.**
+
+1. **Eq. (61) is the definition, and eq. (62) is introduced as an alternative** ("for weighted
+   graphs, we may instead…"). Promoting the alternative to the headline is a `[THESIS EDIT]`,
+   and the measured gain does not justify one: the largest is 0.029 on `karate_weighted` at
+   $n = 34$ — two vertices — and the rest are 0.002 to 0.007. Nothing in §5's argument turns on
+   any of them.
+2. **Uniform is the only column that exists for every dataset.** Four of the eleven label sets
+   sit on unweighted graphs where eq. (62) *is* eq. (61), so an affinity headline would be a
+   column that silently changes meaning down the table. The uniform headline is comparable
+   across the whole roster and the affinity column is an additional measurement where one is
+   available.
+
+⚠️ **What would flip it:** a dataset whose affinity carries most of the structure, where the gap
+is tens of points rather than 0.007. Nothing in the roster is close, and `tabula` — the most
+strongly weighted — gives 0.007. Revisit if the §4.7 adversarial density case behaves otherwise.
+
+The tie rule is **fractional** for the same reason it is on the layout side: it is the expectation
+over uniform random tie-breaking in closed form, with no seed and no variance. It matters more
+here than for Acc$^k$, because a variable-size neighbourhood ties far more readily — 21 of 5007
+vertices on `tabula`'s `cell_ontology_class`, against 4 of 1797 for `digits`' fixed $k = 16$. The
+report states the convention in prose, since it is not recoverable from the numbers.
+
+## (42) ⚠️ Tabula's `donor` is a residual batch effect **and** a confound — a stated limitation
+
+**The claim under test.** §8's auxiliary-label criterion, and the `LabelSet` note above, say a
+*low* silhouette on `donor` and `method` is the good outcome: a layout separating cells by batch
+covariate is displaying an artifact. Measured on an $A_{tne}$ layout and on the graph, `donor` is
+the **highest** of tabula's four label sets on both — Sil 0.206 against `cell_ontology_class`'s
+0.106, Sil\* 0.310 against 0.284. That is the row the criterion most needs flagged, and the first
+version of this record concluded "confounding, therefore not a batch effect" too quickly. Two
+confounds had to be cleared first.
+
+### Confound (a): the raw values are not comparable across class counts
+
+`donor` has **2** classes to `cell_ontology_class`'s 13. Standardising against a
+class-size-preserving permutation null:
+
+| label set | classes | Sil\* | null mean | null sd | z |
+|---|---|---|---|---|---|
+| `cell_ontology_class` | 13 | 0.2839 | −0.0804 | 0.0231 | 15.8 |
+| `compartment` | 4 | 0.2975 | −0.0245 | 0.0110 | 29.4 |
+| **`donor`** | 2 | 0.3102 | −0.0001 | 0.00065 | **475** |
+| `method` | 2 | 0.0849 | −0.0025 | 0.0077 | 11.4 |
+
+⚠️ **The z-score does not resolve this, and that is worth stating because it looks as if it
+should.** $\sigma_0$ itself depends on the class count and balance — a 2-class balanced null
+barely moves — so `donor`'s $z = 475$ against cell type's 15.8 measures distance from its *own*
+null and is not 30× the effect. The z-score makes "above chance" comparable and **magnitude
+not**. For magnitude the comparison has to be made at matched class counts, which is what the
+conditioning below does.
+
+### Confound (b): `donor` very nearly determines the biology
+
+| pair | Cramér's V |
+|---|---|
+| `donor`, `cell_ontology_class` | **0.917** |
+| `donor`, `compartment` | 0.772 |
+| `method`, `cell_ontology_class` | 0.597 |
+| `method`, `compartment` | 0.151 |
+| `donor`, `method` | 0.182 |
+
+The two donors sampled almost disjoint populations — TSP14 is 69 % hepatocytes, TSP6 48 %
+macrophages. ⚠️ **NMI understates this badly**: NMI(donor, cell type) is 0.413, which reads as
+moderate, where $V = 0.917$ reads correctly as near-determination. The first version of this
+record quoted the NMI and concluded the donor signal was *merely* confounding. It is not merely
+that.
+
+### The decisive test: condition, holding the metric fixed
+
+Sil\*(`donor`) within each stratum, over full-graph geodesics restricted to the stratum's
+vertices — so the label comparison is conditioned and the metric space is not. 200 permutations
+within each stratum.
+
+**Within compartment:**
+
+| compartment | Sil\*(donor) | null sd | z | n | donor split |
+|---|---|---|---|---|---|
+| endothelial | **0.5047** | 0.0020 | 258 | 688 | 347 / 341 |
+| immune | **0.4451** | 0.0206 | 21.7 | 2643 | 272 / 2371 |
+| epithelial | 0.1145 | 0.0175 | 6.7 | 1600 | 1522 / 78 |
+| stromal | 0.1269 | 0.0577 | 2.2 | 76 | 6 / 70 |
+
+**Within a single cell type** — same cell type, two donors, which is the strongest conditioning
+available (strata with ≥ 20 of each donor):
+
+| cell type | Sil\*(donor) | null sd | z | n | split |
+|---|---|---|---|---|---|
+| t cell | **0.6846** | 0.0792 | 8.8 | 146 | 126 / 20 |
+| endothelial cell of hepatic sinusoid | **0.3210** | 0.0165 | 19.4 | 421 | 80 / 341 |
+| hepatocyte | **−0.0241** | 0.0095 | −2.3 | 1558 | 1491 / 67 |
+
+**It survives conditioning in two of the three testable cell types, and fails in the largest.**
+The size-weighted mean over the three is 0.093 — dragged down by hepatocyte, which is 1558 of the
+2125 conditioned cells. So there **is** a residual batch effect in the 14-NN graph on `X_scvi`,
+and it is cell-type-dependent rather than global. Both signals are real and coexist: within each
+donor separately, cell type is still separated (Sil\* 0.292 in TSP14, 0.220 in TSP6).
+
+### ⚠️ And `method` is not the clean control either
+
+One cell type has ≥ 20 of each method — macrophage, 1307 / 74 — and there
+Sil\*(`method`) = **0.2332** at $z = 15.2$. So `method`'s low *global* score (0.0849) is partly
+its 213-against-4794 imbalance, not an absence of batch structure. Conditioned, **both**
+covariates show residual separation where it can be measured.
+
+### The limitation to state
+
+Three things follow, and they belong in the thesis's experimental-setup section rather than in
+code:
+
+1. **The §8 auxiliary-label criterion is not usable on tabula as stated.** A low Sil on `donor`
+   is not an achievable target, because `donor` is 91.7 % determined by cell type — a layout that
+   separated cell types perfectly and donors not at all would be describing a dataset that does
+   not exist. The criterion needs the covariate to be independent of the biology, and neither of
+   tabula's is sufficiently so.
+2. **There is nonetheless a residual batch effect**, and it should be reported as a limitation of
+   the *dataset* rather than of any layout method: scVI exists to remove exactly this covariate,
+   the graph is the exact 14-NN in its 50-d latent space (`DATASET_PROVENANCE.md`), and donor
+   still separates within two of three testable cell types. Every method scored on tabula
+   inherits it, so it does not bias the $A_V$ / $A_E$ / $A_{tne}$ comparison — but it caps what a
+   high `cell_ontology_class` score can be claimed to mean.
+3. **What can be reported honestly is the conditional score**, per stratum, at matched class
+   counts. The unconditional auxiliary column invites the wrong reading in both directions.
+
+**Suggested placement: thesis §3.1, where the tabula label sets are introduced**, as a limitation
+paragraph; and `DATASET_PROVENANCE.md`'s tabula section wants the Cramér's V table. The wording is
+left to the author — `thesis/` is read-only (CLAUDE.md). `twin/report.py` now carries the
+`V vs primary` column so the confound is visible on every future dataset without anyone
+re-deriving it.
+
+## (43) `LabelSet.parent` carries no refinement guarantee, and the composite guard cannot use it
+
+The degenerate-composite guard was first written on the obvious criterion — *a composite of a
+label set and its own declared parent is degenerate* — and it is **wrong**. Both datasets that
+declare a parent compose it with its child, and only one is degenerate:
+
+| dataset | declaration | refines exactly? | composite classes | degenerate? |
+|---|---|---|---|---|
+| `tabula` | `cell_ontology_class.parent = "compartment"` | **yes** | 13 = 13 | **yes** |
+| `football_2023` | `division.parent = "conference"` | **no** | 15 ≠ 11 | no |
+
+football's `division` is West/East/none applied *across* conferences — an ordered display
+modifier, not a refinement — so its product with `conference` is a genuine 15-class partition.
+`parent` is documented as "the label set this one subdivides", which both uses satisfy under
+different readings of "subdivides".
+
+**The criterion that works is a class-count identity.** A composite is the product partition of
+its parts and therefore always refines each part, so it *equals* a part exactly when their class
+counts agree. One `np.unique` per part, exact, no tolerance.
+
+⚠️ **Note what this means about the earlier test.** `test_tabulas_composite_is_redundant` asserted
+that each composite class lies inside one primary class. That is true of *any* product partition
+and its parts — it verified a tautology and would have passed on football too. The replacement
+asserts the class-count identity and keeps football as the negative control that gives the check
+power.
+
+**Open, and the author's:** `parent` has **no consumer anywhere in the tree** — two registry
+tests read it and nothing else. So it is free to be tightened to mean "refines exactly" (validated
+in `__post_init__`, which football would then fail and have to re-declare) or split into two
+fields, one structural and one for display. Until then the guard does not read it.
+
+The guard **reports rather than raises**. Raising in `Dataset.__post_init__` would make `tabula`
+unloadable until its registration changed, deleting the evidence that someone declared the
+composite meaningful; and dropping the declaration is a claim about what the dataset asserts, not
+a validation rule. So the composite stays declared, `twin.report` scores it **once** and states
+the redundancy, and `Dataset.degenerate_composites()` is what step 7's enumeration reads.
+
+## (44) Football's `division`: the local/global distinction, instantiated
+
+Thesis §3.1.2 asserts that Sil measures "a global score of separation and compactness" while
+$k$-NN accuracy "measures instead local label-homogeneity". The roster contains a clean
+demonstration on a 132-vertex graph, which is worth having because the assertion is otherwise
+carried by the definitions alone.
+
+`football_2023` / `division` — West / East / none, from the parenthesised suffix of
+`conference_standing`:
+
+| | value | reference | reading |
+|---|---|---|---|
+| Acc\* | **0.9886** | floor 0.5909, $z = 20.9$ | near the top of the whole roster |
+| Sil\* | **0.0203** | null −0.027 ± 0.005, $z = 9.2$ | at chance; 6 % of the graph's ceiling |
+
+Both are correct. Teams play mostly within their own division, so a 1-hop neighbourhood is
+division-homogeneous and the local classifier is nearly perfect. But "West" spans eleven
+conferences that sit far apart in the graph, so the *class* has no compactness at all: $a^*$ is
+2.404 against a $b^*$ of 2.457, a ratio of 1.022 where `conference` gives 1.503.
+
+**A multi-modal class is locally clean and globally diffuse**, and only reporting both metrics
+shows it. Reporting either alone would support a confident and opposite conclusion about whether
+divisions are "in" the graph.
+
+### Suggested wording for thesis §3.1.2, for the author to place
+
+> The two criteria can disagree, and the disagreement is informative rather than a defect of
+> either. In the 2023 college-football network the division label (East/West, or none) is
+> recovered by the graph-neighbourhood classifier with accuracy 0.989 against a majority-class
+> floor of 0.591, while its graph silhouette is 0.020 — statistically above a permutation null
+> but only 6 % of the value a compactness-optimised partition of the same graph attains. Teams
+> play predominantly within their own division, so each one-hop neighbourhood is
+> division-homogeneous; but a division spans eleven conferences that are mutually distant in the
+> graph, so the label class itself is not compact. A label set that is locally homogeneous and
+> globally multi-modal scores high on one criterion and at chance on the other, which is why
+> both are reported.
+
+⚠️ **For the author to place. Do not let an agent write it into `thesis/`** (CLAUDE.md). The
+numbers are reproduced by `python -m twin.report` and pinned in
+`tests/test_report_numbers.py`.

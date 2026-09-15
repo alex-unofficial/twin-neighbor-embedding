@@ -357,21 +357,82 @@ def test_the_footballs_composite_has_no_class_size_collapse():
     assert (composite.n_classes, composite.min_class_size, composite.n_singletons) == (15, 4, 0)
 
 
-def test_tabulas_composite_is_redundant():
-    """`compartment` is a function of `cell_ontology_class`, so the composite adds nothing.
+def test_tabulas_composite_is_degenerate_by_the_partition_lattice():
+    """⚠️ The redundancy is structural, and the earlier version of this test proved nothing.
 
-    Scoring it would produce a duplicate column, which is worth knowing at step 7 when the
-    label-set enumeration is written. Asserted on the labels rather than on a score, so it does
-    not need a layout.
+    It walked the label vectors and asserted each composite class lies inside one primary class
+    — which is true of *any* product partition and its parts, so it would have passed against
+    any dataset. The property that makes a composite redundant is that the product **equals** a
+    part, and since a product always refines its parts that is exactly a class-count identity:
+    13 = 13 here.
     """
     dataset = load_dataset("tabula")
-    primary = dataset.labels("cell_ontology_class")
-    composite = dataset.labels("compartment_cell_type")
 
-    assert np.unique(primary).size == np.unique(composite).size == 13
-    # Same partition, possibly renumbered: each composite class lies inside one primary class.
-    for code in np.unique(composite):
-        assert np.unique(primary[composite == code]).size == 1
+    assert dataset.degenerate_composites() == {
+        "compartment_cell_type": "cell_ontology_class"
+    }
+
+    composite = dataset.labels("compartment_cell_type")
+    primary = dataset.labels("cell_ontology_class")
+
+    # ⚠️ The two arrays are **not** equal: `composite_labels` renumbers by sorted
+    # `(compartment, cell_type)` tuple while `cell_ontology_class` is numbered by cell-type
+    # name. It is the same partition under a different naming, which is precisely why every
+    # metric agrees to the digit and why an `array_equal` check would have missed the
+    # redundancy altogether.
+    assert not np.array_equal(composite, primary)
+    assert {frozenset(np.flatnonzero(composite == c)) for c in np.unique(composite)} == {
+        frozenset(np.flatnonzero(primary == c)) for c in np.unique(primary)
+    }
+
+    ctx = EvaluationContext.for_dataset(dataset)
+    assert silhouette_graph(composite, ideal=ctx) == pytest.approx(
+        silhouette_graph(primary, ideal=ctx), rel=1e-12
+    )
+
+
+def test_the_declared_parent_cannot_be_the_criterion():
+    """⚠️ The obvious guard — "a composite of a child and its own parent" — is wrong.
+
+    Both datasets that set ``parent`` compose it with its child, and only one is degenerate:
+
+    * `tabula`: `cell_ontology_class.parent = "compartment"`, and it **does** refine it, so the
+      composite collapses to 13 classes;
+    * `football_2023`: `division.parent = "conference"`, and it **does not** — West/East/none
+      is applied across conferences — so the composite is a genuine 15-class product.
+
+    ``parent`` is documented as "the label set this one subdivides" and has no consumer in the
+    tree, so it carries no refinement guarantee. This test exists to keep the wrong criterion
+    from being reintroduced as a simplification.
+    """
+    tabula = load_dataset("tabula")
+    football = load_dataset("football_2023")
+
+    # Identical declaration shape...
+    assert tabula.label_set("cell_ontology_class").parent == "compartment"
+    assert football.label_set("division").parent == "conference"
+    assert "compartment" in tabula.composite_of["compartment_cell_type"]
+    assert "conference" in football.composite_of["conference_division"]
+
+    # ...opposite refinement, and opposite verdicts.
+    def refines(dataset, child, parent):
+        c, p = dataset.labels(child), dataset.labels(parent)
+        return all(np.unique(p[c == k]).size == 1 for k in np.unique(c))
+
+    assert refines(tabula, "cell_ontology_class", "compartment")
+    assert not refines(football, "division", "conference")
+    assert football.degenerate_composites() == {}
+    assert np.unique(football.labels("conference_division")).size == 15
+
+
+def test_only_tabula_has_a_degenerate_composite():
+    """Across the roster, so a future dataset is caught here and not in a results table."""
+    from twin.datasets import DATASET_REGISTRY
+
+    found = {name: load_dataset(name).degenerate_composites() for name in DATASET_REGISTRY}
+    assert {k: v for k, v in found.items() if v} == {
+        "tabula": {"compartment_cell_type": "cell_ontology_class"}
+    }
 
 
 # --------------------------------------------------------------------------- #

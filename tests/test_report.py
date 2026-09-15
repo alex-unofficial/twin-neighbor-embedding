@@ -269,18 +269,18 @@ def test_the_scores_match_the_metrics_called_directly():
     )
 
 
-def test_every_real_label_set_beats_its_shuffled_reference():
+def test_every_real_label_set_beats_its_permutation_null():
     """What makes these label-validity checks rather than decoration.
 
-    ⚠️ Asserted against the **shuffled** level and not against zero, because Sil*'s chance is
+    ⚠️ Asserted as a **z-score against the null** and not against zero, because Sil*'s chance is
     negative by a class-count-dependent amount — -0.32 at 10 classes, -0.0004 at 2. A test
-    against zero would pass for the wrong reason on the many-class datasets and fail on
-    `football_2023`'s `division`, which is genuinely at chance.
+    against zero would pass for the wrong reason on the many-class datasets and would be
+    ambiguous on `football_2023`'s `division`, which is only just above its own null.
     """
     for name in ("ring_of_cliques", "football_2023"):
         for s in describe_dataset(name).label_scores:
-            assert s.silhouette_graph > s.silhouette_graph_shuffled[1], (name, s.label_set)
-            assert s.graph_accuracy > s.graph_accuracy_shuffled[1], (name, s.label_set)
+            assert s.silhouette_graph_null.z > 3, (name, s.label_set)
+            assert s.graph_accuracy_null.z > 3, (name, s.label_set)
             assert s.graph_accuracy > s.majority_class_rate, (name, s.label_set)
 
 
@@ -297,8 +297,9 @@ def test_the_two_graph_metrics_disagree_about_footballs_divisions():
 
     assert division.graph_accuracy > conference.graph_accuracy
     assert division.silhouette_graph < 0.1 < conference.silhouette_graph
-    # ...and it is at chance on Sil* while clearly above it on Acc*.
-    assert division.silhouette_graph - division.silhouette_graph_shuffled[1] < 0.05
+    # ...and it is an order of magnitude closer to its null on Sil* than conference is, while
+    # being far above the floor on Acc*. The exact values are pinned in test_report_numbers.py.
+    assert division.silhouette_graph_null.z < conference.silhouette_graph_null.z / 5
     assert division.graph_accuracy - division.majority_class_rate > 0.3
 
 
@@ -347,15 +348,7 @@ def test_the_metric_reaches_high_values_when_the_graph_allows_it():
     assert silhouette_graph(labels, ideal=ideal_distances(G)) > 0.75
 
 
-def test_the_shuffle_count_scales_with_n():
-    """A fixed count is too noisy on the small graphs and pure waste on the large ones."""
-    from twin.report import _shuffle_count
-
-    assert _shuffle_count(34) == 20          # karate: the reference straddles zero at 20
-    assert _shuffle_count(1797) == 11        # digits
-    assert _shuffle_count(5007) == 3         # tabula: one Sil* is 0.38 s
-    assert _shuffle_count(10**9) == 3        # clamped, never zero
-    assert _shuffle_count(0) == 20           # and never a division by zero
+# The permutation budget is pinned in `test_report_numbers.py`, beside the numbers it produces.
 
 
 def test_the_section_is_absent_rather_than_blank_when_skipped():

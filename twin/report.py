@@ -18,11 +18,16 @@ to difference two incomparable quantities. Nothing in this file needs a layout.
 Nothing here branches on a dataset name; every column comes off the `Dataset` object. Adding a
 dataset adds a row and nothing else.
 
-⚠️ **The label-score section triples the runtime** — about 11 s without it and 50 s with, almost
-all of it `tabula`'s and `digits`' all-pairs closures. It is on by default so that a regenerated
+⚠️ **The label-score section dominates the runtime** — about 11 s without it and 2 minutes with.
+Most of that is the permutation nulls: `tabula`'s four label sets at 39 draws each are ~145 s,
+against 10 s for its all-pairs closure. It is on by default so that a regenerated
 `docs/DATASET_REPORT.md` is never silently missing a section; `--no-label-scores` is the escape.
 Datasets with no label sets cost nothing either way, because the closure is only built when
 there is something to score against it.
+
+The numbers this file generates are pinned in `tests/test_report_numbers.py`, the same
+generated-plus-pinned arrangement `DATASET_PROVENANCE.md` has — `DECISIONS.md` (42) and (44)
+quote them, and a design record whose numbers nothing checks goes stale silently.
 """
 
 import argparse
@@ -55,6 +60,102 @@ CEILING_SEED = 10
 
 
 @dataclass
+class PermutationNull:
+    r"""A metric's reference distribution under random relabelling, and the standardised gap.
+
+    **A z-score, not a min and a max.** The two order statistics are the least robust summaries
+    available — they are the only two that cannot converge, so their spread grows with the
+    permutation count and a table using them cannot be compared across rows with different
+    counts. $z = (\text{observed} - \mu_0) / \sigma_0$ is stable at modest counts and puts every
+    row on one scale.
+
+    ⚠️ **The z-score makes "above chance" comparable across label sets; it does *not* make
+    magnitudes comparable.** $\sigma_0$ itself depends on the class count and balance — a
+    2-class balanced null has a tiny spread, so `tabula`'s `donor` reaches $z = 471$ against
+    `cell_ontology_class`'s $z = 17$ while its Sil\* is only 0.31 against 0.28. That is a
+    statement about how far each sits above its *own* null, and reading it as "donor is 27×
+    better encoded" is wrong. For magnitude, compare within a stratum at matched class counts
+    (`DECISIONS.md` (42)).
+
+    Attributes:
+        mean: $\mu_0$, the null mean. For Sil\* this is **negative** by an amount that grows
+            with the class count, because $b^*_i$ is a min over $\lvert\mathcal{L}\rvert - 1$
+            class means and so sits below the overall mean while $a^*_i$ is at it.
+        sd: $\sigma_0$. **Exactly zero is a real case, not a guard**: `tabula`'s `method` splits
+            213 against 4794, so every relabelling leaves almost every 1-hop neighbourhood
+            majority-`10X` and Acc\* is the majority rate on all permutations.
+        z: ``nan`` when ``sd`` is zero — there is no permutation test, and the honest statement
+            is the margin over the majority-class baseline instead.
+        n_permutations: how many were drawn. Scaled with the cost of one evaluation; see
+            :func:`_permutation_count`.
+    """
+
+    mean: float
+    sd: float
+    z: float
+    n_permutations: int
+
+    @classmethod
+    def from_samples(cls, observed: float, samples: np.ndarray) -> "PermutationNull":
+        r"""⚠️ Degeneracy is decided by **counting distinct values**, not by ``sd > 0``.
+
+        On `tabula`'s `method` the null takes exactly one value — 0.957459556620731, bit-identical
+        to the majority rate on all permutations — and ``samples.std(ddof=1)`` still returns
+        $2.3\times10^{-16}$, because it subtracts a rounded mean from a constant array. Dividing
+        by that gave $z = 8.7\times10^{13}$: a point-mass null reported as the most significant
+        result in the table.
+
+        The distinct-value count is exact and needs no tolerance, which is the fix this project
+        prefers (`DECISIONS.md` (32)) — a threshold on ``sd`` would have had to be placed, and
+        placed against a quantity whose scale differs per metric.
+        """
+        point_mass = samples.size < 2 or np.unique(samples).size == 1
+        sd = 0.0 if point_mass else float(samples.std(ddof=1))
+        return cls(
+            mean=float(samples.mean()),
+            sd=sd,
+            z=float("nan") if point_mass else float((observed - samples.mean()) / sd),
+            n_permutations=int(samples.size),
+        )
+
+    @property
+    def degenerate(self) -> bool:
+        """No permutation test exists — the null is a point mass."""
+        return not np.isfinite(self.z)
+
+
+def cramers_v(a: np.ndarray, b: np.ndarray) -> float:
+    r"""$V = \sqrt{\chi^2 / (n \min(r-1, c-1))}$ — association between two partitions.
+
+    0 for independence, 1 when either determines the other. Used against the dataset's scoring
+    primary, as the confound column: a covariate scoring highly on a graph is only evidence
+    *about that covariate* if it is not already a proxy for the biology. `tabula`'s `donor`
+    reaches $V = 0.917$ against `cell_ontology_class`.
+
+    Preferred to mutual information here because it is bounded in $[0, 1]$ with the endpoints
+    meaning something fixed, where NMI's value depends on the class counts — the same reason
+    the raw Sil\* column needed a reference in the first place. On this roster the two disagree
+    in the direction that matters: NMI(donor, cell type) is 0.413, which reads as moderate,
+    where $V = 0.917$ correctly reads as near-determination.
+    """
+    from scipy.stats import chi2_contingency
+
+    a, b = np.asarray(a), np.asarray(b)
+    classes_a, classes_b = np.unique(a), np.unique(b)
+    if classes_a.size < 2 or classes_b.size < 2:
+        return float("nan")
+
+    table = np.zeros((classes_a.size, classes_b.size), dtype=np.int64)
+    for i, ai in enumerate(classes_a):
+        in_a = a == ai
+        for j, bj in enumerate(classes_b):
+            table[i, j] = int((in_a & (b == bj)).sum())
+
+    chi2 = float(chi2_contingency(table).statistic)
+    return float(np.sqrt(chi2 / (a.size * min(table.shape[0] - 1, table.shape[1] - 1))))
+
+
+@dataclass
 class LabelScoreRow:
     r"""The graph-side scores for one label set of one dataset.
 
@@ -63,23 +164,23 @@ class LabelScoreRow:
 
     Attributes:
         silhouette_graph: Sil\*, eqs. (53)-(55), under ``disconnected="lcc"``.
-        silhouette_graph_shuffled: the min and max over ``n_shuffles`` random permutations of
-            the same label vector. **This is the reference level, and it is not zero** —
-            $b^*_i$ is a min over $\lvert\mathcal{L}\rvert - 1$ class means and so sits below
-            the overall mean while $a^*_i$ is at it, which biases chance *negative* by an amount
-            that grows with the class count (−0.32 at 10 classes, −0.001 at 2). Permuting
-            preserves every class size, so the contrast isolates label-topology agreement from
-            the class-size effect the diagnostics track.
-        graph_accuracy: Acc\*, eqs. (61)-(64), uniform voting.
+        silhouette_graph_null: the permutation reference for Sil\* — see :class:`PermutationNull`.
+        graph_accuracy: Acc\*, eqs. (61)-(64). **Uniform voting and the fractional tie rule**,
+            which is the headline convention and is not recoverable from the number; see
+            ``label.py`` and `DECISIONS.md` (41).
         graph_accuracy_affinity: Acc\* voting with $w_{ij}$ (eq. 62). Equal to the above on a
             dataset declared unweighted — the declaration wins over any stray edge attribute.
         majority_class_rate: the chance floor. Acc\* exceeds 0.94 on every registered dataset,
             so this column is what distinguishes a strong result from a vacuous one: 0.987
             against a 0.958 floor on `tabula`'s `method` is nearly nothing.
+        cramers_v_vs_primary: association with the dataset's **scoring primary** label set,
+            $V = \sqrt{\chi^2 / (n \min(r-1, c-1))}$. The confound column: a covariate that
+            nearly determines the primary cannot be read as an independent measurement of it.
+            `tabula`'s `donor` scores **0.917** against `cell_ontology_class`, which is what
+            makes its high Sil\* unattributable without conditioning (`DECISIONS.md` (42)).
+            ``nan`` for the primary itself and where no primary is declared.
         n_excluded: vertices with no vote mass, dropped from Acc\*. Zero on the whole current
             roster, since every registered dataset is connected.
-        n_shuffles: how many permutations the reference used — scaled with $n$, see
-            :func:`_shuffle_count`.
     """
 
     dataset: str
@@ -93,17 +194,16 @@ class LabelScoreRow:
     n_singletons: int
 
     silhouette_graph: float
-    silhouette_graph_shuffled: tuple[float, float]
+    silhouette_graph_null: "PermutationNull"
     silhouette_graph_excluded: int
 
     graph_accuracy: float
     graph_accuracy_affinity: float
-    graph_accuracy_shuffled: tuple[float, float]
+    graph_accuracy_null: "PermutationNull"
     majority_class_rate: float
+    cramers_v_vs_primary: float
     n_ties: int
     n_excluded: int
-
-    n_shuffles: int
 
 
 @dataclass
@@ -178,18 +278,21 @@ def zero_distance_pair_fraction(distance: nx.Graph, n: int) -> float:
     return coincident / (n * (n - 1) / 2)
 
 
-def _shuffle_count(n: int) -> int:
-    r"""How many permutations the chance reference needs, as a function of $n$.
+def _permutation_count(n: int) -> int:
+    r"""How many permutations the reference distribution is estimated from, given $n$.
 
-    The reference level has to be estimated, and its variance falls with $n$: on `tabula`
-    ($n = 5007$) twenty permutations of `donor` span −0.0013 to +0.0010, while on
-    `karate_weighted` ($n = 34$) twenty span −0.033 to +0.045 and straddle zero. So a fixed
-    count is wrong at both ends — too noisy to read on the small graphs and pure waste on the
-    large ones, where one Sil\* is 0.38 s.
+    Two competing pressures, both measured. A z-score needs enough draws for $\sigma_0$ to be
+    usable — below about 30 the standard-deviation estimate is itself noisy — and one evaluation
+    costs 0.001 s at karate's size but 0.38 s (Sil\*) plus 0.49 s (Acc\*) at tabula's, where
+    five label sets multiply it.
 
-    ``20000 // n``, clamped to [3, 20]: 20 at karate's size, 11 on `digits`, 3 on `tabula`.
+    ``200000 // n``, clamped to [30, 1000]: **1000** on `karate_weighted` and `football_2023`,
+    where it is free and where twenty draws visibly straddled zero; 111 on `digits`; **30** on
+    `tabula`, five label sets of which cost about 130 s between them. Thirty is tolerable there
+    only because the z-scores are enormous — a 13 % error in $\sigma_0$ does not change the
+    reading of $z = 17$ — and that is a property of this roster rather than a general licence.
     """
-    return int(np.clip(20000 // max(n, 1), 3, 20))
+    return int(np.clip(200000 // max(n, 1), 30, 1000))
 
 
 def compactness_ceiling(labels_free_graph: nx.Graph, ideal: np.ndarray, n: int):
@@ -251,17 +354,22 @@ def compactness_ceiling(labels_free_graph: nx.Graph, ideal: np.ndarray, n: int):
 
 
 def score_label_sets(dataset, ideal: np.ndarray, affinity: nx.Graph) -> list[LabelScoreRow]:
-    r"""Sil\* and Acc\* for every label set and composite of one dataset.
+    r"""Sil\* and Acc\* for every label set and composite of one dataset, with their nulls.
 
     Both metrics take the graph from the evaluation context — ``affinity`` here — and never
     ``dataset.graph``: on `digits` that attribute is a stored Euclidean *distance*, so eq. (62)
     over it would count the least-coupled neighbours most (CLAUDE.md, bug §1.6 one layer up).
 
-    ⚠️ **Composites are scored as declared, and one of them is redundant.** `tabula`'s
-    `compartment_cell_type` reproduces `cell_ontology_class` to every digit, because
-    `compartment` is a function of `cell_ontology_class`. The duplicate row is deliberate: the
-    report's job is to make that visible, so that step 7's enumeration does not emit it as a
-    distinct column without anyone noticing.
+    **The headline Acc\* is uniform voting with the fractional tie rule**, matching eq. (61) and
+    the layout-side default; the affinity-weighted value is reported beside it rather than in
+    place of it. That is a decision and not an inheritance — `DECISIONS.md` (41) records that
+    affinity weighting is better on all seven weighted label sets of this roster and equal on
+    the four unweighted ones, and why the headline is uniform anyway.
+
+    ⚠️ **A degenerate composite is scored once, not twice.** `tabula`'s `compartment_cell_type`
+    *is* `cell_ontology_class` renumbered — the product partition equals its finer part — so a
+    second row would be a duplicate column wearing a different name. The redundancy is stated in
+    the rendered section instead.
     """
     from twin.metrics import (
         graph_neighborhood_accuracy,
@@ -271,23 +379,30 @@ def score_label_sets(dataset, ideal: np.ndarray, affinity: nx.Graph) -> list[Lab
         silhouette_graph_report,
     )
 
-    n_shuffles = _shuffle_count(dataset.n)
+    degenerate = dataset.degenerate_composites()
+    primaries = dataset.label_sets_by_scoring_role("primary")
+    primary = primaries[0].values if len(primaries) == 1 else None
+
+    n_permutations = _permutation_count(dataset.n)
     rows = []
     for name in list(dataset.label_sets) + sorted(dataset.composite_of):
+        if name in degenerate:
+            continue
         labels = dataset.labels(name)
         declared = dataset.label_sets.get(name)
 
         silhouette = silhouette_graph_report(labels, ideal=ideal)
         accuracy = graph_neighborhood_accuracy_report(labels, affinity)
 
-        # One generator, so the two references are over the *same* permutations. They are read
-        # side by side and an unexplained disagreement should not be able to come from the draw.
+        # One generator, so both nulls run over the *same* permutations. They are read side by
+        # side and an unexplained disagreement must not be able to come from the draw.
         rng = np.random.default_rng(0)
-        null_silhouette, null_accuracy = [], []
-        for _ in range(n_shuffles):
+        null_silhouette = np.empty(n_permutations)
+        null_accuracy = np.empty(n_permutations)
+        for i in range(n_permutations):
             permuted = rng.permutation(labels)
-            null_silhouette.append(silhouette_graph(permuted, ideal=ideal))
-            null_accuracy.append(graph_neighborhood_accuracy(permuted, affinity))
+            null_silhouette[i] = silhouette_graph(permuted, ideal=ideal)
+            null_accuracy[i] = graph_neighborhood_accuracy(permuted, affinity)
 
         rows.append(
             LabelScoreRow(
@@ -300,17 +415,25 @@ def score_label_sets(dataset, ideal: np.ndarray, affinity: nx.Graph) -> list[Lab
                 median_class_size=silhouette.median_class_size,
                 n_singletons=silhouette.n_singletons,
                 silhouette_graph=silhouette.value,
-                silhouette_graph_shuffled=(min(null_silhouette), max(null_silhouette)),
+                silhouette_graph_null=PermutationNull.from_samples(
+                    silhouette.value, null_silhouette
+                ),
                 silhouette_graph_excluded=silhouette.n_excluded,
                 graph_accuracy=accuracy.accuracy,
                 graph_accuracy_affinity=graph_neighborhood_accuracy(
                     labels, affinity, weighting="affinity"
                 ),
-                graph_accuracy_shuffled=(min(null_accuracy), max(null_accuracy)),
+                graph_accuracy_null=PermutationNull.from_samples(
+                    accuracy.accuracy, null_accuracy
+                ),
                 majority_class_rate=majority_class_rate(labels),
+                cramers_v_vs_primary=(
+                    float("nan")
+                    if primary is None or (declared is not None and declared.scoring_role == "primary")
+                    else cramers_v(labels, primary)
+                ),
                 n_ties=accuracy.n_ties,
                 n_excluded=accuracy.n_excluded,
-                n_shuffles=n_shuffles,
             )
         )
     return rows
@@ -442,6 +565,21 @@ def _label_score_sections(rows: list[DatasetRow]) -> list[str]:
     if not scored:
         return []
 
+    def null_cell(null: PermutationNull) -> str:
+        """The standardised gap, or an honest blank where no permutation test exists.
+
+        Two significant figures at most, and none beyond the units place above 100. At
+        $n = 30$ permutations $\sigma_0$ itself carries about 13 % error, so a $z$ printed to
+        one decimal claims a precision it does not have — and it misleads concretely: at
+        ``.1f`` two unrelated `digits` rows read as an identical 131.7 where they are 131.706
+        and 131.723.
+        """
+        if null.degenerate:
+            return "*no test*"
+        if abs(null.z) >= 100:
+            return f"{null.z:,.0f}"
+        return f"{null.z:.1f}"
+
     out = [
         "## Graph-side label scores — Sil\\* and Acc\\*",
         "",
@@ -451,7 +589,13 @@ def _label_score_sections(rows: list[DatasetRow]) -> list[str]:
         "deliberately not in this table — the scales are incomparable, and column adjacency is",
         "an invitation to difference them.",
         "",
-        "### Sil\\* (eqs. 53-55), under `disconnected='lcc'`",
+        "Every score below is under `disconnected='lcc'`, and **Acc\\* is uniform voting with",
+        "the fractional tie rule** (eq. 61) unless the column says otherwise — a convention that",
+        "cannot be recovered from the numbers, and one that `DECISIONS.md` (41) argues for rather",
+        "than inherits. `z` is the standardised gap from a null that permutes the label vector,",
+        "preserving every class size; `V` is Cramér's V against the dataset's scoring primary.",
+        "",
+        "### Sil\\* (eqs. 53-55)",
         "",
         _table(
             [
@@ -459,11 +603,12 @@ def _label_score_sections(rows: list[DatasetRow]) -> list[str]:
                 "label set",
                 "role",
                 "Sil\\*",
-                "shuffled",
-                "margin",
+                "null mean",
+                "null sd",
+                "z",
                 "ceiling",
                 "% of ceiling",
-                "excluded",
+                "V vs primary",
             ],
             [
                 [
@@ -471,14 +616,16 @@ def _label_score_sections(rows: list[DatasetRow]) -> list[str]:
                     f"`{s.label_set}`",
                     s.role,
                     f"{s.silhouette_graph:.4f}",
-                    f"{s.silhouette_graph_shuffled[0]:+.4f} … "
-                    f"{s.silhouette_graph_shuffled[1]:+.4f}",
-                    f"{s.silhouette_graph - s.silhouette_graph_shuffled[1]:+.4f}",
+                    f"{s.silhouette_graph_null.mean:+.4f}",
+                    f"{s.silhouette_graph_null.sd:.5f}",
+                    null_cell(s.silhouette_graph_null),
                     f"{r.compactness_ceiling:.4f}" if i == 0 else "",
                     f"{100 * s.silhouette_graph / r.compactness_ceiling:.0f} %"
                     if r.compactness_ceiling and r.compactness_ceiling > 0
                     else "—",
-                    f"{s.silhouette_graph_excluded}",
+                    "—"
+                    if not np.isfinite(s.cramers_v_vs_primary)
+                    else f"{s.cramers_v_vs_primary:.3f}",
                 ]
                 for r in scored
                 for i, s in enumerate(r.label_scores)
@@ -500,10 +647,24 @@ def _label_score_sections(rows: list[DatasetRow]) -> list[str]:
         + ".",
         "A modularity partition picks its own classes and so *should* win — a ground truth",
         "matching it exactly would mean the labels add nothing to the topology. What the column",
-        "says is how much of the available compactness the labels capture. The **shuffled**",
-        "column is the other end, and it is **not zero**: $b^*_i$ is a min over",
-        "$\\lvert\\mathcal{L}\\rvert - 1$ class means, so chance is negative by an amount that",
-        "grows with the class count.",
+        "says is how much of the available compactness the labels capture.",
+        "",
+        "⚠️ **`z` says how far a score sits above its own null; it does not compare magnitudes",
+        "across label sets.** $\\sigma_0$ depends on the class count and balance, so a 2-class",
+        "balanced split has a tiny null spread and reaches a large $z$ at a modest Sil\\*. Read",
+        "`z` for *whether* a label set is encoded and the Sil\\* and ceiling columns for *how",
+        "strongly*; for a magnitude comparison between two label sets, condition on a stratum",
+        "at matched class counts (`DECISIONS.md` (42)). Read it to two significant figures at",
+        "most — $\\sigma_0$ carries ~13 % error at 30 permutations — and past about 50 only as",
+        "\"far above chance\".",
+        "",
+        "⚠️ **`V vs primary` is the confound column.** A covariate is only evidence about itself",
+        "if it is not already a proxy for the biology, and a high $z$ cannot distinguish the two.",
+        "A `sub` label or a composite reaching $V = 1$ is expected rather than informative — one",
+        "coarsens or refines the primary by construction. The row to read is an **`auxiliary`**",
+        "one: `tabula`'s `donor` at **0.917** against `cell_ontology_class` is a technical",
+        "covariate that very nearly determines the biology, so neither its Sil\* nor its $z$ can",
+        "be attributed to batch effect without conditioning — `DECISIONS.md` (42) does that.",
         "",
         "### Acc\\* (eqs. 61-64), 1-hop neighbourhood",
         "",
@@ -511,11 +672,11 @@ def _label_score_sections(rows: list[DatasetRow]) -> list[str]:
             [
                 "dataset",
                 "label set",
-                "Acc\\*",
+                "Acc\\* (uniform)",
                 "affinity-weighted",
-                "shuffled",
                 "floor",
                 "margin over floor",
+                "z",
                 "ties",
                 "excluded",
             ],
@@ -525,9 +686,9 @@ def _label_score_sections(rows: list[DatasetRow]) -> list[str]:
                     f"`{s.label_set}`",
                     f"{s.graph_accuracy:.4f}",
                     f"{s.graph_accuracy_affinity:.4f}",
-                    f"{s.graph_accuracy_shuffled[0]:.4f} … {s.graph_accuracy_shuffled[1]:.4f}",
                     f"{s.majority_class_rate:.4f}",
                     f"{s.graph_accuracy - s.majority_class_rate:+.4f}",
+                    null_cell(s.graph_accuracy_null),
                     f"{s.n_ties}",
                     f"{s.n_excluded}",
                 ]
@@ -540,12 +701,21 @@ def _label_score_sections(rows: list[DatasetRow]) -> list[str]:
         "nothing** — a 1-hop neighbourhood of a $k$-NN graph is label-homogeneous nearly by",
         "construction. Read the margin over the floor: +0.86 on football's conference is",
         "decisive, **+0.03** on tabula's `method` is not, and the two raw scores differ by less",
-        "than 0.002. `affinity-weighted` is eq. (62); it equals the uniform column exactly on a",
-        "dataset declared unweighted, because the declaration wins over any stray edge",
-        "attribute. `ties` counts vertices with more than one class tied for the argmax, which a",
+        "than 0.002.",
+        "",
+        "**`method` is also where the permutation test does not exist**, and the column says so",
+        "rather than printing a number. Its split is 213 against 4794, so every relabelling",
+        "leaves almost every neighbourhood majority-`10X`: the null is a point mass at the",
+        "majority rate, $\\sigma_0 = 0$, and $z$ is undefined. The honest statement there is the",
+        "margin over the majority-class baseline, which is +0.029.",
+        "",
+        "`ties` counts vertices with more than one class tied for the argmax, which a",
         "variable-size neighbourhood produces far more readily than a fixed $k$ — the reported",
         "score resolves them by the fractional rule and is an expectation over tie-breakings to",
-        "that extent.",
+        "that extent. `affinity-weighted` is eq. (62); it equals the uniform column exactly on a",
+        "dataset declared unweighted, because the declaration wins over any stray edge",
+        "attribute, and it is **better on every weighted label set here** — which is why the",
+        "uniform headline is a stated choice and not a default nobody examined.",
         "",
         "### What the two disagree about",
         "",
@@ -556,12 +726,49 @@ def _label_score_sections(rows: list[DatasetRow]) -> list[str]:
         "conferences that sit far apart in the graph. A multi-modal class is locally clean and",
         "globally diffuse, and only reporting both shows it.",
         "",
-        "Shuffle counts scale with $n$ ("
-        + ", ".join(f"`{r.name}` {r.label_scores[0].n_shuffles}" for r in scored)
+    ]
+
+    degenerate = [
+        (r.name, composite, part)
+        for r in scored
+        for composite, part in load_dataset(r.name).degenerate_composites().items()
+    ]
+    if degenerate:
+        out += [
+            "### Composites omitted as degenerate",
+            "",
+            "A composite is the product partition of its parts, which always refines each part —"
+            " so it",
+            "**equals** a part exactly when their class counts agree, and scoring it then emits a",
+            "duplicate column under a different name. Omitted here and flagged for step 7's",
+            "enumeration:",
+            "",
+        ] + [
+            f"- `{name}` / `{composite}` **is** `{part}` renumbered, so it is scored once, as "
+            f"`{part}`."
+            for name, composite, part in degenerate
+        ] + [
+            "",
+            "⚠️ This is **not** readable off `LabelSet.parent`, which was the obvious criterion.",
+            "Both datasets that declare a parent compose it with its child, and only one is",
+            "degenerate: tabula's `cell_ontology_class` does refine `compartment`, while",
+            "football's `division` (West/East/none, applied across conferences) does not — so its",
+            "composite is a genuine 15-class product. `parent` has no consumer in the tree and",
+            "carries no refinement guarantee; `DECISIONS.md` (43) records that.",
+            "",
+        ]
+
+    out += [
+        "Permutation counts scale with $n$ ("
+        + ", ".join(
+            f"`{r.name}` {r.label_scores[0].silhouette_graph_null.n_permutations}"
+            for r in scored
+        )
         + "),",
-        "because the reference's variance falls with $n$ while one Sil\\* costs 0.38 s at",
-        "tabula's size. A fixed count is too noisy on the small graphs and pure waste on the",
-        "large ones.",
+        "because one evaluation costs 0.001 s at karate's size and 0.87 s at tabula's, where",
+        "five label sets multiply it — while a z-score needs about thirty draws before",
+        "$\\sigma_0$ is usable. Thirty is tolerable on `tabula` only because its $z$ values are",
+        "large enough that a 13 % error in $\\sigma_0$ cannot change the reading.",
         "",
     ]
     return out
@@ -823,8 +1030,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--no-label-scores",
         action="store_true",
-        help="skip the graph-side Sil* / Acc* section, which costs an all-pairs closure per "
-        "labelled dataset (~4x faster overall)",
+        help="skip the graph-side Sil* / Acc* section, whose permutation nulls are most of the "
+        "runtime (11 s instead of ~2 min)",
     )
     args = parser.parse_args(argv)
 
