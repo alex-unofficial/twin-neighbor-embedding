@@ -4,7 +4,7 @@ Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
 **Last updated:** end of session 6 (2026-09-15). It closed spec §7 step 6 — `label.py` now holds
 the silhouette family and the 1-hop graph-side accuracy, so **the metric suite of §2 is
-complete**. Branch `experiment-setup`; tree clean. **830 pass and 2 skip** — the two `sfdp` cases,
+complete**. Branch `experiment-setup`; tree clean. **841 pass and 2 skip** — the two `sfdp` cases,
 behind a runtime probe of the broken backend (see below).
 
 > **Step 7 is next** — the registry, `evaluate_layout`, `batch_layout_metrics` and persistence.
@@ -503,7 +503,7 @@ from 94**; all eight `paper_figures` functions still render.
 
 ## ⚠️ Broken in the environment, not in the tree: `sfdp` / `YifanHuLayout`
 
-**`venv/bin/python -m pytest` reports 830 passed, 2 skipped. The two skips are an upstream
+**`venv/bin/python -m pytest` reports 841 passed, 2 skipped. The two skips are an upstream
 graphviz crash, and they un-skip by themselves once the installed graphviz is new enough.**
 
 ```
@@ -586,9 +586,10 @@ plumbing is still guarded, only the end-to-end layout is not. **Do not "fix" the
 ## Health check
 
 ```bash
-venv/bin/python -m pytest -q          # 830 passing, 2 skipped (sfdp — see above), 1 deselected
+venv/bin/python -m pytest -q          # 841 passing, 2 skipped (sfdp — see above), 1 deselected
 venv/bin/python -m pytest -q -m slow  # the opt-in tabula figure, ~2 min
 python -m twin.report            # the roster table; regenerates docs/DATASET_REPORT.md with -o
+                                 # ~36 s, most of it the graph-side label scores; --no-label-scores skips them
 git status --short               # clean; if notebooks appear modified, the filter is unset
 ```
 
@@ -620,7 +621,7 @@ one of the eight.)
 | `QUERY_CHUNK_EDGES = 1024` is the crossing pipeline's memory bound, measured on tabula. A runner that parallelises across layouts multiplies it by the worker count | step 7 |
 | A **~9 s, accuracy-free** saving on both crossing variants is measured and left undone: `_swept_segments` rediscovers $(B_0, B_2)$ for curves already flagged as exactly straight — `DECISIONS.md` (37) | whenever someone is in `crossings.py` anyway; otherwise step 7 |
 | One legacy `(d, n)` surface: `graph_embedding_all` → `paper_figures` → `plots`, and with it `twin/graphmatrix.py`'s pre-restructure classes and their `.affinity` / `.distance` shim. **Half discharged**: `count_intersections` is now layer 2 and transposes at its own boundary; `drawedges` / `draw_curved_edges` and `graph_embedding_all` are what remain | the rest converges at **step 10**; tracked in `DECISIONS.md` (2) |
-| Tabula's Leiden partition is still computed inside `tabula_sapiens_teaser` rather than registered as a `detected:leiden` label set | step 10, where the consumer and the cost land together |
+| Tabula's Leiden partition is still computed inside `tabula_sapiens_teaser` rather than registered as a `detected:leiden` label set. ⚠️ **There are now two Leiden call sites** — `report.compactness_ceiling` is the second, and it sweeps three resolutions per dataset. They agree on `seed=10` but not on resolution, and a registered `detected:leiden` set would replace both | step 10, where the consumer and the cost land together |
 | ~~**Open:** VNR's normaliser~~ — **closed session 4**: the per-vertex median. Still one `[THESIS EDIT]`; eq. (69) never changed | discharged |
 | ~~**Open:** `SpectralLayout`'s Laplacian~~ — **closed session 4**: Hall's $D-W$ is the default, Koren's is selectable and reported once, §1.5's solver fix landed with it. §2.2's "hubs collapse inward" is now measured — true on hub graphs, false on the $k$-NN graphs, so **the thesis prose wants a qualifier** | thesis prose, before submission |
 | ⚠️ **`SpectralLayout` still does not handle a disconnected graph** — the zero eigenvalue's multiplicity is the component count, so column 0 is not the only trivial vector and the layout would keep component indicators as coordinates. §1.5's other half; §4.4's policy covers metrics, not the layout side | whenever a disconnected dataset joins the roster |
@@ -633,7 +634,7 @@ one of the eight.)
 | `NodeResolutionReport.n_zero_denominator` joins `n_ties` / `n_zero_distance` in the diagnostics table of `DECISIONS.md` (18); nothing collects that table yet. Step 6 adds `SilhouetteReport`'s four class-size columns, and `GraphAccuracyReport`'s `n_isolated` beside its `n_excluded` | step 7 |
 | ⚠️ **§4.4 permits `disconnected="mask"` for SNS only, and `silhouette_graph` now refuses it unconditionally** — including on a connected graph, where `lcc` and `mask` give the identical array. A runner sharing one `EvaluationContext` between SNS and Sil\* under `mask` will be told rather than get an inflated number. Two contexts, or `lcc` throughout | **step 7**, the runner |
 | ⚠️ **The label-set enumeration is one line but must not be naive**: tabula's `compartment_cell_type` is *exactly* `cell_ontology_class` (`compartment` is a function of it), so scoring every composite emits a duplicate column | step 7 |
-| ⚠️ **Sil\* and Acc\* need a reference level printed beside them, and nothing computes one.** Sil\*'s chance is **negative** by a class-count-dependent amount (−0.32 at 10 classes, −0.0004 at 2) and its ceiling is ~0.53 where labels *are* the topology; Acc\* exceeds 0.94 on every dataset and is near-useless without its floor (0.987 against a 0.958 floor on tabula's `method`). A shuffled-label control is three lines; `majority_class_rate` exists | step 7 for the column, **step 11** for the table |
+| ~~Sil\* and Acc\* need a reference level printed beside them, and nothing computes one~~ — **`python -m twin.report` now does**: a shuffled-label control for both and a Leiden **compactness ceiling** for Sil\*. The real label sets sit at 73-100 % of that ceiling, which is what answers "why is Sil\* only 0.33". The metric layer still returns bare scores, so **step 7's rows must carry the same two columns** or the results tables inherit the unanswerable version | discharged for the report; **step 7** for the metric frame |
 | ⚠️ **§5.3 guard 2 is unbuilt**: Sil\*/Acc\* must be emitted in a *separate* table from Sil/Acc. The docstrings say "label-validity check, not a baseline" and two tests assert the sentence exists, which is all that can be enforced from here | step 11 |
 | ⚠️ **Sil needs seed replication to be read at all** — rel IQR 3.6 % and a 19 % spread over seven seeds on `digits`, the noisiest metric measured, against `knn_accuracy`'s 0.24 %. A λ sweep reporting Sil differences below ~4 % on one seed is reporting noise | step 8 |
 | ⚠️ **Sil must not be tabulated as "which representation recovers labels best".** It separates the ablation disjointly but orders it *differently* from `knn_accuracy` and `knn_recall` — identical Acc for A_V and A_tne on football where Sil separates them 0.758/0.617, and an inverted A_E/A_tne on digits. Distance-based versus rank-based; §5 must say which question each answers | step 11 |
