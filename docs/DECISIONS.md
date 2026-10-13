@@ -1804,11 +1804,36 @@ suite. The expensive metrics scale with $m$, and the label family scales with $n
 5007. §0.5 corrects the cost class in principle; these are the numbers, and step 7's run planner
 reads it.
 
-## (41) The headline Acc\* is uniform voting — a decision, not an inheritance
+## (41) The headline Acc\* is uniform voting — and the real constraint is the *pairing*
+
+> ⚠️ **Amended after review.** The entry first argued this as a choice about Acc\* alone and
+> dated it "before step 7's registry bakes it in". Both were wrong. The graph-side metric exists
+> to show the labels are recoverable **under the same criterion the layout metric presupposes**,
+> so the mode is not independently choosable — it is determined by whichever layout column it
+> accompanies. And nothing is blocked at step 7: see "What this does and does not block" below.
 
 **Uniform (eq. 61) with the fractional tie rule is the reported column; affinity weighting
-(eq. 62) is reported beside it.** Settled here because step 7's registry would otherwise bake in
-whichever default nobody examined.
+(eq. 62) is reported beside it.**
+
+### The constraint is a matched pair, not a default
+
+| criterion | layout side | graph side |
+|---|---|---|
+| count neighbours | `weighting="uniform"` (eq. 57) | `weighting="uniform"` (eq. 61) |
+| weight by proximity | `weighting="distance"`, $f(d) = 1/d$ (eq. 58) | `weighting="affinity"`, $w_{ij}$ (eq. 62) |
+
+A uniform Acc\* read beside a distance-weighted Acc$^k$ answers a different question from the one
+the layout column asked, which defeats the purpose of having a graph-side check at all. **So the
+rule is: the graph column matches the layout column**, and it belongs with §5.3 guard 2 as a
+reporting constraint rather than as a default on either function. Both defaults are `"uniform"`
+today, so the pair is matched as things stand.
+
+⚠️ **The pairing is matched by intent, not by formula.** The layout side inverts a Euclidean
+distance; the graph side reads a stored coupling, which is `exp(-d/d_scale)` on `digits` and a raw
+interaction count on `karate_weighted`. Both say "closer counts more"; neither is the same
+function. An exact pairing would need a third graph mode applying $f(d) = 1/d$ to the **distance**
+form — not built, and not worth building speculatively, but it is what "the same criterion" would
+strictly require.
 
 The awkward fact first: **affinity weighting strictly dominates on this roster.** Better on all
 seven weighted label sets, equal on the four unweighted or declared-combinatorial ones, never
@@ -1828,22 +1853,34 @@ There is a real argument for making affinity the headline: Acc\* is a *validity 
 it should report is the most favourable reading of the graph — if even the best graph-side
 reading is weak, the labels are not there. Affinity weighting gives that reading.
 
-**Uniform wins anyway, on two grounds.**
+**Uniform wins anyway, on three grounds — the first of which now carries the argument.**
 
-1. **Eq. (61) is the definition, and eq. (62) is introduced as an alternative** ("for weighted
-   graphs, we may instead…"). Promoting the alternative to the headline is a `[THESIS EDIT]`,
-   and the measured gain does not justify one: the largest is 0.029 on `karate_weighted` at
-   $n = 34$ — two vertices — and the rest are 0.002 to 0.007. Nothing in §5's argument turns on
-   any of them.
-2. **Uniform is the only column that exists for every dataset.** Four of the eleven label sets
+1. **It is the pair the thesis's headline layout metric asks for.** Eq. (57) is the layout
+   headline, so eq. (61) is its companion. Switching the graph side alone would break the
+   correspondence; switching *both* is a bigger change than the evidence supports.
+2. **Eq. (61) is the definition, and eq. (62) is introduced as an alternative** ("for weighted
+   graphs, we may instead…"). Promoting the alternative is a `[THESIS EDIT]`, and the measured
+   gain does not justify one: the largest is 0.029 on `karate_weighted` at $n = 34$ — two
+   vertices — and the rest are 0.002 to 0.007. Nothing in §5's argument turns on any of them.
+3. **Uniform is the only column that exists for every dataset.** Four of the eleven label sets
    sit on unweighted graphs where eq. (62) *is* eq. (61), so an affinity headline would be a
-   column that silently changes meaning down the table. The uniform headline is comparable
-   across the whole roster and the affinity column is an additional measurement where one is
-   available.
+   column that silently changes meaning down the table.
 
 ⚠️ **What would flip it:** a dataset whose affinity carries most of the structure, where the gap
-is tens of points rather than 0.007. Nothing in the roster is close, and `tabula` — the most
-strongly weighted — gives 0.007. Revisit if the §4.7 adversarial density case behaves otherwise.
+is tens of points rather than 0.007 — and then **both** columns move together, layout and graph.
+Nothing in the roster is close; `tabula`, the most strongly weighted, gives 0.007. Revisit if the
+§4.7 adversarial density case behaves otherwise.
+
+### What this does and does not block
+
+**Not step 7.** `weighting` is a parameter on both functions, both modes are computed, and the
+golden file already pins three graph-side variants by key (`@uniform`, `@affinity`, `@first`).
+Step 7's registry should register the variants as separate `MetricSpec` entries keyed the same
+way — which it should do regardless of this decision — so nothing is baked in there.
+
+**Step 11.** The decision that has to be live before anything is *reported* is which pair appears
+in the headline table, and that the two halves of it match. That is the reporting layer, and it
+is where this entry's constraint has to be enforced.
 
 The tie rule is **fractional** for the same reason it is on the layout side: it is the expectation
 over uniform random tie-breaking in closed form, with no seed and no variance. It matters more
@@ -1958,7 +1995,12 @@ left to the author — `thesis/` is read-only (CLAUDE.md). `twin/report.py` now 
 `V vs primary` column so the confound is visible on every future dataset without anyone
 re-deriving it.
 
-## (43) `LabelSet.parent` carries no refinement guarantee, and the composite guard cannot use it
+## (43) `LabelSet.parent` is a **display** field, and the composite guard must not read it
+
+> ⚠️ **Amended after review.** This entry first called `parent` "overloaded — it means different
+> things on the two datasets that set it" and suggested tightening it to mean "refines exactly".
+> Both are wrong, and the suggestion would have been a regression. `parent` means one thing,
+> used consistently; see below.
 
 The degenerate-composite guard was first written on the obvious criterion — *a composite of a
 label set and its own declared parent is degenerate* — and it is **wrong**. Both datasets that
@@ -1969,10 +2011,25 @@ declare a parent compose it with its child, and only one is degenerate:
 | `tabula` | `cell_ontology_class.parent = "compartment"` | **yes** | 13 = 13 | **yes** |
 | `football_2023` | `division.parent = "conference"` | **no** | 15 ≠ 11 | no |
 
-football's `division` is West/East/none applied *across* conferences — an ordered display
-modifier, not a refinement — so its product with `conference` is a genuine 15-class partition.
-`parent` is documented as "the label set this one subdivides", which both uses satisfy under
-different readings of "subdivides".
+### What `parent` actually means, and it is consistent
+
+Both declarations set it on the `display_role="shade"` set, pointing at the `display_role="hue"`
+set:
+
+| dataset | shade set (carries `parent`) | hue set (the target) |
+|---|---|---|
+| `football_2023` | `division` — `shade`, `ordered=True` | `conference` — `hue` |
+| `tabula` | `cell_ontology_class` — `shade` | `compartment` — `hue` |
+
+So `parent` means **"the hue-carrying label set whose colour this shade-carrying set
+modulates"**, and both uses are that. It pairs with `display_role` and with `DatasetStyle`'s
+`shade_factors`. The field is not ambiguous; it simply **says nothing about partitions**, and
+the refinement that holds on `tabula` is a fact about cell-type ontology rather than anything
+the declaration asserts. football is the proof: identical declaration, no refinement.
+
+That the two datasets *invert* which of hue and shade is the scoring primary — football scores
+the hue set, tabula the shade set — is why `scoring_role` and `display_role` are separate fields
+in the first place (see the `LabelSet` entry above). `parent` belongs to the display half.
 
 **The criterion that works is a class-count identity.** A composite is the product partition of
 its parts and therefore always refines each part, so it *equals* a part exactly when their class
@@ -1984,10 +2041,24 @@ and its parts — it verified a tautology and would have passed on football too.
 asserts the class-count identity and keeps football as the negative control that gives the check
 power.
 
-**Open, and the author's:** `parent` has **no consumer anywhere in the tree** — two registry
-tests read it and nothing else. So it is free to be tightened to mean "refines exactly" (validated
-in `__post_init__`, which football would then fail and have to re-declare) or split into two
-fields, one structural and one for display. Until then the guard does not read it.
+### Not open after all: leave `parent` alone
+
+The earlier recommendation — tighten it to mean "refines exactly", validated in
+`__post_init__` — would **break football's declaration, which is correct for what the field is
+for**, and would lose the shade→hue link it exists to record. Withdrawn.
+
+- **Leave `parent` as a display declaration.** It is used correctly twice and the composite
+  guard correctly ignores it.
+- **If a structural refinement declaration is ever wanted, add a separate field.** Do not
+  repurpose this one. No current consumer needs it: `degenerate_composites()` computes the
+  class-count identity directly, which is exact and cannot go stale against the data the way a
+  declaration can.
+
+⚠️ **Nothing consumes `parent`, `display_role` or `shade_factors` yet.** `report.py` prints
+`display_role` in a table; `plots.py` and `paper_figures.py` are pre-restructure and read none
+of the three. All of them are declarations waiting on the §3.6 plotting refactor at **step 10**,
+which is where the shade→hue wiring is built and where `parent` finally acquires a reader. If
+the field is ever going to be found wanting, that is when.
 
 The guard **reports rather than raises**. Raising in `Dataset.__post_init__` would make `tabula`
 unloadable until its registration changed, deleting the evidence that someone declared the

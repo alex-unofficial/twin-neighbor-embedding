@@ -3,7 +3,7 @@ r"""The dataset connectivity / weight / label report (spec §3.4).
     python -m twin.report                 # markdown to stdout
     python -m twin.report -o docs/DATASET_REPORT.md
     python -m twin.report tabula digits   # just these
-    python -m twin.report --no-label-scores   # skip the graph-side scores (~4x faster)
+    python -m twin.report --no-label-scores   # skip the graph-side scores (11 s instead of ~2 min)
 
 One row per registered dataset. It exists because several decisions cannot be made without it:
 §4.4's disconnected-graph policy needs to know which datasets are actually disconnected, §4.2's
@@ -753,8 +753,8 @@ def _label_score_sections(rows: list[DatasetRow]) -> list[str]:
             "Both datasets that declare a parent compose it with its child, and only one is",
             "degenerate: tabula's `cell_ontology_class` does refine `compartment`, while",
             "football's `division` (West/East/none, applied across conferences) does not — so its",
-            "composite is a genuine 15-class product. `parent` has no consumer in the tree and",
-            "carries no refinement guarantee; `DECISIONS.md` (43) records that.",
+            "composite is a genuine 15-class product. `parent` is a **display** link — the hue",
+            "a shade modulates — and carries no refinement guarantee; `DECISIONS.md` (43).",
             "",
         ]
 

@@ -4,8 +4,8 @@ Read `CLAUDE.md` first, then this. Updated at the end of each session.
 
 **Last updated:** end of session 6 (2026-09-15). It closed spec §7 step 6 — `label.py` now holds
 the silhouette family and the 1-hop graph-side accuracy, so **the metric suite of §2 is
-complete**. Branch `experiment-setup`; tree clean. **862 pass and 2 skip** — the two `sfdp` cases,
-behind a runtime probe of the broken backend (see below).
+complete**. Branch `experiment-setup`; tree clean. **864 pass, 0 skip** — ✅ graphviz **16.1.0** landed and
+the two `sfdp` cases un-skipped themselves, exactly as the probe was built to let them.
 
 > **Step 7 is next** — the registry, `evaluate_layout`, `batch_layout_metrics` and persistence.
 > There is no plan file for it yet. Everything from steps 3-6 that was deferred to it is
@@ -501,10 +501,22 @@ from 94**; all eight `paper_figures` functions still render.
 
 ---
 
-## ⚠️ Broken in the environment, not in the tree: `sfdp` / `YifanHuLayout`
+## ✅ Closed: the `sfdp` / `YifanHuLayout` graphviz regression
 
-**`venv/bin/python -m pytest` reports 862 passed, 2 skipped. The two skips are an upstream
-graphviz crash, and they un-skip by themselves once the installed graphviz is new enough.**
+**Resolved in the environment, 2026-09-15: graphviz 16.1.0 is installed, the two `sfdp` cases
+un-skipped themselves, and `venv/bin/python -m pytest` now reports 864 passed and 0 skipped.**
+Verified rather than inferred: `sfdp -V` reports 16.1.0, the 5-node reproducer below lays out
+instead of aborting, and both `yifanhu` tests pass **unchanged** — which is the outcome session
+5 predicted when it declined to touch `YifanHuLayout`. `twin/embedding.py` was never the
+problem and no code changed to fix this.
+
+⚠️ **Leave the probe in place.** It costs one subprocess at collection time and it is what makes
+the suite honest on a machine still carrying 16.0.0 — including a fresh clone, and including a
+CI image that pins the older Arch package. It declines to skip when `sfdp` is merely absent, so
+it cannot hide a real failure. The history below is kept because the diagnosis took a session
+and the failure mode is subtle enough to be rediscovered the expensive way.
+
+### The history, for a machine that still has 16.0.0
 
 ```
 SKIPPED tests/test_embedding.py::test_every_method_touches_exactly_the_form_it_declares[yifanhu]
@@ -556,8 +568,8 @@ or a broken `pydot` fails the way it already does for the `neato` tests instead 
 disabling a method forever. And if `sfdp` handles the trigger but a real layout still fails, the
 tests run and fail — that would be a *different* bug and should be loud.
 
-⚠️ **What it costs:** while the skip is active, `YifanHuLayout`'s backend has no coverage, so a
-regression in it would go unnoticed. Partial mitigation: `test_yifan_hu_is_handed_the_structure
+⚠️ **What it cost, while the skip was active** (it no longer is, on this machine):
+`YifanHuLayout`'s backend had no coverage, so a regression in it would have gone unnoticed. Partial mitigation: `test_yifan_hu_is_handed_the_structure
 _and_nothing_else` inspects the dot source rather than running the binary, and still runs — the
 plumbing is still guarded, only the end-to-end layout is not. **Do not "fix" the skip by changing
 `YifanHuLayout`**; the conformance test is doing its job.
@@ -586,7 +598,7 @@ plumbing is still guarded, only the end-to-end layout is not. **Do not "fix" the
 ## Health check
 
 ```bash
-venv/bin/python -m pytest -q          # 862 passing, 2 skipped (sfdp — see above), 7 deselected
+venv/bin/python -m pytest -q          # 864 passing, 0 skipped, 7 deselected
 venv/bin/python -m pytest -q -m slow  # the tabula figure and the large-dataset score pins, ~4 min
 python -m twin.report            # the roster table; regenerates docs/DATASET_REPORT.md with -o
                                  # ~2 min, most of it the label scores' permutation nulls;
@@ -639,8 +651,8 @@ one of the eight.)
 | ⚠️ **The z-score answers "above chance", not "how strongly".** $\sigma_0$ depends on class count and balance, so tabula's `donor` reaches $z = 475$ at Sil\* 0.31 where `cell_ontology_class` reaches 15.8 at 0.28. A results table that ranks label sets on $z$ would be ranking class balance. Magnitude needs conditioning at matched class counts — `DECISIONS.md` (42) | **step 11**, the reporting layer |
 | ⚠️ **A permutation null can be a point mass, and `np.std` does not say so** — on tabula's `method` the Acc\* null has one distinct value and `std` returns 2.3e-16, which gave $z = 8.7\times10^{13}$. `PermutationNull` counts distinct values instead. Any future per-row null needs the same treatment | **step 7**, wherever a null is computed per row |
 | ⚠️ **Tabula's residual batch effect is a stated limitation, not a defect** — `donor` survives conditioning in two of three testable cell types (Sil\* 0.685 within t cell, 0.321 within endothelial-sinusoid, −0.024 within hepatocyte), and `method` shows 0.233 within macrophage. Every method scored on tabula inherits it, so it does not bias the $A_V$/$A_E$/$A_{tne}$ comparison, but it caps what a high `cell_ontology_class` score can be claimed to mean | thesis §3.1 prose; `DECISIONS.md` (42) |
-| **Open, the author's:** `LabelSet.parent` is overloaded — it means "refines exactly" on tabula and "ordered display modifier" on football, and it has **no consumer in the tree**. Tightening it (validated in `__post_init__`, which football would then fail) or splitting it into a structural and a display field would let the composite guard read a declaration instead of recomputing a class count | `DECISIONS.md` (43); any time before step 10 |
-| **Open, decided but reversible:** the headline Acc\* is **uniform** voting, though affinity weighting is better on all 7 weighted label sets and equal on 4. The gains are 0.002-0.029 and eq. (61) is the definition; what would flip it is a dataset where the gap is tens of points — `DECISIONS.md` (41) | confirm before **step 7**'s registry bakes it in |
+| ~~`LabelSet.parent` is overloaded and should perhaps be tightened~~ — **withdrawn after review**: it means one thing in both datasets that set it, "the hue-carrying set whose colour this shade-carrying set modulates", and tightening it to mean "refines exactly" would break football's correct declaration. Leave it; a structural refinement declaration, if ever wanted, is a *separate* field. `DECISIONS.md` (43) | discharged — `parent`, `display_role` and `shade_factors` all acquire their first reader at **step 10** |
+| ⚠️ **The graph-side vote must match the layout-side vote**, because Acc\* exists to show the labels are recoverable under the criterion Acc$^k$ presupposes: uniform (57) pairs with uniform (61), distance (58) with affinity (62). Both default to uniform today, so the pair is matched — but it is a **reporting constraint** beside §5.3 guard 2, not a per-function default, and nothing enforces it. ⚠️ The pairing is by intent, not formula: the layout side inverts a Euclidean distance, the graph side reads `exp(-d/d_scale)` on digits. `DECISIONS.md` (41) | **step 11**; it does *not* block step 7, which registers both variants as separate `MetricSpec` entries regardless |
 | ⚠️ **§5.3 guard 2 is unbuilt**: Sil\*/Acc\* must be emitted in a *separate* table from Sil/Acc. The docstrings say "label-validity check, not a baseline" and two tests assert the sentence exists, which is all that can be enforced from here | step 11 |
 | ⚠️ **Sil needs seed replication to be read at all** — rel IQR 3.6 % and a 19 % spread over seven seeds on `digits`, the noisiest metric measured, against `knn_accuracy`'s 0.24 %. A λ sweep reporting Sil differences below ~4 % on one seed is reporting noise | step 8 |
 | ⚠️ **Sil must not be tabulated as "which representation recovers labels best".** It separates the ablation disjointly but orders it *differently* from `knn_accuracy` and `knn_recall` — identical Acc for A_V and A_tne on football where Sil separates them 0.758/0.617, and an inverted A_E/A_tne on digits. Distance-based versus rank-based; §5 must say which question each answers | step 11 |

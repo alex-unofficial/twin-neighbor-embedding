@@ -167,7 +167,13 @@ class LabelSet:
             which is scored *deliberately* — a layout separating cells by donor is displaying an
             artifact, so a low score is the good outcome there.
         display_role: which visual channel this set drives.
-        parent: the label set this one subdivides.
+        parent: for a ``display_role="shade"`` set, the ``"hue"`` set whose colour it
+            modulates. ⚠️ **A display link, not a structural one** — it asserts nothing about
+            whether this set refines that one. tabula's `cell_ontology_class` happens to refine
+            `compartment`; football's `division` (West/East/none, applied across conferences)
+            does not, and both declarations are correct. Nothing may infer a partition
+            relationship from it — see :meth:`Dataset.degenerate_composites` and
+            `DECISIONS.md` (43).
         ordered: whether the codes have a meaningful order (West < none < East).
         noise_label: the code standing for "no class" (football's FBS independents), which the
             style renders in the noise colour rather than a hue.
@@ -465,9 +471,14 @@ class Dataset:
         15-class product. A guard keyed on the declaration would flag it wrongly. The refinement
         test separates them because it checks the property that actually matters.
 
-        ``parent`` has no consumer anywhere in the tree (only two registry tests read it), so
-        tightening it to mean "refines exactly" — or splitting it into two fields — is available
-        and is the author's call; `DECISIONS.md` records it.
+        ``parent`` is a **display** declaration: both datasets that set it put it on the
+        ``display_role="shade"`` set pointing at the ``display_role="hue"`` set, so it means
+        "the hue whose colour this shade modulates" and asserts nothing about partitions.
+        Tightening it to mean "refines exactly" was considered and **rejected** — it would break
+        football's declaration, which is correct for what the field is for (`DECISIONS.md` (43)).
+        A structural refinement declaration, if ever wanted, is a separate field; this guard
+        would still not need it, since the class-count identity cannot go stale against the data
+        the way a declaration can.
 
         Returns:
             ``{composite name: the part it collapses to}``, empty when none is degenerate.

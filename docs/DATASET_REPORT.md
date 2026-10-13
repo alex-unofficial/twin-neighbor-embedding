@@ -241,8 +241,8 @@ enumeration:
 Both datasets that declare a parent compose it with its child, and only one is
 degenerate: tabula's `cell_ontology_class` does refine `compartment`, while
 football's `division` (West/East/none, applied across conferences) does not — so its
-composite is a genuine 15-class product. `parent` has no consumer in the tree and
-carries no refinement guarantee; `DECISIONS.md` (43) records that.
+composite is a genuine 15-class product. `parent` is a **display** link — the hue
+a shade modulates — and carries no refinement guarantee; `DECISIONS.md` (43).
 
 Permutation counts scale with $n$ (`ring_of_cliques` 1000, `karate_weighted` 1000, `football_2023` 1000, `digits` 111, `tabula` 39),
 because one evaluation costs 0.001 s at karate's size and 0.87 s at tabula's, where
