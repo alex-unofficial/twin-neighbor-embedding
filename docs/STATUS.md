@@ -8,8 +8,9 @@ complete**. Branch `experiment-setup`; tree clean. **864 pass, 0 skip** — ✅ 
 the two `sfdp` cases un-skipped themselves, exactly as the probe was built to let them.
 
 > **Step 7 is next** — the registry, `evaluate_layout`, `batch_layout_metrics` and persistence.
-> There is no plan file for it yet. Everything from steps 3-6 that was deferred to it is
-> collected under "Where step 7 starts" below; the carried-forward table is the authority.
+> The plan is [`plans/step7-registry.md`](plans/step7-registry.md): **approved, current, and not
+> yet started.** It splits into two merges, records three decisions taken at review, and
+> supersedes "Where step 7 starts" below wherever they differ.
 
 ---
 
@@ -23,7 +24,7 @@ the two `sfdp` cases un-skipped themselves, exactly as the probe was built to le
 | **4. `visual.py` — NND, NR/VNR, distributions, edge lengths** | **Done** — session 4; plan: [`docs/plans/step4-visual.md`](plans/step4-visual.md), departures in `DECISIONS.md` |
 | **5. `crossings.py` — curves, detection, Cr/LWCr, detour** | **Done** — session 5; plan: [`docs/plans/step5-crossings.md`](plans/step5-crossings.md), departures in `DECISIONS.md` (32)–(36) |
 | **6. `label.py` — silhouette, accuracy, graph-side checks** | **Done** — session 6; plan: [`docs/plans/step6-labels.md`](plans/step6-labels.md), departures in `DECISIONS.md` (39), measurements (40) |
-| **7. Registry, `evaluate_layout`, `batch_layout_metrics`, persistence** | **Next** — no plan file yet |
+| **7. Registry, `evaluate_layout`, `batch_layout_metrics`, persistence** | **Next** — plan: [`docs/plans/step7-registry.md`](plans/step7-registry.md), approved, not started. Two merges: A (registry + evaluation + one parquet), B (layouts, manifest, shards, resume) |
 | 8. λ sweep and selection, seeds, straight/curved variants | not started |
 | 9. Bugs §1.4, §1.5, §1.7; graph *t*-SNE baseline | not started |
 | 10. Plotting refactor (§3.6) | not started |
@@ -48,11 +49,12 @@ Section 5 numbers before step 8.
 6. `docs/CROSSING_GEOMETRY.md` — **for step 5 specifically**: the crossing algorithm in full,
    with the derivation, the measurements and the degeneracy analysis. Spec §2.4 is the summary;
    this is the reference.
-7. **All six plan files are history**, kept for their record of where the implementation
-   departed from them — the departures themselves are in `DECISIONS.md`.
-   [`step2-datasets.md`](plans/step2-datasets.md), [`step3-metrics.md`](plans/step3-metrics.md),
-   [`step4-visual.md`](plans/step4-visual.md), [`step5-crossings.md`](plans/step5-crossings.md)
-   and [`step6-labels.md`](plans/step6-labels.md). **Step 7 has no plan yet.**
+7. [`docs/plans/step7-registry.md`](plans/step7-registry.md) — **the plan for the step in
+   progress: approved, current, and not yet started.** The other five are **history**, kept for
+   their record of where the implementation departed from them — the departures themselves are in
+   `DECISIONS.md`: [`step2-datasets.md`](plans/step2-datasets.md),
+   [`step3-metrics.md`](plans/step3-metrics.md), [`step4-visual.md`](plans/step4-visual.md),
+   [`step5-crossings.md`](plans/step5-crossings.md), [`step6-labels.md`](plans/step6-labels.md).
 
 ---
 
@@ -117,7 +119,11 @@ everything remaining is machinery.
 
 ### Where step 7 starts
 
-**There is no plan file.** What steps 3-6 deferred to it, in one place:
+> **Read [`plans/step7-registry.md`](plans/step7-registry.md) — approved and current, and it
+> supersedes this section wherever they differ.** It resolves the §4.6-versus-(22) contradiction
+> below, takes the `mask` question off the table, and splits the step into two merges.
+
+What steps 3-6 deferred to it, in one place:
 
 - **`MetricSpec`, `METRIC_REGISTRY`, `evaluate_layout`, `batch_layout_metrics`, persistence.**
   The boundary held at steps 3, 4, 5 *and* 6. Two concessions to it exist in the metric layer:
@@ -127,9 +133,17 @@ everything remaining is machinery.
   `dataset.label_sets_by_scoring_role(...)` and `dataset.composite_of` already exist. ⚠️ But
   **tabula's composite is redundant** — `compartment_cell_type` is exactly
   `cell_ontology_class` — so a naive enumeration emits a duplicate column.
-- ⚠️ **§4.4 permits `mask` for SNS only, and Sil\* now refuses it.** A runner that builds one
-  `EvaluationContext` per dataset with `disconnected="mask"` will be told rather than get an
-  inflated Sil\*. Two contexts, or `lcc` throughout.
+- ~~⚠️ §4.4 permits `mask` for SNS only, and Sil\* now refuses it~~ — **settled at plan review:
+  `lcc` only, recorded in the manifest, everything else refused at the runner.** §0.5 decision
+  3's precedent; the SNS allowance arrives with the first disconnected dataset.
+- ⚠️ **§4.6 and (22) contradict each other** on where layouts live, and the plan resolves it:
+  layouts become a **content-addressed store** at `runs/layouts/<key_id>.npz`, shared across
+  runs, because §4.6's `runs/<run_id>/layouts/` plus a `run_id` containing the git SHA means
+  adding a metric re-runs every embed — the exact thing (22) says layouts exist to prevent.
+  Recorded as a departure.
+- ⚠️ **`extra` in (21) must carry every *fixed* kwarg, not just `seed` and λ.** Fixed kwargs are
+  deliberately absent from `BatchKey` (pinned by `test_a_fixed_kwarg_is_not_in_the_key`), so two
+  runs at different seeds produce identical keys and resume onto each other silently.
 - **The reference levels the measurements say are mandatory are not computed anywhere.** Sil\*
   needs a shuffled-label control (three lines) and Acc\* needs its floor carried alongside;
   `majority_class_rate` exists and is now in the golden file. §5.3 guard 2 — the separate table —
