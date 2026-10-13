@@ -36,6 +36,8 @@ can be demonstrated, never tabulated (``node_resolution``, ``raw_stress``,
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -96,6 +98,7 @@ __all__ = [
     "REDUCTIONS",
     "declared_rows",
     "metric_key",
+    "metric_set_digest",
     "row_variant",
 ]
 
@@ -662,3 +665,40 @@ EXCLUDED: Mapping[str, str] = MappingProxyType(
     }
 )
 
+
+def metric_set_digest(specs: Mapping[str, MetricSpec] = METRIC_REGISTRY, **settings: Any) -> str:
+    r"""What a shard records, and what :func:`~twin.runs.keys.shard_is_current` compares.
+
+    Over ``{name, variant, params, version}`` for every entry, plus the declarations that
+    change which rows a metric emits (``returns``, ``sweeps``, ``reductions``, ``graph_side``),
+    plus ``settings`` — the evaluation choices that are not part of a case's identity but do
+    change its rows, such as an explicit ``k`` tuple.
+
+    ⚠️ **``version`` is why this is not just the names.** Without it, editing a metric's
+    internals and re-running resumes onto the stale values — the failure the golden-file rule
+    exists to prevent, except that the stale numbers would reach the results table. The rule
+    that ties the two together, *a commit that changes a metric's output regenerates
+    ``metric_golden.json`` and bumps that metric's ``version``*, is enforced by
+    ``tests/test_metric_versions.py``.
+
+    Functions are not digested — neither their identity (it differs per process) nor their
+    source (a docstring edit would invalidate every shard).
+    """
+    payload = {
+        "metrics": {
+            name: {
+                "variants": {
+                    "" if v is None else v: dict(spec.variant_params(v)) for v in spec.variants
+                },
+                "version": spec.version,
+                "returns": spec.returns,
+                "sweeps": list(spec.sweeps),
+                "reductions": list(spec.reductions),
+                "graph_side": spec.graph_side,
+            }
+            for name, spec in sorted(specs.items())
+        },
+        "settings": settings,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=repr)
+    return hashlib.blake2b(canonical.encode()).hexdigest()[:16]

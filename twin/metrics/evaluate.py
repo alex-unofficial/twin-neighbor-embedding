@@ -43,6 +43,7 @@ __all__ = [
     "ProviderCache",
     "evaluate_graph_side",
     "evaluate_layout",
+    "failed_case_rows",
     "resolve_ks",
     "scored_label_sets",
 ]
@@ -402,25 +403,61 @@ def evaluate_layout(
 
     rows: list[dict] = []
     diagnostics: list[dict] = []
+    for name, spec, variant, label_set in _case_units(specs, label_sets):
+        if label_set is _NO_LABELS:
+            base = {"point_set": "V", "label_set": None, "metric": name}
+            rows += _status_rows(
+                spec, variant, ks, base, "skipped", "the dataset declares no label sets"
+            )
+            continue
+        r, d = evaluate_spec(
+            name, spec, variant, ctx=ctx, result=result, ks=ks, label_set=label_set,
+            providers=providers, measure_memory=measure_memory, distributions=distributions,
+        )
+        rows += r
+        diagnostics += d
+    return rows, diagnostics + providers.diagnostics
+
+
+#: Marks a label metric on a dataset with no label sets: one skipped unit, not zero units.
+_NO_LABELS = object()
+
+
+def _case_units(specs: Mapping[str, MetricSpec], label_sets: list[str]):
+    """``(name, spec, variant, label set)`` for every per-case call, in emission order."""
     for name, spec in specs.items():
         if spec.graph_side:
             continue
         for variant in spec.variants:
-            if "labels" in spec.needs and not label_sets:
-                base = {"point_set": "V", "label_set": None, "metric": name}
-                rows += _status_rows(
-                    spec, variant, ks, base, "skipped", "the dataset declares no label sets"
-                )
-                continue
-            for label_set in label_sets if "labels" in spec.needs else [None]:
-                r, d = evaluate_spec(
-                    name, spec, variant, ctx=ctx, result=result, ks=ks, label_set=label_set,
-                    providers=providers, measure_memory=measure_memory,
-                    distributions=distributions,
-                )
-                rows += r
-                diagnostics += d
-    return rows, diagnostics + providers.diagnostics
+            if "labels" not in spec.needs:
+                yield name, spec, variant, None
+            elif not label_sets:
+                yield name, spec, variant, _NO_LABELS
+            else:
+                for label_set in label_sets:
+                    yield name, spec, variant, label_set
+
+
+def failed_case_rows(
+    ctx: EvaluationContext,
+    *,
+    specs: Mapping[str, MetricSpec] = METRIC_REGISTRY,
+    k=None,
+    reason: str,
+) -> list[dict]:
+    """Every row :func:`evaluate_layout` would have emitted, as ``status="error"``.
+
+    For a case whose layout could not be produced at all. The table still holds the case — as
+    the rows it is missing, with the reason — rather than silently fewer rows (§5.3 guard 3).
+    """
+    ks = resolve_ks(ctx, k)
+    label_sets, _ = scored_label_sets(ctx.dataset)
+    rows: list[dict] = []
+    for name, spec, variant, label_set in _case_units(specs, label_sets):
+        label = None if label_set is _NO_LABELS else label_set
+        base = {"point_set": "V", "label_set": label, "metric": name}
+        rows += _status_rows(spec, variant, ks, base, "error", reason[:REASON_MAX])
+    return rows
 
 
 # --------------------------------------------------------------------------- #
