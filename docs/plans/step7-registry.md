@@ -4,9 +4,10 @@ The executable sequence for spec §7 step 7. Read `CLAUDE.md`, then `docs/STATUS
 §2.5, §3.7, §4.1, §4.6 and §5.3, then `DECISIONS.md` (18), (20), (21), (22) and (41). This file is
 what to do, in what order, and how to know it worked; the design record is `DECISIONS.md`.
 
-**Approved and not yet started.** Three decisions were taken by the author at review and four
-facts were checked against the tree before planning; both are below, so neither is re-litigated
-during implementation.
+**Approved and not yet started.** Five decisions were taken by the author at review, four more
+questions were resolved by inspection rather than preference, and four facts were checked against
+the tree; all three sets are below, so none of it is re-litigated during implementation. **There
+are no open items.**
 
 ---
 
@@ -40,7 +41,7 @@ Three things from session 6 constrain it, and none of them existed when §2.5 wa
 
 ## What was settled before planning
 
-### Three decisions taken by the author at review
+### Five decisions taken by the author at review
 
 1. **Layouts are a shared content-addressed store.** `runs/layouts/<key_id>.npz`, with the
    producing git SHA recorded per layout; `runs/<run_id>/` holds metrics, manifest and log only.
@@ -55,6 +56,41 @@ Three things from session 6 constrain it, and none of them existed when §2.5 wa
    refuses `mask` unconditionally — building two-contexts-per-dataset plumbing for it would be
    untested code for a case that does not occur. §0.5 decision 3's precedent. Record the policy
    in the manifest; the allowance arrives with the first disconnected dataset.
+4. **Memory is recorded in the batch loop, with the mode flagged.** §3.2 wants peak memory per
+   embed inside the run loop; `STATUS.md` says memory needs one case per process, because
+   `peak_mem_mb` is a delta from an entry baseline and glibc does not return freed memory, so
+   later cases measure from a higher floor. ⚠️ Those cannot both hold in a single-process
+   sequential runner, and reusing persisted layouts cannot fix it — memory has to be measured
+   *during* the embed, so an isolated pass is a second full embed pass, the expensive half of a
+   run. **So: keep per-embed sampling, and add `rss_baseline_mb` and `rss_peak_mb` beside the
+   delta plus `mem_measurement: "batch" | "isolated"` in the manifest.** The drift becomes
+   visible post hoc instead of averaged into a thesis table, and a later isolated pass can
+   overwrite the columns for the cases that matter. Two additive fields on `LayoutResult`.
+5. **`k` is `default_k(dataset)` only; a sweep is an opt-in flag.** §0.5 decision 6 fixes
+   $k$ = mean degree of $G$ and §4.2's λ criterion is defined at that $k$ — 5 on
+   `karate_weighted`, 11 on `football_2023`, 16 on `digits`, 20 on `tabula`, 55 on
+   `sbm_er_3modes`. The headline run uses the single value per dataset; `k=(...)` is a flag for a
+   robustness appendix. ⚠️ Recorded in the manifest **either way**, since a reader cannot tell
+   from the rows which it was. A fixed ladder was rejected because mean degree is 55 on
+   `sbm_er_3modes`, so the same ladder means different things per dataset.
+
+### Four questions resolved by inspection, not preference
+
+- ⚠️ **Moving the reference levels out of `twin/report.py` is *forced*, not optional.**
+  `report.py` imports *from* `twin.metrics` (at three call sites), so a `twin/metrics/registry.py`
+  that imported `twin.report` would be metrics → report → metrics — a cycle that survives today
+  only because report's imports are function-local, and backwards layering regardless: the metric
+  layer must not depend on the reporting layer. Hence commit A4 below, and it is a **refactor
+  commit of its own** (CLAUDE.md: never mix a refactor with a behaviour change). It is provable
+  because `tests/test_report_numbers.py` pins every value it moves.
+- **`distribution_policy="off"` is safe**, and the worry that it would leave §5 with nothing to
+  tabulate is unfounded: the golden file already pins `@min` / `@median` / `@max` for **both**
+  distributions. They get `reductions=("min", "median", "max")`, so the summary rows always land
+  in the table and the policy governs only whether the raw 100 MB array is *also* written.
+- **`run_id` is caller-settable**, defaulting to timestamp + short SHA — forced by decision 1,
+  since `--resume <run_id>` cannot work otherwise.
+- **The smoke output goes to `runs/`**, which is gitignored at `/runs/`. ⚠️ With one rule: **tests
+  use `tmp_path` and never `runs/`**, or a test run pollutes a real run directory.
 
 ### Four facts checked against the tree before planning
 
@@ -160,9 +196,11 @@ Five fields the spec's sketch does not have, each forced by something measured:
 - **`swept_diagnostics`** — for the k-swept family the report's diagnostic fields are *arrays over
   k* (`NeighborPreservationReport.n_excluded`) while others are scalars. Sniffing by shape is what
   (20) forbids in spirit; declare it.
-- **`reductions`** — see above. `detour_ratio` gets `("mean", "max")` and `edge_lengths`
-  `("mean",)`, reproducing the golden keys exactly.
-- **`version`** — see A5's digest. ⚠️ Not a hash of the function source: a docstring edit would
+- **`reductions`** — see above, and they are **read off the golden file rather than chosen**:
+  `detour_ratio` gets `("mean", "max")`, `edge_lengths` `("mean",)`, and both distance
+  distributions `("min", "median", "max")`. That reproduces 11 of the 44 pinned keys exactly, and
+  it is what makes `distribution_policy="off"` safe.
+- **`version`** — see A6's digest. ⚠️ Not a hash of the function source: a docstring edit would
   invalidate every shard.
 
 **`needs` names providers, not arguments.** `crossing_number`, `crossings_per_edge_pair` and
@@ -205,7 +243,19 @@ the field. Both go to the **diagnostics** frame, not the metric frame ((18)).
 Label-set enumeration is `label_sets_by_scoring_role` plus `composite_of`, **minus
 `degenerate_composites()`**, with the drop recorded (§5.3 guard 3 again).
 
-### A4. `metrics: the dataset-level graph-side table (§5.3 guard 2)`
+### A4. `metrics: move the reference levels out of report.py (refactor, no behaviour change)`
+
+⚠️ **Required, not optional** — see the inspection note above. `PermutationNull`, `cramers_v`,
+`compactness_ceiling`, `score_label_sets` and `_permutation_count` move from `twin/report.py` to
+new `twin/metrics/reference.py`; `report.py` imports them from there.
+
+**A refactor commit with no behaviour change**, and `tests/test_report_numbers.py` is what makes
+that provable: it pins every Sil\*, Acc\*, ceiling and Cramér's V the module produces, so the move
+either reproduces them or fails loudly. Do not take the opportunity to change anything — in
+particular the Leiden seed stays `CEILING_SEED = 10` matching `paper_figures`, and
+`_permutation_count` keeps its `200000 // n` clamp.
+
+### A5. `metrics: the dataset-level graph-side table (§5.3 guard 2)`
 
 ⚠️ **Sil\*, Acc\* and the four reference levels are functions of `(dataset, label_set, policy)`
 and of nothing in the layout.** Emitting them per case would repeat the identical value once per
@@ -214,14 +264,10 @@ that is ~145 s *per case* instead of once per dataset. They get their own table 
 `(dataset, params, label_set, metric, variant)`, computed once alongside the context. §5.3 guard 2
 then falls out of the structure rather than being enforced by a rule.
 
-**Do not reimplement them.** `twin/report.py` already has `PermutationNull`, `cramers_v`,
-`compactness_ceiling`, `score_label_sets` and `_permutation_count`, all pure over
-`(dataset, ideal, affinity)`, with the Leiden seed already matching `paper_figures`. Import them.
-If runner-imports-report coupling is unwanted, move them to `twin/metrics/reference.py` in a
-**separate, behaviour-preserving commit before this one** — CLAUDE.md: never mix a refactor with a
-behaviour change. `tests/test_report_numbers.py` pins the values, so the move is provable.
+**Do not reimplement them** — import from `twin/metrics/reference.py`, which A4 just created.
+All five are pure over `(dataset, ideal, affinity)` and return dataclasses.
 
-### A5. `runs: the metric-set digest, and a one-dataset smoke script`
+### A6. `runs: the metric-set digest, and a one-dataset smoke script`
 
 The digest over `{name, variant, params, version}` for every registered entry — what A1's
 `shard_is_current` compares. ⚠️ **`version` is why this is not just names:** without it, editing
@@ -241,8 +287,9 @@ first real metric table the project has produced and it is what makes Half A rev
 
 ### B1. `runs: layout persistence, content-addressed`
 
-`runs/layouts/<key_id>.npz` — `V`, `E`, `slopes`, the scalar instrumentation, **plus a JSON
-metadata blob as a 0-d string array**: `point_provenance` (§0.5 decision 5 needs it in the rows),
+`runs/layouts/<key_id>.npz` — `V`, `E`, `slopes`, the scalar instrumentation (now
+`runtime_s`, `representation_s`, `n_points`, `peak_mem_mb` **and** `rss_baseline_mb` /
+`rss_peak_mb` per decision 4), **plus a JSON metadata blob as a 0-d string array**: `point_provenance` (§0.5 decision 5 needs it in the rows),
 the derivation chain (§4.6's manifest needs it), the dataset registry **name and factory params**,
 and the producing git SHA. ⚠️ Never the `Dataset` object, and never `allow_pickle`. Temp file in
 the **same directory** — `os.replace` is atomic only within a filesystem.
@@ -251,10 +298,18 @@ Rehydration goes through `DATASET_REGISTRY` by name + params.
 
 ### B2. `runs: the manifest`
 
-Every field §4.6 lists, plus the ones this plan adds: the disconnected policy (always `lcc`),
-the distribution policy, the memory-measurement mode, the metric-set digest, the `k` vector, the
-dropped composites and why, and the **list** of contributing `(sha, timestamp)` pairs rather than
-one — which is what the content-addressed store makes necessary and honest.
+Every field §4.6 lists, plus the ones this plan adds:
+
+- `disconnected: "lcc"` — always, per decision 3, and the runner raises on anything else;
+- `distribution_policy: "off" | "histogram(n)" | "full"`, default `off`;
+- `mem_measurement: "batch" | "isolated"` — per decision 4, so a drifting baseline is
+  attributable rather than invisible;
+- `k_per_dataset: {name: [...]}` **and** `k_source: "default_k" | "explicit"` — per decision 5.
+  Both, because the rows cannot say which was used and `default_k` is a function of the graph;
+- `metric_set_digest`, and the per-metric `version` map it was computed from;
+- `dropped_composites: [{dataset, composite, collapses_to}]` — §5.3 guard 3, no silent caps;
+- the **list** of contributing `(sha, timestamp)` pairs rather than one, which is what the
+  content-addressed store makes necessary and honest.
 
 ⚠️ **Distribution policy defaults to `off`.** `pairwise_distance_distribution` on tabula's `V` is
 12.5 M float64 = 100 MB per case before compression; three representations × several embeddings ×
@@ -348,20 +403,25 @@ Then, specifically:
   deliberately raising metric yields `status="error"` and does not abort the batch;
   `crossing_pairs` is solved **once** per `(case, variant)` for three metrics (assert the call
   count).
-- **A4** — tabula's Sil\* appears **once**, not once per case; `compartment_cell_type` does not
+- **A4** — `tests/test_report_numbers.py` passes **unchanged**, which is the whole proof that the
+  refactor preserved behaviour; and `grep -r "twin.report" twin/metrics/` is empty, which is the
+  proof the cycle is gone.
+- **A5** — tabula's Sil\* appears **once**, not once per case; `compartment_cell_type` does not
   appear at all and the manifest says why.
-- **A5** — the smoke parquet's row count equals the predicted
+- **A6** — the smoke parquet's row count equals the predicted
   `cases × point_sets × metrics × variants × k`, computed independently in the test.
 - **B1** — an npz round-trips to a `LayoutResult` that validates, with no pickle; the rehydrated
   dataset is the registry one.
 - **B4** — the four resume tests above. **Adding a metric must re-run metrics and not embeds** —
   assert by counting `embed` calls, not by timing.
+- **B2** — the manifest records `k_source` and `mem_measurement`; a run with an explicit `k=(...)`
+  and one without are distinguishable from the manifest alone.
 - **Cost** — one tabula case through the full registry stays under ~1 GB peak and the crossing
   metrics are solved once.
 
-## Open, to confirm before B2
+## Open
 
-Nothing blocks, but two things want an answer before the manifest schema is frozen: whether
-`runs/` holds the smoke output too or only real runs, and whether `run_id` should be settable by
-the caller for scripted reruns. Both are one line in the manifest writer and neither changes a
-versioned contract.
+**None.** The two items this plan carried at approval — whether `runs/` holds the smoke output,
+and whether `run_id` is caller-settable — were resolved at the follow-up review (both yes, see
+"resolved by inspection"), along with the memory and `k` decisions. Anything discovered during
+implementation goes to `DECISIONS.md` as a departure, as steps 2-6 did.
