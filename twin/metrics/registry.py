@@ -97,6 +97,7 @@ __all__ = [
     "Provider",
     "REDUCTIONS",
     "declared_rows",
+    "metric_digests",
     "metric_key",
     "metric_set_digest",
     "row_variant",
@@ -666,15 +667,64 @@ EXCLUDED: Mapping[str, str] = MappingProxyType(
 )
 
 
+
+def _digest(payload) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=repr)
+    return hashlib.blake2b(canonical.encode()).hexdigest()[:16]
+
+
+def metric_digests(
+    specs: Mapping[str, MetricSpec] = METRIC_REGISTRY,
+    *,
+    k: tuple[int, ...] | None = None,
+    distribution_policy: str = "off",
+) -> dict[str, str]:
+    """One digest per metric: what decides whether *that metric's* persisted rows are current.
+
+    Over the metric's variant params and ``version``, the declarations that change which rows
+    it emits (``returns``, ``sweeps``, ``reductions``, ``graph_side``), its provider ``needs``,
+    and the evaluation settings that are not part of a case's identity but do change its rows —
+    each **only where it applies**: an explicit ``k`` tuple (``None`` means each dataset's
+    ``default_k``) only to the swept metrics, the distribution policy only to the
+    distributions. Switching to a ``k`` sweep must not re-run a 40 s crossing solve whose rows
+    have no ``k``.
+
+    Per metric so that a resume recomputes **only** what changed. With one digest for the whole
+    set, adding a cheap metric would re-run every case's crossing solve — 40 s per `tabula`
+    layout, about 1.7 h over the ~150 layouts of a full grid — for rows that cannot have moved.
+    """
+    return {
+        name: _digest(
+            {
+                "name": name,
+                "variants": {
+                    "" if v is None else v: dict(spec.variant_params(v)) for v in spec.variants
+                },
+                "version": spec.version,
+                "returns": spec.returns,
+                "sweeps": list(spec.sweeps),
+                "reductions": list(spec.reductions),
+                "graph_side": spec.graph_side,
+                "needs": list(spec.needs),
+                "k": list(k) if k is not None and "k" in spec.sweeps else None,
+                "distribution_policy": (
+                    distribution_policy if spec.returns == "distribution" else None
+                ),
+            }
+        )
+        for name, spec in sorted(specs.items())
+    }
+
+
 def metric_set_digest(specs: Mapping[str, MetricSpec] = METRIC_REGISTRY, **settings: Any) -> str:
     r"""What a shard records, and what :func:`~twin.runs.keys.shard_is_current` compares.
 
-    Over ``{name, variant, params, version}`` for every entry, plus the declarations that
-    change which rows a metric emits (``returns``, ``sweeps``, ``reductions``, ``graph_side``),
-    plus ``settings`` — the evaluation choices that are not part of a case's identity but do
-    change its rows, such as an explicit ``k`` tuple.
+    The digest of :func:`metric_digests` — so it moves exactly when some metric's own digest
+    does, and when a metric is added or removed. It is (22)'s fast path: a shard whose set
+    digest matches is current as a whole, and only a mismatch makes the runner read the
+    per-metric digests to find out which rows to recompute.
 
-    ⚠️ **``version`` is why this is not just the names.** Without it, editing a metric's
+    ⚠️ **``version`` is why neither is just the names.** Without it, editing a metric's
     internals and re-running resumes onto the stale values — the failure the golden-file rule
     exists to prevent, except that the stale numbers would reach the results table. The rule
     that ties the two together, *a commit that changes a metric's output regenerates
@@ -684,21 +734,4 @@ def metric_set_digest(specs: Mapping[str, MetricSpec] = METRIC_REGISTRY, **setti
     Functions are not digested — neither their identity (it differs per process) nor their
     source (a docstring edit would invalidate every shard).
     """
-    payload = {
-        "metrics": {
-            name: {
-                "variants": {
-                    "" if v is None else v: dict(spec.variant_params(v)) for v in spec.variants
-                },
-                "version": spec.version,
-                "returns": spec.returns,
-                "sweeps": list(spec.sweeps),
-                "reductions": list(spec.reductions),
-                "graph_side": spec.graph_side,
-            }
-            for name, spec in sorted(specs.items())
-        },
-        "settings": settings,
-    }
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=repr)
-    return hashlib.blake2b(canonical.encode()).hexdigest()[:16]
+    return _digest(metric_digests(specs, **settings))
