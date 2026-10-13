@@ -346,12 +346,20 @@ class EmbeddingSpec:
             decides whether a case needs the seed axis (spec §4.1).
         has_lambda: whether it takes the SG-t-SNE rescaling parameter, i.e. whether the lambda
             sweep applies to it (spec §4.2).
+        version: bumped by a commit that changes what the method produces for the same input —
+            spec §1.4's `y0`/`d` fix to Yifan Hu and neato, §1.7's `fa2` replacement. It is part
+            of every case's id (`twin.runs.runner.plan_cases`), because persisted layouts are
+            **content-addressed by the case and reused across commits** (plan step 7, decision
+            1): without it, a resume after such a change would serve the old method's layouts
+            as the new one's, silently. The metric-side twin of this field is
+            `MetricSpec.version`.
     """
 
     cls: type
     expects: Literal["combinatorial", "affinity", "distance"]
     stochastic: bool
     has_lambda: bool
+    version: int = 1
 
 
 EMBEDDING_REGISTRY: dict[str, EmbeddingSpec] = {

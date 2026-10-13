@@ -58,6 +58,7 @@ __all__ = [
     "key_id",
     "key_slug",
     "key_to_json",
+    "read_shard_metadata",
     "shard_is_current",
     "write_shard",
 ]
@@ -366,6 +367,7 @@ def write_shard(
     *,
     schema: pa.Schema,
     metric_set_digest: str,
+    metadata: Mapping[str, str] | None = None,
 ) -> Path:
     """Write ``rows`` to ``path`` atomically, with ``metric_set_digest`` in the footer.
 
@@ -374,6 +376,9 @@ def write_shard(
     ``/tmp`` would make it a copy, and a kill mid-copy would leave a partial shard that looks
     complete. Rows are validated against ``schema`` on the way in, so a row with an unknown
     column or a wrongly typed value fails here rather than at concat time.
+
+    ``metadata`` is written to the footer beside the digest, under ``twin.<name>``, and read
+    back by :func:`read_shard_metadata` without loading a row.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -387,9 +392,9 @@ def write_shard(
     required = [f.name for f in schema if not f.nullable and table[f.name].null_count]
     if required:
         raise ValueError(f"rows leave non-nullable columns empty: {required}")
-    table = table.replace_schema_metadata(
-        {**(table.schema.metadata or {}), DIGEST_METADATA_KEY: metric_set_digest.encode()}
-    )
+    footer = {DIGEST_METADATA_KEY: metric_set_digest.encode()}
+    footer.update({f"twin.{k}".encode(): v.encode() for k, v in (metadata or {}).items()})
+    table = table.replace_schema_metadata({**(table.schema.metadata or {}), **footer})
 
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
@@ -403,6 +408,22 @@ def write_shard(
             os.unlink(tmp)
         raise
     return path
+
+
+def read_shard_metadata(path: str | os.PathLike) -> dict[str, str] | None:
+    """The ``twin.*`` footer entries of a shard, or ``None`` if it is missing or unreadable."""
+    path = Path(path)
+    if not path.is_file():
+        return None
+    try:
+        metadata = pq.read_schema(path).metadata or {}
+    except (OSError, pa.ArrowException):
+        return None
+    return {
+        k.decode()[len("twin."):]: v.decode()
+        for k, v in metadata.items()
+        if k.startswith(b"twin.")
+    }
 
 
 def shard_is_current(path: str | os.PathLike, *, metric_set_digest: str) -> bool:

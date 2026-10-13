@@ -4,7 +4,11 @@ The executable sequence for spec §7 step 7. Read `CLAUDE.md`, then `docs/STATUS
 §2.5, §3.7, §4.1, §4.6 and §5.3, then `DECISIONS.md` (18), (20), (21), (22) and (41). This file is
 what to do, in what order, and how to know it worked; the design record is `DECISIONS.md`.
 
-**Approved and not yet started.** Five decisions were taken by the author at review, four more
+> **Done — history, not instructions.** Implemented in session 7 (2026-10-14) in two merges, in
+> this file's order. Where the implementation departed from it, and why, is `DECISIONS.md` (45);
+> the measured cost of a `tabula` case, which corrects this plan's 1 GB budget, is (46).
+
+**Approved and not yet started** *(as of approval)*. Five decisions were taken by the author at review, four more
 questions were resolved by inspection rather than preference, and four facts were checked against
 the tree; all three sets are below, so none of it is re-litigated during implementation. **There
 are no open items.**
