@@ -46,6 +46,9 @@ __all__ = [
     "METRIC_ROW_SCHEMA",
     "DIAGNOSTIC_ROW_SCHEMA",
     "DIGEST_METADATA_KEY",
+    "GRAPH_SIDE_ROW_SCHEMA",
+    "dataset_identity",
+    "params_from_json",
     "canonical_json",
     "case_identity",
     "decode_key_json",
@@ -248,6 +251,26 @@ def key_from_json(s: str) -> BatchKey:
     return decode_key_json(s)[0]
 
 
+def dataset_identity(name: str, params: Mapping[str, Any]) -> dict[str, str]:
+    """The two identity columns of a graph-side row: registry name and factory params.
+
+    The params are ``Dataset.params`` — what the factory was actually called with, defaults
+    included — so a dataset's rows do not depend on how the batch spec happened to spell it.
+    """
+    return {
+        "graph": name,
+        "graph_params": json.dumps(
+            {k: _encode(v) for k, v in sorted(params.items())}, sort_keys=True,
+            separators=(",", ":"),
+        ),
+    }
+
+
+def params_from_json(s: str) -> dict[str, Any]:
+    """The inverse of :func:`dataset_identity`'s ``graph_params``, types intact."""
+    return {k: _decode(v) for k, v in json.loads(s).items()}
+
+
 def case_identity(key: BatchKey, extra: Mapping[str, Any]) -> dict[str, str]:
     """The four identity columns every row of a case carries."""
     return {
@@ -304,6 +327,25 @@ DIAGNOSTIC_ROW_SCHEMA = pa.schema(
     + [
         pa.field("diagnostic", pa.string(), nullable=False),
         pa.field("value", pa.float64()),
+        pa.field("metric_set_digest", pa.string(), nullable=False),
+    ]
+)
+
+#: The graph-side table (§5.3 guard 2): Sil\*, Acc\* and their reference levels, keyed by the
+#: dataset and nothing else, because they are functions of ``(dataset, label set)`` alone.
+#: ``graph_params`` is the factory's parameters in the type-preserving encoding, so that a
+#: dataset built twice with different params cannot share a row.
+GRAPH_SIDE_ROW_SCHEMA = pa.schema(
+    [
+        pa.field("graph", pa.string(), nullable=False),
+        pa.field("graph_params", pa.string(), nullable=False),
+        pa.field("label_set", pa.string()),
+        pa.field("metric", pa.string(), nullable=False),
+        pa.field("variant", pa.string()),
+        pa.field("value", pa.float64()),
+        pa.field("status", pa.string(), nullable=False),
+        pa.field("skip_reason", pa.string()),
+        pa.field("n_excluded", pa.int64()),
         pa.field("metric_set_digest", pa.string(), nullable=False),
     ]
 )

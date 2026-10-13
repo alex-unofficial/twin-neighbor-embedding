@@ -41,6 +41,7 @@ from twin.metrics.registry import (
 
 __all__ = [
     "ProviderCache",
+    "evaluate_graph_side",
     "evaluate_layout",
     "resolve_ks",
     "scored_label_sets",
@@ -278,7 +279,7 @@ def evaluate_spec(
     The unit both drivers share: :func:`evaluate_layout` per case, and the graph-side table per
     dataset (``result=None``).
     """
-    base = {"point_set": "V", "label_set": label_set, "metric": name}
+    base = {"point_set": None if result is None else "V", "label_set": label_set, "metric": name}
     params = spec.variant_params(variant)
 
     reason = _unmet(spec, params, result)
@@ -420,3 +421,134 @@ def evaluate_layout(
                 rows += r
                 diagnostics += d
     return rows, diagnostics + providers.diagnostics
+
+
+# --------------------------------------------------------------------------- #
+#                   The graph-side table — once per dataset (§5.3 guard 2)     #
+# --------------------------------------------------------------------------- #
+
+
+def _null_rows(label_set: str, metric: str, null) -> list[dict]:
+    r"""A :class:`~twin.metrics.reference.PermutationNull` as rows.
+
+    ⚠️ A point-mass null has no permutation test — `tabula`'s `method` Acc\* null takes one
+    value on every draw — so its ``z`` is a **skipped** row with the reason, not an ``ok`` NaN.
+    """
+    base = {"point_set": None, "label_set": label_set, "metric": metric, "k": None,
+            "n_excluded": None}
+    ok = {"status": "ok", "skip_reason": None}
+    rows = [
+        {**base, "variant": "mean", "value": null.mean, **ok},
+        {**base, "variant": "sd", "value": null.sd, **ok},
+        {**base, "variant": "n_permutations", "value": float(null.n_permutations), **ok},
+    ]
+    if null.degenerate:
+        rows.append({**base, "variant": "z", "value": float("nan"), "status": "skipped",
+                     "skip_reason": "the permutation null is a point mass; there is no test"})
+    else:
+        rows.append({**base, "variant": "z", "value": null.z, **ok})
+    return rows
+
+
+def reference_rows(ctx: EvaluationContext, label_sets: list[str]) -> list[dict]:
+    r"""The reference levels Sil\* and Acc\* are read against, as rows of the graph-side table.
+
+    Computed by :mod:`twin.metrics.reference` — never reimplemented here — and therefore over
+    exactly the label sets `twin.report` scores, which the caller's enumeration must match.
+
+    * ``silhouette_graph_null`` / ``graph_neighborhood_accuracy_null`` — ``mean``, ``sd``,
+      ``z``, ``n_permutations``. The Acc\* null is of the **uniform** vote with the fractional
+      tie rule, the headline of (41). ⚠️ $z$ answers "above chance", not "how strongly": it
+      depends on class count and balance, so ranking label sets on it ranks class balance
+      ((42)).
+    * ``cramers_v_vs_primary`` — the confound column. Skipped, with the reason, for the
+      primary itself and where no single primary is declared.
+    * ``compactness_ceiling`` and ``compactness_ceiling_classes`` — per dataset, so
+      ``label_set`` is empty.
+    """
+    from twin.metrics.reference import compactness_ceiling, score_label_sets
+
+    scored = score_label_sets(ctx.dataset, ctx.ideal, ctx.affinity)
+    if [row.label_set for row in scored] != list(label_sets):
+        raise RuntimeError(
+            f"the reference levels were computed over {[r.label_set for r in scored]} and the "
+            f"metrics over {list(label_sets)}; the two enumerations have drifted apart"
+        )
+
+    rows: list[dict] = []
+    for row in scored:
+        rows += _null_rows(row.label_set, "silhouette_graph_null", row.silhouette_graph_null)
+        rows += _null_rows(row.label_set, "graph_neighborhood_accuracy_null", row.graph_accuracy_null)
+        base = {"point_set": None, "label_set": row.label_set, "metric": "cramers_v_vs_primary",
+                "variant": None, "k": None, "n_excluded": None}
+        if np.isfinite(row.cramers_v_vs_primary):
+            rows.append({**base, "value": row.cramers_v_vs_primary, "status": "ok",
+                         "skip_reason": None})
+        else:
+            reason = (
+                "this is the scoring primary"
+                if row.role == "primary"
+                else "no single scoring primary is declared"
+            )
+            rows.append({**base, "value": float("nan"), "status": "skipped",
+                         "skip_reason": reason})
+
+    ceiling, classes = compactness_ceiling(ctx.affinity, ctx.ideal, ctx.dataset.n)
+    base = {"point_set": None, "label_set": None, "variant": None, "k": None,
+            "n_excluded": None, "status": "ok", "skip_reason": None}
+    rows.append({**base, "metric": "compactness_ceiling", "value": ceiling})
+    rows.append({**base, "metric": "compactness_ceiling_classes", "value": float(classes)})
+    return rows
+
+
+def evaluate_graph_side(
+    ctx: EvaluationContext,
+    *,
+    specs: Mapping[str, MetricSpec] = METRIC_REGISTRY,
+    reference_levels: bool = True,
+) -> tuple[list[dict], list[dict]]:
+    r"""Every graph-side metric over every scored label set of one dataset — **once**.
+
+    Sil\*, Acc\* and their reference levels are functions of ``(dataset, label set, policy)``
+    and of nothing in the layout. Emitted per case they would repeat one value per
+    representation × embedding × seed — and at `tabula`'s 39 permutation draws across four label
+    sets, cost ~145 s *per case* instead of once. So they get a table of their own, and §5.3
+    guard 2 — "emit them in a separate table from their layout counterparts" — falls out of the
+    structure rather than being a rule someone has to remember.
+
+    Args:
+        ctx: the dataset's evaluation context.
+        specs: the registry; only its ``graph_side`` entries are run.
+        reference_levels: also compute the permutation nulls, Cramér's V and the compactness
+            ceiling. On by default because a bare Sil\* or Acc\* is unreadable (40); the cost
+            is the nulls — ~145 s on `tabula`, seconds elsewhere.
+
+    Returns:
+        ``(rows, diagnostics)``. ``point_set`` is empty on every row: there is no layout.
+    """
+    check_policy(ctx)
+    label_sets, _ = scored_label_sets(ctx.dataset)
+
+    rows: list[dict] = []
+    diagnostics: list[dict] = []
+    for name, spec in specs.items():
+        if not spec.graph_side:
+            continue
+        for variant in spec.variants:
+            if "labels" in spec.needs and not label_sets:
+                base = {"point_set": None, "label_set": None, "metric": name}
+                rows += _status_rows(
+                    spec, variant, (), base, "skipped", "the dataset declares no label sets"
+                )
+                continue
+            for label_set in label_sets if "labels" in spec.needs else [None]:
+                r, d = evaluate_spec(
+                    name, spec, variant, ctx=ctx, result=None, ks=(), label_set=label_set,
+                    measure_memory=False,
+                )
+                rows += r
+                diagnostics += d
+
+    if reference_levels and label_sets:
+        rows += reference_rows(ctx, label_sets)
+    return rows, diagnostics
