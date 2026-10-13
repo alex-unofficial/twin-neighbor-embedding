@@ -1804,18 +1804,25 @@ suite. The expensive metrics scale with $m$, and the label family scales with $n
 5007. §0.5 corrects the cost class in principle; these are the numbers, and step 7's run planner
 reads it.
 
-## (41) The headline Acc\* is uniform voting — and the real constraint is the *pairing*
+## (41) The headline Acc\* is uniform voting, because it is the pairing that assumes nothing
 
-> ⚠️ **Amended after review.** The entry first argued this as a choice about Acc\* alone and
-> dated it "before step 7's registry bakes it in". Both were wrong. The graph-side metric exists
-> to show the labels are recoverable **under the same criterion the layout metric presupposes**,
-> so the mode is not independently choosable — it is determined by whichever layout column it
-> accompanies. And nothing is blocked at step 7: see "What this does and does not block" below.
+> ⚠️ **Amended twice, both times by the author at review.** The entry first argued this as a
+> choice about Acc\* alone, dated "before step 7's registry bakes it in". Both wrong: the
+> graph-side metric exists to show the labels are recoverable **under the criterion the layout
+> metric presupposes**, so the mode is not independently choosable; and nothing is blocked at
+> step 7 (see the last subsection).
+>
+> The second amendment is the one that matters. The *weighted* pairing — $f(d) = 1/d$ against
+> $w_{ij}$ — is **not** the principled option it looks like: it presupposes $d \propto 1/w$ and
+> so favours layouts that embody that relation. The proposed fix, a third graph mode applying
+> $f(d) = 1/d$ to the distance form, does not work either, because a layout method's induced
+> $d(w)$ is mostly **implicit** and differs per method. The conclusion survives; the first
+> argument for it does not.
 
 **Uniform (eq. 61) with the fractional tie rule is the reported column; affinity weighting
 (eq. 62) is reported beside it.**
 
-### The constraint is a matched pair, not a default
+### The matched pair, and why only the unweighted one is safe
 
 | criterion | layout side | graph side |
 |---|---|---|
@@ -1824,16 +1831,48 @@ reads it.
 
 A uniform Acc\* read beside a distance-weighted Acc$^k$ answers a different question from the one
 the layout column asked, which defeats the purpose of having a graph-side check at all. **So the
-rule is: the graph column matches the layout column**, and it belongs with §5.3 guard 2 as a
-reporting constraint rather than as a default on either function. Both defaults are `"uniform"`
-today, so the pair is matched as things stand.
+columns must match** — that much holds, and belongs with §5.3 guard 2 as a reporting constraint
+rather than as a default on either function. Both defaults are `"uniform"` today, so the pair is
+matched as things stand.
 
-⚠️ **The pairing is matched by intent, not by formula.** The layout side inverts a Euclidean
-distance; the graph side reads a stored coupling, which is `exp(-d/d_scale)` on `digits` and a raw
-interaction count on `karate_weighted`. Both say "closer counts more"; neither is the same
-function. An exact pairing would need a third graph mode applying $f(d) = 1/d$ to the **distance**
-form — not built, and not worth building speculatively, but it is what "the same criterion" would
-strictly require.
+What does **not** follow is that either matched pair is as good as the other.
+
+### ⚠️ But the *weighted* pairing is not neutral, and cannot be made so
+
+The row above is the obvious reading and it is **not safe to apply blindly** (author, at review).
+Pairing $f(d) = 1/d$ on the layout with $w_{ij}$ on the graph asserts that a neighbour at layout
+distance $d$ counts like a neighbour at affinity $w$ — i.e. it builds in $d \propto 1/w$. A layout
+method that happens to embody that relation is then scored against its own modelling assumption.
+
+An earlier version of this entry proposed fixing it with a third graph mode applying
+$f(d) = 1/d$ to the **distance** form, "what the same criterion would strictly require". **That
+does not fix it either**, and the reason is the substantive one: *the affinity-to-distance
+relation a layout method induces is mostly implicit, and it differs per method.* Across
+`EMBEDDING_REGISTRY`:
+
+| method | reads | induced $d(w)$ |
+|---|---|---|
+| `kamada-kawai`, `neato` | distance | **explicit** — the target length *is* the declared distance form, which on a `strength` dataset is exactly $1/w$ |
+| `sgtsne`, `spring`, `spectral`, `forceatlas2` | affinity | **emergent** — from a $t$-SNE objective, a spring equilibrium, or a Laplacian spectrum; non-linear, and for `sgtsne` λ-dependent |
+| `yifanhu` | combinatorial | **none** — it reads no valuation, so there is no relation to match |
+
+So "the same criterion" is not a well-defined target: there is no single $f$ to match, and for
+one method there is nothing to match at all. Worse, the distance/affinity pair is *precisely*
+Kamada-Kawai's and neato's built-in assumption on a `strength` dataset, so adopting it would
+quietly score those two against their own objective — **the same trap already recorded for SNS**
+("SNS on a Kamada-Kawai or neato layout is close to a measure of optimiser success"), one layer
+over, and harder to see because it hides in a weighting argument rather than in the metric's
+definition.
+
+**This strengthens the conclusion while demolishing the first argument for it.** Uniform/uniform
+is the only pairing that reads *no* valuation on either side, so it is the only one that embeds
+no assumption about any method's implicit $d(w)$ — and it is the only one that means the same
+thing for a combinatorial method as for an affinity one. That is a better reason for the default
+than "eq. (57) is the headline, so eq. (61) is its companion".
+
+⚠️ **Do not re-derive the weighted pairing as an improvement.** It looks like the more principled
+option and it is the less principled one. Left as is by the author's call at review; the
+third-mode proposal is **withdrawn**, not deferred.
 
 The awkward fact first: **affinity weighting strictly dominates on this roster.** Better on all
 seven weighted label sets, equal on the four unweighted or declared-combinatorial ones, never
@@ -1855,9 +1894,10 @@ reading is weak, the labels are not there. Affinity weighting gives that reading
 
 **Uniform wins anyway, on three grounds — the first of which now carries the argument.**
 
-1. **It is the pair the thesis's headline layout metric asks for.** Eq. (57) is the layout
-   headline, so eq. (61) is its companion. Switching the graph side alone would break the
-   correspondence; switching *both* is a bigger change than the evidence supports.
+1. **It is the only pairing that embeds no assumption about the layout method.** Neither side
+   reads a valuation, so nothing is presupposed about any method's implicit $d(w)$ — see the
+   subsection above, which is why this and not "eq. (57) is the headline, so eq. (61) is its
+   companion". That weaker version is also true, and is not what carries the argument.
 2. **Eq. (61) is the definition, and eq. (62) is introduced as an alternative** ("for weighted
    graphs, we may instead…"). Promoting the alternative is a `[THESIS EDIT]`, and the measured
    gain does not justify one: the largest is 0.029 on `karate_weighted` at $n = 34$ — two
@@ -1866,10 +1906,12 @@ reading is weak, the labels are not there. Affinity weighting gives that reading
    sit on unweighted graphs where eq. (62) *is* eq. (61), so an affinity headline would be a
    column that silently changes meaning down the table.
 
-⚠️ **What would flip it:** a dataset whose affinity carries most of the structure, where the gap
-is tens of points rather than 0.007 — and then **both** columns move together, layout and graph.
-Nothing in the roster is close; `tabula`, the most strongly weighted, gives 0.007. Revisit if the
-§4.7 adversarial density case behaves otherwise.
+⚠️ **What would flip it** is now narrower than the first version of this entry claimed. A
+dataset whose affinity carries most of the structure, with a gap of tens of points rather than
+0.007, would be grounds to report the affinity column more prominently — but **not** grounds to
+move the layout column with it, because the objection above applies whatever the gap is. Nothing
+in the roster is close; `tabula`, the most strongly weighted, gives 0.007. Revisit if the §4.7
+adversarial density case behaves otherwise.
 
 ### What this does and does not block
 
