@@ -61,7 +61,13 @@ class LayoutResult:
         representation_s: wall time of building the representation matrix only.
         n_points: rows of the matrix actually laid out — ``n`` for A_V, ``m`` for A_E,
             ``n + m`` for A_tne. Makes the cost of the transform visible in every row.
-        peak_mem_mb: peak Python-side allocation during the embed, or None when not measured.
+        peak_mem_mb: peak RSS above the entry baseline during the embed, or None when not
+            measured. ⚠️ A lower bound in a single-process batch: under glibc the baseline
+            drifts upward across cases, so later cases measure from a higher floor.
+        rss_baseline_mb, rss_peak_mb: the absolute RSS at the embed's entry and its peak, of
+            which ``peak_mem_mb`` is the difference. Recorded beside the delta (plan step 7,
+            decision 4) so that the drift is **visible post hoc** — a baseline climbing across a
+            batch's rows — instead of averaged silently into a thesis table.
     """
 
     V: np.ndarray
@@ -78,6 +84,8 @@ class LayoutResult:
     representation_s: float | None = None
     n_points: int | None = None
     peak_mem_mb: float | None = None
+    rss_baseline_mb: float | None = None
+    rss_peak_mb: float | None = None
 
     def __post_init__(self):
         n, m = self.G.number_of_nodes(), self.G.number_of_edges()

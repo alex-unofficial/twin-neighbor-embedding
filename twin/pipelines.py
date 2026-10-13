@@ -115,6 +115,8 @@ def graph_embedding(
         representation_s=representation_s,
         n_points=layout_graph.n_points,
         peak_mem_mb=mem.delta_mb if measure_memory else None,
+        rss_baseline_mb=mem.baseline_mb if mem.enabled else None,
+        rss_peak_mb=mem.peak_mb if mem.enabled else None,
     )
 
 
