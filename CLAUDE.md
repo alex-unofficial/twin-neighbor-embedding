@@ -53,6 +53,12 @@ Background and design record, in reading order:
   stored *distance* on digits. ADR and `weighted_recall` refuse a graph stamped
   `twin_side="distance"`, and `ideal_distances` refuses one stamped `"affinity"` — but `tabula`'s
   graph is unstamped, so the refusal is a backstop and not a substitute for asking the context.
+  - ⚠️ **That is for a metric that reads a valuation. A per-edge metric takes `result.G`.**
+    `result.E` is indexed by `dataset.graph.edges()`, and `ctx.affinity` is rebuilt from a CSR
+    matrix, so its `edges()` are in CSR order — they disagree on `digits` in over 10 000 of
+    14 732 positions and agree on `karate`. Handing the context's graph to the crossing family,
+    `detour_ratio` or `edge_lengths` pairs each edge's curve with another edge's point, silently.
+    None of them reads a weight. `DECISIONS.md` (45c).
 - **Ideal distances come from `vertex_graph(dataset).distance`** — the least-derived form —
   computed once per dataset by the runner and shared by every representation. Never from
   `edge_graph`/`twin_graph`'s generic fallback: that would score A_V, A_E and A_tne against three
@@ -111,12 +117,21 @@ Present:
 - `twin/metrics/` — the metric suite as a package: `common` (ideal distances, the condensed pair
   ordering, the `pdist` and leave-one-out caches, `default_k`), `structural` (ADR, the kNN
   family, SNS), `visual` (NND, NR/VNR, the two distance distributions, edge lengths),
-  `label` (kNN accuracy), `context` (`EvaluationContext`, and the condensed ideal it shares).
+  `label` (silhouette, kNN and graph-side accuracy), `crossings` (curves, the exact crossing
+  solve, Cr/LWCr, detour), `context` (`EvaluationContext`, and the condensed ideal it shares),
+  `reference` (the permutation nulls, Cramér's V and the compactness ceiling Sil\*/Acc\* are
+  read against), `registry` (`MetricSpec`, `METRIC_REGISTRY`, the metric-set digest) and
+  `evaluate` (`evaluate_layout` per case, `evaluate_graph_side` per dataset).
   Each cache family has its own capacity and its own `clear_*` — 1.6 MB per leave-one-out entry
   is not 100 MB per condensed vector — and **the leave-one-out cache never serves a small `k`
   out of a larger cached one**, because slicing is not re-querying on a layout with duplicates.
 - `twin/batching.py` — generic batch-spec engine; domain-agnostic, do not rewrite
-- `twin/pipelines.py` — runners tying the above together
+- `twin/pipelines.py` — `graph_embedding` (one case) and the legacy runners
+- `twin/runs/` — persistence: `keys` (the `v1-` case id, row schemas, atomic shards — the
+  versioned on-disk contract), `layouts` (the content-addressed layout store), `store` (a run
+  directory), `manifest`, `provenance`, and `runner` (`batch_layout_metrics`: the batch grammar
+  through layouts and the registry, in memory or persisted and resumable). **Source**; the
+  repository-root `runs/` is its output
 - `twin/plots.py`, `twin/paper_figures.py` — rendering
 - `twin/graphmatrix.py` — the **pre-restructure** representation classes, plus `compute_slopes`.
   Superseded by `twin/layoutgraph.py`; alive only because `graph_embedding_all` and
@@ -125,10 +140,10 @@ Present:
 - `batches/` — experiment definitions
 - `tests/`, `docs/`
 
-Planned, not yet present:
+Output, not source, and ignored by git:
 
-- `twin/metrics/crossings.py`, `registry.py` — steps 5–7
-- `runs/` — experiment output (step 7); output, not source, and ignored by git
+- `runs/` — `runs/layouts/<key_id>.npz` (shared by every run) and one directory per run
+  (manifest, the three tables, per-case shards, log). Tests write to `tmp_path`, **never** here.
 
 ## Commands
 
@@ -136,6 +151,7 @@ Planned, not yet present:
 venv/bin/python -m pytest    # test suite (excludes `-m slow`)
 venv/bin/python -m pytest -m slow   # the opt-in extras: the ~3 min tabula figure
 python batches/<name>.py     # run an experiment batch
+python batches/smoke.py      # the whole registry on two small datasets → runs/smoke/ (~30 s)
 python -m twin.report        # dataset connectivity / weight / label report
 ```
 

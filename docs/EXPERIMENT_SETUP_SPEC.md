@@ -736,6 +736,30 @@ placement.
   scale. Acc\* exceeds 0.94 on every dataset and is near-useless without its floor: 0.987 against
   a **0.958** floor on tabula's `method`.
 
+### Session 7 corrections — what implementing step 7 established
+
+The registry, `evaluate_layout`, the graph-side table and persistence with resume are built, in
+two merges (`plans/step7-registry.md`). The departures, in full: `DECISIONS.md` (45); the cost
+of a `tabula` case through the whole registry: (46).
+
+| was | now |
+|---|---|
+| §3.7: `evaluate_layout(result, dataset, metric_spec)` | `evaluate_layout(result, ctx, *, specs, k)`. `result.dataset` already is the dataset; a second one lets a rehydrated layout be scored against a different object. The context carries the dataset, vertex graph, `k`, ideal and policy, and the two are checked against each other — (45a) |
+| §3.7: `batch_layout_metrics(batch_input, *, metric_spec, seeds, …)` | `twin.runs.runner.batch_layout_metrics(batch_input, *, specs, k, seed, …, root, run_id, resume)` — one seed per invocation until step 8 adds the axis. In memory without `root`/`run_id`/`resume`, persisted and resumable with one |
+| §4.6: `runs/<run_id>/layouts/<key>.npz` | `runs/layouts/<key_id>.npz`, **shared by every run** (decision 1). With the SHA in `run_id`, §4.6's tree re-embeds everything whenever a metric is added — (45b) |
+| §2.5: `MetricSpec(fn, kind, needs, sweeps, …)` | plus `bind`, `report_fn`/`value_field`, `reductions`, `swept_diagnostics`, `version`, `params` and `reported`; `needs` names **providers**, so the three layer-3 crossing metrics share one solve — (45h) |
+| (20): an array is swept *or* a distribution | a distribution also declares **reductions** that always reach the table (`detour_ratio@curved_mean`); the raw array is written only under `distribution_policy` ≠ `off` |
+| (21): `extra` carries `seed` and λ | `extra` carries **every fixed kwarg of every axis** plus the runner's scalars and the embedding's code version; otherwise two seeds, two fixed λ, or `tabula`/liver and `tabula`/lung share an id — (45f) |
+| (22): one metric-set digest per shard | kept as the fast path, plus **per-metric** digests so a resume recomputes only the metrics that changed. Taken literally, (22) made adding a cheap metric re-run every crossing solve — (45d) |
+| CLAUDE.md: a metric takes its graph from the context | **for a valuation.** The per-edge metrics take `result.G`: `result.E` is in `dataset.graph.edges()` order and the context's graph is in CSR order, which differ on `digits` — (45c) |
+| §2.5: SNS and Sil\* will not run on `tabula` | on a full `tabula` case the crossing solve is 76–86 s of ~95 s; Sil\* is 2.2 s for four label sets; the closure 10 s once per dataset. Peak 1.13–1.16 GB above entry, ~15 % over the plan's budget — (46) |
+
+**Two guards the plan did not ask for, both against a silent stale serve.** `EmbeddingSpec`
+has a `version` that is part of every case's id, because the layout store reuses layouts across
+commits and step 9 will change what Yifan Hu, neato and ForceAtlas2 return; and
+`tests/test_metric_versions.py` fails when `metric_golden.json` changes without the metric's
+`version` being bumped, because the version is what invalidates a persisted shard.
+
 ## 1. Bugs to fix first
 
 These are independent of the new work. **Read §0.5 first** — three of the six claims below did

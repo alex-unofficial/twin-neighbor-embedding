@@ -2148,3 +2148,179 @@ divisions are "in" the graph.
 ⚠️ **For the author to place. Do not let an agent write it into `thesis/`** (CLAUDE.md). The
 numbers are reproduced by `python -m twin.report` and pinned in
 `tests/test_report_numbers.py`.
+
+## (45) Step 7 departures from `plans/step7-registry.md`, and why
+
+The plan held on substance: both merges landed in its order, every one of its verification items
+has a test, and none of the author's five decisions moved. What follows is where the
+implementation went further or differently, each with the reason.
+
+### (45a) `evaluate_layout(result, ctx)`, not §3.7's `(result, dataset, metric_spec)` — *planned*
+
+`result.dataset` already is the dataset, so a second one opens a path where a layout rehydrated
+from disk is scored against a different object. The context carries the dataset, the faithful
+vertex graph, the shared `k` and ideal, and the disconnection policy; `evaluate_layout` checks the
+two agree by identity or by registry name and params. The metric set is a keyword (`specs=`).
+
+### (45b) Layouts are content-addressed at `runs/layouts/<key_id>.npz` — *planned* (decision 1)
+
+§4.6's `runs/<run_id>/layouts/` plus a SHA in `run_id` makes adding a metric re-run every embed —
+the exact thing (22) says layouts exist to prevent. Each layout file records its producing SHA;
+the manifest lists every contributing `(sha, timestamp)`.
+
+### (45c) ⚠️ Per-edge metrics are bound to `result.G`, **not** the context's graph
+
+**Not in the plan, and it qualifies a CLAUDE.md rule.** CLAUDE.md says a metric takes its graph
+from the `EvaluationContext`. For anything that reads a *valuation* — ADR, weighted recall, the
+stresses, Sil\*, Acc\* — that holds and the registry follows it. For the **per-edge** metrics it
+must not: `result.E` is indexed by `dataset.graph.edges()`, and `ctx.affinity` is rebuilt by
+`nx.from_scipy_sparse_array`, so its `edges()` come out in **CSR order**. On `digits` the two
+orders disagree in more than 10 000 of 14 732 positions (asserted in
+`tests/test_evaluate_layout.py`); on `karate` they happen to agree, so the golden file could not
+have caught it. Handing `ctx.affinity` to `crossing_pairs` would pair each edge's curve with
+another edge's edge point, and nothing would raise. The crossing family, `detour_ratio`,
+`edge_lengths` and `edge_length_cv` therefore take `result.G` — none of them reads a weight, so
+`dataset.graph`'s distance-valued `weight` on `digits` cannot reach them. A test asserts every
+per-edge binder hands over `result.G` by identity.
+
+### (45d) Per-metric digests, so a resume recomputes only what changed — *beyond (22)*
+
+(22) specifies one metric-set digest per shard: if it differs, the case's metrics re-run. Taken
+literally that makes **adding a cheap metric re-run every case's crossing solve** — 40 s per
+`tabula` layout (86 s for both variants of a twin layout, (46)), about 1.7 h over a ~150-layout
+grid — for rows that cannot have moved. So each shard's footer also carries one digest per
+metric, and on a set-digest mismatch the runner recomputes only the metrics whose own digest
+changed, keeping the rest of the shard. (22)'s set digest stays the fast path and its semantics
+are unchanged. Two settings are scoped to the metrics they affect: an explicit `k` enters only
+the swept metrics' digests and `distribution_policy` only the distributions', so switching to a
+`k` sweep does not re-solve crossings either. Asserted by counting solves in
+`tests/test_resume.py`. A provider's diagnostics (`crossing_pairs`) are replaced exactly when one
+of its consumers is recomputed.
+
+### (45e) `version` on both `MetricSpec` and `EmbeddingSpec`, and the first is enforced
+
+`MetricSpec.version` is inside the digest, as planned, and **enforced**:
+`tests/test_metric_versions.py` keeps an append-only `(version, digest of the metric's golden
+values)` history per metric, so regenerating `metric_golden.json` without bumping the version
+fails, and its message prints the line to append.
+
+`EmbeddingSpec.version` is **not in the plan**. The content-addressed store reuses a layout across
+commits by design, and nothing in a case's id changes when a layout *method's* code does — so
+after step 9's §1.4 fix (Yifan Hu and neato ignoring `y0`/`d`) or §1.7's `fa2` replacement, a
+resume or a new run would serve the old method's layouts as the new one's. The version is folded
+into every case's `extra` as `embedding.code_version`; a bump re-embeds that method's cases and
+nothing else. ⚠️ **Residual gap:** representations have no such field; `twin_adjacency` is "the
+method, treat as given". A change there would need one.
+
+### (45f) `extra` is the whole fixed set — and what it still cannot see
+
+As the plan required: every fixed kwarg of every axis, namespaced `axis.param`, plus the runner's
+scalars (`seed`, `d`, `normalize`, `common_init`). Tested for two seeds, two fixed λ, and
+`tabula`'s `organ` — the third is the case the plan did not name, and the one `batches/batch.py`
+actually contains. Two limits, both on the conservative side:
+
+- **A default is invisible.** A kwarg left at its default never reaches `kwargs`; if the default
+  changes, the id does not. That is `make_batch_key`'s own documented asymmetry. Spell a
+  parameter out when its identity matters — or, for a method's code, bump `EmbeddingSpec.version`.
+- **Ids are spelling-sensitive.** `"digits"` and `("digits", {"n_neighbors": 12})` are one
+  dataset with two ids. The failure is a spurious re-run, never a stale serve. The graph-side
+  table is keyed by `Dataset.params` (what the factory actually received), so it does not split.
+
+### (45g) The duplicate check is on the case id, not the `BatchKey`
+
+`run_batch_cases` refuses a repeated `BatchKey`. Fixed kwargs are not in the key, so `tabula`/liver
+and `tabula`/lung share one, and the engine would refuse a spec that is legitimately two cases.
+`plan_cases` checks the id instead, which includes `extra`.
+
+### (45h) Two `MetricSpec` fields beyond the plan's: `params` and `reported`
+
+`params` holds the static kwargs that are part of a metric's identity (γ, `include_adjacent`) and
+so belong in the digest. `reported=False` marks the three **foils** — `node_resolution`,
+`raw_stress`, `normalized_stress` — which must be produced (the golden file pins them, and the
+plan requires every golden key to come from a registry entry) but never tabulated. Step 11's
+exporter reads it the way it reads `within_graph_only`.
+
+The golden file's naming forced one oddity: `node_resolution_vertexwise` keys its default with
+**no** suffix where `graph_neighborhood_accuracy` spells out `@uniform`, so `None` is a legal
+variant name. Reproduced, not tidied — renaming would mean regenerating the golden file.
+
+### (45i) The graph-side table's reference rows
+
+Sil\*, Acc\* (three variants) and the majority-class floor come from the registry's three
+`graph_side` entries; the reference levels from `twin.metrics.reference`, unchanged:
+`silhouette_graph_null` and `graph_neighborhood_accuracy_null` with variants `mean` / `sd` / `z` /
+`n_permutations` (the Acc\* null is of the uniform vote, (41)'s headline), `cramers_v_vs_primary`,
+and the per-dataset `compactness_ceiling` / `compactness_ceiling_classes`. Two rows are
+**skipped with a reason** rather than emitted as an `ok` NaN: a point-mass null's `z` (`tabula`'s
+`method`), and Cramér's V of the primary against itself. The registry's Sil\*/Acc\* and
+`score_label_sets`'s are two code paths; a test asserts they agree exactly, and the runner refuses
+to emit reference rows if the two label-set enumerations ever differ.
+
+### (45j) Sequencing: the runner arrived in A6, in memory; three parquet files, not one
+
+The plan's A6 is a smoke *script* and B3 the runner. A smoke script that hand-rolled its own loop
+would have been thrown away at B3, so A6 built `batch_layout_metrics` in memory — dataset-major
+order, the duplicate check, progress, cache release — and B3 added the store to the same loop.
+The smoke run writes three parquet files rather than one because there are three tables of three
+shapes (metrics, diagnostics, graph side).
+
+### (45k) Small things the plan did not cover
+
+- **A failed embed is never persisted.** Its error rows are kept in memory and reach the
+  concatenated tables, but no shard is written, so a resume retries it rather than finding a
+  "current" record of the failure.
+- **A persisted run refuses a dirty tree** unless `allow_dirty=True` (CLAUDE.md: the SHA would be
+  false). "Dirty" means tracked changes only: `runs/` is ignored and an untracked scratch file
+  does not change what the SHA's code computes.
+- **`histogram(n)` cannot always bin.** The straight variant's detour ratios span 1.0 to
+  1.0000000000000004 and numpy refuses to make 8 finite bins of that. The store pads the range
+  only when numpy refuses, rather than placing a width threshold.
+- **Distribution reductions are NaN-aware** and count what they excluded in `n_excluded`: a
+  coincident-endpoint edge has no detour ratio and is excluded, not allowed to turn the summary
+  into NaN.
+
+## (46) One `tabula` case through the whole registry, measured — the plan's 1 GB budget is ~15 % low
+
+Measured at step 7's close, one process per run (STATUS: `ru_maxrss` is a high-water mark), on
+an SG-*t*-SNE layout of `tabula`'s **twin** representation, seed 0, through `evaluate_layout`
+with the full registry at `default_k` = 20. Two runs; the second sampled RSS per metric.
+
+| | run 1 | run 2 |
+|---|---|---|
+| embed (not part of the budget) | 44.8 s | 46.7 s |
+| `evaluate_layout`, 43 rows, all `ok` | 105.1 s | 91.6 s |
+| RSS at entry → peak | 387 → 1520 MB | 387 → 1542 MB |
+| **peak above entry** | **1133 MB** | **1155 MB** |
+| crossing solves | 1 straight, 1 curved | 1 straight, 1 curved |
+| graph side, no nulls | 3.1 s, +201 MB | 2.6 s, +201 MB |
+
+Where it goes (run 2, each metric's RSS delta from its own entry — so resident caches show once,
+on the call that first builds them):
+
+| | time | RSS delta | what it is |
+|---|---|---|---|
+| `crossing_pairs`, both variants | **76.3 s** | +433 / +464 MB | the solve; transient, as session 5 measured (+428 MB) |
+| `scale_normalized_stress` | 10.0 s | **+705 MB** | first touch of `ctx.ideal` (200 MB square), its condensed form (100 MB), the finite mask, the layout's `pdist` (100 MB), and `_stress_pairs`' two masked copies — the first four **stay resident** for the case |
+| `raw_stress`, `normalized_stress` | 0.4 s each | +292 / +301 MB | the masked copies again, transient |
+| `silhouette`, per label set | 0.5 s each | +201 MB each | the squared-up `pdist` for `metric="precomputed"`, transient |
+| everything else | < 1 s | ≤ 103 MB | |
+
+**Two conclusions.**
+
+1. **The plan's "~1 GB for a tabula case" is 15 % low.** It summed the resident arrays (ideal
+   200 + condensed 100 + two pairwise entries 200) and the crossing transient (428) = 928 MB, and
+   missed that the stresses' masked copies and the silhouette square are transients *on top of*
+   the resident set. Measured: **1.13–1.16 GB above entry, 1.52–1.54 GB absolute**. It changes
+   nothing on this machine; it matters for rung 2 of (31)'s escalation — parallelism across
+   layouts — which multiplies the *whole* figure, not the crossing transient, by the worker count.
+2. **The crossing solve is solved once per (case, variant)**, as the provider cache was built to
+   guarantee, and it is **83 % of the evaluation time**. Everything else in the suite together is
+   ~15 s per `tabula` case, of which 10 s is the once-per-dataset closure that the first stress
+   call happens to pay. §2.5's cost class is therefore wrong in both directions, now on a full
+   case: it names SNS and Sil\* as what will not run on `tabula`, and Sil\* is 2.2 s for four
+   label sets while the closure is paid once per dataset.
+
+Not done, recorded: the stresses' two masked copies are pure transients on a connected dataset,
+where the finite mask is all-True; skipping the mask when `finite_pairs.all()` would remove ~300
+MB of transient per stress call. It is an optimisation in a metric the golden file pins, so it
+belongs in its own commit with the pin re-checked — not slipped into the runner.
