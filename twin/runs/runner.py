@@ -155,6 +155,7 @@ def plan_cases(
             raise KeyError(f"batch case is missing required axes: {sorted(missing)}")
         key = make_batch_key(case, axis_order=list(AXES))
         extra = fixed_extra(case, **runner_scalars)
+        extra.update(_code_versions(case))
         identity = case_identity(key, extra)
         if identity["key_id"] in seen:
             if duplicate_policy == "error":
@@ -165,6 +166,26 @@ def plan_cases(
 
     # Stable: within one dataset, cases keep the order the spec gave them.
     return sorted(planned, key=lambda p: p.graph_identity)
+
+
+def _code_versions(case) -> dict[str, int]:
+    """The version of the code that produces this case's layout — part of its identity.
+
+    Layouts are content-addressed by case id and reused across commits (decision 1), so a change
+    to what a layout method returns must change the id, or the store serves the old method's
+    output as the new one's. ``EmbeddingSpec.version`` is that declaration; a method outside
+    ``EMBEDDING_REGISTRY`` (a test double) has none. Namespaced so that it cannot collide with a
+    real keyword argument called ``version``.
+
+    ⚠️ The representations have no such field: `twin_adjacency` is "the method; treat as given"
+    (CLAUDE.md), and a change there would need one.
+    """
+    from twin.embedding import EMBEDDING_REGISTRY
+
+    spec = EMBEDDING_REGISTRY.get(case["embedding"]["name"])
+    if spec is None or spec.cls is not case["embedding"]["object"]:
+        return {}
+    return {"embedding.code_version": spec.version}
 
 
 def _stamp(rows: Iterable[dict], base: dict) -> list[dict]:

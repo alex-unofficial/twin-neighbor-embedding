@@ -244,6 +244,19 @@ def test_switching_to_an_explicit_k_recomputes_only_the_swept_metrics(tmp_path, 
     assert set(tables.metrics.dropna(subset=["k"])["k"]) == {5, 10}
 
 
+def test_a_bumped_embedding_version_re_embeds(tmp_path, embeds, monkeypatch):
+    """Layouts are reused across commits, so a change to a method's output must change the id."""
+    from twin.embedding import EMBEDDING_REGISTRY
+
+    run(tmp_path, run_id="r1")
+    embeds.clear()
+    spectral = EMBEDDING_REGISTRY["spectral"]
+    monkeypatch.setitem(EMBEDDING_REGISTRY, "spectral", dataclasses.replace(spectral, version=2))
+    run(tmp_path, run_id="r2")
+    assert len(embeds) == 3
+    assert len(list((tmp_path / "layouts").glob("*.npz"))) == 6
+
+
 # --------------------------------------------------------------------------- #
 #                  Provenance: which commit produced which artifact            #
 # --------------------------------------------------------------------------- #
